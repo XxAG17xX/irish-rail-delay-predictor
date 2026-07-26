@@ -189,7 +189,9 @@ bounds needed. **[VERIFIED]**
   for the same service. Any location-keyed graph must be versioned by era, or restricted
   to a recent date range. **[VERIFIED]**
 - Volume estimate: ~600 trains/day × ~44 records ≈ 26k records/day, ~10M/year. **[INFERRED]**
+- TrainDate accepts both zero-padded and unpadded days (05 jul 2026 and 5 jul 2026). Verified 2026-07-25.
 
+- Weekend/weekday service patterns appear correctly in backfilled data — Sundays show 31/36 harvested codes empty, Saturdays 0/36, weekdays 2/36, consistently across four weeks. Independent corroboration that historical responses reflect the real timetable of that date.
 ---
 
 ## 7. Modelling implications
