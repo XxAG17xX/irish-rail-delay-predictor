@@ -476,3 +476,108 @@ Consistent with the quarantine-not-delete policy already set for anomalous recor
 data-dictionary.md 5.3. Deletion at ingestion is irreversible; a column is not.
 
 **Date.** 2026-07-28
+
+---
+
+## D24 — Training examples at fixed horizons of 1, 3, 5 and 10 observed stops
+
+**Decision.** Each journey yields one example per (vantage stop × horizon in {1,3,5,10}
+observed stops ahead). Horizons index *observed* stops, not route positions, and the true
+route distance plus the scheduled seconds from vantage to target are carried as columns.
+961,606 examples from 18,477 journeys.
+
+**Alternatives.** (a) All (vantage, target) pairs — 3,337,012 examples. (b) A fixed number
+of randomly sampled pairs per journey. (c) Next observed stop only — 295,648.
+
+**Why rejected.** (a) is the tempting one and the trap. The median journey has 18 observed
+stops, so all-pairs yields 187 examples per journey that share a single underlying delay
+realisation — a train five minutes down all afternoon appears 187 times. The effective
+sample size stays near 18,000, so any standard error computed on 3.3M is fiction. It also
+silently reweights the data toward long runs: a 35-stop intercity produces 595 examples
+against a commuter hop's 3, which is precisely the DART/intercity asymmetry recorded in
+feature-ideas.md. (c) fits a horizon-1 model that would have to extrapolate to the
+multi-stop questions the service exists to answer. (b) is statistically the cleanest but is
+an unconventional design that would need defending, and it gives up clean per-horizon
+evaluation.
+
+Fixed horizons bound the multiplier to ~4 per vantage point and make MAE reportable at
+each horizon separately, which turned out to matter — see the baseline result below.
+
+**Why observed stops rather than route positions.** Indexing by `LocationOrder + h` would
+require that exact position to have reported, so the example set would be drawn only from
+well-covered stretches — conditioning the training data on the coverage problem the
+project exists to handle. `horizon_route_stops` preserves the true distance so nothing is
+hidden.
+
+**Date.** 2026-07-28
+
+---
+
+## D25 — Three-way temporal split; the test week opens once
+
+**Decision.**
+
+```
+train        2026-06-27 .. 2026-07-12   16 dates   500,243 examples   52%
+validation   2026-07-13 .. 2026-07-19    7 dates   230,966 examples   24%
+test         2026-07-20 .. 2026-07-26    7 dates   230,397 examples   24%
+```
+
+All tuning and model selection go against validation. The test week is read once, at the
+end. `baseline.py` defaults to validation and prints a warning when `--split test` is
+passed, so opening it is deliberate rather than incidental.
+
+2026-06-25 and 06-26 are excluded — 34 journeys each from the original 36-code test slice
+against ~880 on a normal weekday.
+
+**Alternatives.** (a) Random split. (b) Two-way train/test with one held-out week.
+(c) A three-date test window, maximising training data.
+
+**Why rejected.** (a) is disqualified outright: examples from the same journey would land
+on both sides of the split, so the model would be scored on journeys it had partly seen.
+Even splitting by journey rather than by row would leak the day's weather and disruptions
+across the boundary. (b) leaves nowhere to tune — every hyperparameter choice checked
+against the held-out week contaminates it, and the final number is then optimistic by an
+unknown amount. (c) is not a representative week: Fri/Sat/Sun would leave the headline
+dominated by weekend service, and Sundays run 332 journeys against 880 on a weekday.
+
+**Why both held-out windows are whole calendar weeks.** Each contains every day of the
+week exactly once. A window that is not week-aligned differs from the training data in
+service mix as well as in date, and the two effects cannot be separated afterwards. The
+two windows came out within 0.3% of each other in size, which is a useful check that they
+are comparable.
+
+**Date.** 2026-07-28
+
+---
+
+## D26 — Persistence, not zero, is the baseline to beat
+
+**Decision.** The naive predictor a model must beat is **persistence** — the delay
+observed at the vantage stop carries forward unchanged. The zero-delay predictor is
+reported alongside as context, not as the bar.
+
+**Measured on validation**, AutoArrival=1 at both ends, 226,370 examples:
+
+| Predictor | MAE | median AE | bias |
+|---|---|---|---|
+| zero | 184.9 s | 90 s | −140.3 s |
+| persistence | **103.3 s** | **48 s** | −32.8 s |
+
+**Why it matters.** Beating zero only proves the timetable is not a perfect predictor,
+which is not in doubt. Persistence already removes 44.1% of the error, so a model that
+beats zero but not persistence has earned nothing.
+
+**Two findings that shape what the model has to do.**
+
+Persistence decays with horizon exactly as autocorrelation predicts — it beats zero by
+63.5% at one stop ahead but only 23.1% at ten, and by only 3.5% beyond an hour of
+scheduled travel, where its median error is actually *worse* than predicting on-time
+(156 s against 144 s). **The model's value is concentrated at long horizons.** Short-range
+prediction is close to solved by persistence at 45.1 s MAE.
+
+Both predictors are biased negative — persistence by −32.8 s — meaning delay systematically
+*grows* along a journey. That is a learnable pattern, not noise, and a model that does
+nothing but add a horizon-dependent constant to persistence should already beat it.
+
+**Date.** 2026-07-28
