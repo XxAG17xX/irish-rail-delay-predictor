@@ -43,17 +43,34 @@ There is none, and that is the point of the reliability principle in CLAUDE.md: 
 feed cannot be re-fetched. If this stops, restart it — the gap stays a gap. Interrupting is
 otherwise safe: raw files are written atomically and JSONL lines are flushed per record.
 
+Which stations
+--------------
+A stratified subset of 30, defined in config/poll_stations.toml, not all 171. The
+stratification is a measurement decision before it is a politeness one: the claim this
+project is aiming at is "we beat the operator on well-covered lines, and here is where we
+cannot", and that needs comparison events on each KIND of line. A uniform thinning would
+be mostly Dublin commuter stops — that is simply where most stations are — leaving the
+weak-coverage lines with too few events to say anything about. Reasoning in D29.
+
+Every record carries `station_group`, so the per-line-type comparison is a group-by rather
+than a station list reconstructed by hand months later.
+
+`--all-stations` restores the full sweep: 172 requests per cycle, ~39,000/day at a
+five-minute interval, against ~6,900/day for the subset.
+
 Politeness
 ----------
-The 2 req/s budget is per-host, not per-script. Do not run this alongside backfill.py or
-harvest_codes.py. harvest_codes.py also polls getCurrentTrainsXML; this writes to a
-separate directory so the two archives stay distinguishable, but running both doubles the
-request rate against one server for no extra information.
+The 2 req/s budget is per HOST, not per script, so this takes an exclusive lock
+(src/hostlock.py) and refuses to start while harvest_codes.py or backfill.py is running.
+harvest_codes.py also polls getCurrentTrainsXML; this writes to a separate directory so
+the archives stay distinguishable, but running both would double the rate against one
+server for no extra information.
 
 Usage (PowerShell, from the repo root, venv active):
 
-    python src\\poll_live.py                       # all stations, every 5 min
+    python src\\poll_live.py                       # 30 stratified stations, every 5 min
     python src\\poll_live.py --once                # one cycle, then exit
+    python src\\poll_live.py --all-stations        # full 171-station sweep
     python src\\poll_live.py --stations CNLLY,HSTON,CORK
     python src\\poll_live.py --interval 600 --no-quiet-hours
 """
@@ -62,12 +79,15 @@ import argparse
 import json
 import sys
 import time
+import tomllib
 import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime, time as dtime, timezone
 from pathlib import Path
 
 import requests
+
+import hostlock
 
 # Reuse, not reimplementation — see decisions.md D6/D7/D8.
 from backfill import (BASE, MAX_THROTTLE_ATTEMPTS, MAX_TRANSPORT_ATTEMPTS,
@@ -82,6 +102,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RAW = REPO_ROOT / "data" / "raw" / "live"
 DEFAULT_OUT = REPO_ROOT / "data" / "live" / "expected"
 STATION_CACHE = REPO_ROOT / "data" / "live" / "stations.json"
+DEFAULT_CONFIG = REPO_ROOT / "config" / "poll_stations.toml"
 
 # data-dictionary.md section 6: the network is quiet roughly 00:30-05:30. Polling an
 # empty railway 60 times is 10,000 pointless requests a night.
@@ -162,6 +183,31 @@ def load_stations(session, pacer, refresh: bool) -> list[dict]:
     return stations
 
 
+def load_station_config(path: Path, known: dict) -> list[dict]:
+    """Stratified subset from TOML. Each station carries its group — see decisions.md D29.
+
+    Unknown codes are a hard error, not a warning: a typo would silently drop a whole
+    stratum and the gap would only surface when the comparison came up short.
+    """
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+
+    out, seen, bad = [], set(), []
+    for group, block in cfg.items():
+        for code in block.get("stations", []):
+            code = code.strip().upper()
+            if code not in known:
+                bad.append(f"{code} (in [{group}])")
+                continue
+            if code in seen:
+                continue
+            seen.add(code)
+            out.append({"code": code, "name": known[code], "group": group})
+    if bad:
+        raise ValueError(f"unknown station codes in {path.name}: {', '.join(bad)}")
+    return out
+
+
 def utc_stamp(now: datetime) -> str:
     return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -171,9 +217,13 @@ def in_quiet_hours(now: datetime) -> bool:
     return QUIET_START <= t < QUIET_END
 
 
-def extract_station_records(body: bytes, station_code: str, polled_at: str,
-                            source_file: str) -> list[dict]:
-    """Every objStationData record, all fields preserved verbatim plus provenance."""
+def extract_station_records(body: bytes, station_code: str, station_group: str,
+                            polled_at: str, source_file: str) -> list[dict]:
+    """Every objStationData record, all fields preserved verbatim plus provenance.
+
+    `station_group` is written onto every row so the per-line-type comparison against
+    the operator is a group-by later, not a manual station list.
+    """
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
@@ -181,7 +231,7 @@ def extract_station_records(body: bytes, station_code: str, polled_at: str,
     out = []
     for rec in root.findall(NS + "objStationData"):
         row = {"polled_at": polled_at, "station_code": station_code,
-               "source_file": source_file}
+               "station_group": station_group, "source_file": source_file}
         for child in rec:
             row[child.tag.replace(NS, "")] = (child.text or "").strip()
         out.append(row)
@@ -224,8 +274,8 @@ def poll_cycle(session, pacer, stations, args, stats: Counter) -> int:
         write_gz(args.raw / "station" / code / f"{stamp}.xml.gz", body)
         stats["station_ok"] += 1
 
-        rows = extract_station_records(body, code, now.isoformat(timespec="seconds"),
-                                       source_file)
+        rows = extract_station_records(body, code, st.get("group", ""),
+                                       now.isoformat(timespec="seconds"), source_file)
         if not rows:
             stats["station_empty"] += 1
         for row in rows:
@@ -254,9 +304,15 @@ def main() -> int:
                     help="station board lookahead, 5-90 (default: 90)")
     ap.add_argument("--rate", type=float, default=2.0, help="requests/second (default: 2)")
     ap.add_argument("--stations", default="",
-                    help="comma-separated station codes (default: all)")
+                    help="comma-separated station codes, overriding the config")
+    ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG,
+                    help=f"stratified station set (default: {DEFAULT_CONFIG})")
+    ap.add_argument("--all-stations", action="store_true",
+                    help="poll all 171 stations instead of the stratified subset")
     ap.add_argument("--max-stations", type=int, default=0,
                     help="cap the station count, for testing (0 = no cap)")
+    ap.add_argument("--force-lock", action="store_true",
+                    help="take the API lock even if another collector holds it")
     ap.add_argument("--raw", type=Path, default=DEFAULT_RAW)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--refresh-stations", action="store_true",
@@ -273,22 +329,45 @@ def main() -> int:
         print("--rate must be positive")
         return 2
 
+    try:
+        with hostlock.acquire("poll_live", force=args.force_lock):
+            return run(args)
+    except hostlock.LockHeld as e:
+        print(f"cannot start: {e}")
+        return 2
+
+
+def run(args) -> int:
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
     pacer = Pacer(args.rate)
 
     try:
-        stations = load_stations(session, pacer, args.refresh_stations)
+        all_stations = load_stations(session, pacer, args.refresh_stations)
     except Failure as f:
         print(f"could not load the station list ({f.kind}: {f.detail})")
         return 2
+    known = {s["code"].upper(): s["name"] for s in all_stations}
 
     if args.stations:
-        wanted = {s.strip().upper() for s in args.stations.split(",") if s.strip()}
-        stations = [s for s in stations if s["code"].upper() in wanted]
-        missing = wanted - {s["code"].upper() for s in stations}
+        wanted = [s.strip().upper() for s in args.stations.split(",") if s.strip()]
+        missing = [c for c in wanted if c not in known]
         if missing:
-            print(f"  ! unknown station codes ignored: {', '.join(sorted(missing))}")
+            print(f"  ! unknown station codes ignored: {', '.join(missing)}")
+        stations = [{"code": c, "name": known[c], "group": "adhoc"}
+                    for c in wanted if c in known]
+        source = "--stations"
+    elif args.all_stations:
+        stations = [{**s, "group": "all"} for s in all_stations]
+        source = "all 171 stations"
+    else:
+        try:
+            stations = load_station_config(args.config, known)
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as e:
+            print(f"could not read {args.config}: {e}")
+            return 2
+        source = args.config.name
+
     if args.max_stations:
         stations = stations[:args.max_stations]
     if not stations:
@@ -300,8 +379,12 @@ def main() -> int:
     active_hours = 24 if args.no_quiet_hours else 19
     per_day = int(per_cycle * (active_hours * 3600 / args.interval))
 
-    print(f"poll_live — {len(stations)} stations, every {args.interval:.0f}s, "
-          f"{args.num_mins} min lookahead")
+    print(f"poll_live — {len(stations)} stations from {source}, "
+          f"every {args.interval:.0f}s, {args.num_mins} min lookahead")
+    groups = Counter(s["group"] for s in stations)
+    for g, n in sorted(groups.items()):
+        codes = ", ".join(s["code"] for s in stations if s["group"] == g)
+        print(f"    {g:<24} {n:>2}  {codes}")
     print(f"  {per_cycle} requests/cycle at {args.rate:g} req/s "
           f"-> ~{fmt_duration(cycle_secs)} per cycle")
     print(f"  ~{per_day:,} requests/day, average {per_day / (active_hours * 3600):.2f} "
@@ -322,6 +405,7 @@ def main() -> int:
             cycle_started = time.monotonic()
             now = datetime.now()
 
+            hostlock.heartbeat()
             if not args.no_quiet_hours and in_quiet_hours(now):
                 print(f"  {now:%H:%M:%S}  quiet hours, skipping")
             else:

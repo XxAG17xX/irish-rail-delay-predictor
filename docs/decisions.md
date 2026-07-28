@@ -659,3 +659,73 @@ declining to serve long-horizon intervals until coverage holds. Decide after tun
 before.
 
 **Date.** 2026-07-28
+
+---
+
+## D29 — poll_live covers 30 stratified stations, not all 171
+
+**Decision.** `poll_live.py` polls a stratified subset of 30 stations defined in
+`config/poll_stations.toml`, in seven groups: Dublin hubs (4), DART (5), Maynooth commuter
+(2), Kildare commuter (3), Cork-corridor intercity (5), other intercity (3), and
+documented weak-coverage lines (8). Every captured record carries its `station_group`.
+`--all-stations` restores the full sweep.
+
+**Alternatives.** (a) All 171 stations. (b) A random or top-by-volume subset of 30.
+
+**Why rejected — and the reason is measurement, not politeness.** The claim this project
+is aiming at is "we beat the operator's `ExpectedArrival` on well-covered lines, and here
+is where we cannot". That is a claim *per kind of line*, so it needs comparison events on
+each kind. A random 30 would be overwhelmingly Dublin commuter stops — that is simply where
+most stations are — and would leave the weak-coverage lines with too few events to support
+any statement at all. The one place an honest answer matters most is the place uniform
+sampling thins out first. Top-by-volume is worse still: it selects for exactly the
+well-covered stations and would guarantee a flattering result.
+
+Each group earns its place against a specific question. DART is the best-covered part of
+the network and therefore the hardest case in which to beat the operator. The Cork
+corridor supplies the 60+ minute horizons where our interval coverage falls to 75% (D28).
+Maynooth separates "suburban" from "electrified" as explanations for any accuracy
+difference. Kildare shares track between commuter and intercity services, which is where
+inter-train delay propagation should be visible. Galway is in there because the coverage
+analysis found it at 38.8% exact-match without any mention in data-dictionary 5.1.
+
+The politeness gain is real but secondary: 31 requests per cycle against 172, roughly
+7,000 requests a day instead of 39,000.
+
+**Cost accepted.** Journeys are only observed where they touch these 30 stations, so
+per-journey trajectories are sparser than a full sweep would give. That is the right trade
+while the question is "how do we compare against the operator by line type" rather than
+"reconstruct every journey".
+
+**Date.** 2026-07-28
+
+---
+
+## D30 — An exclusive host lock, because a docstring is not a control
+
+**Decision.** `harvest_codes.py`, `backfill.py` and `poll_live.py` each take an exclusive
+lock (`src/hostlock.py`) before making requests, and refuse to start if another holds it.
+`--force-lock` overrides.
+
+**Alternatives.** (a) Keep documenting the rule in each docstring, as before. (b) A shared
+cross-process rate limiter that lets all three run at a combined 2 req/s.
+
+**Why rejected.** (a) had been the approach since the first script, and every one of them
+carried the warning. A warning nobody reads at 2am is not a control, and the failure is
+silent — nothing in either script's output would reveal that the host was being hit at
+4 req/s. (b) is the more capable design and would let a backfill run alongside the live
+poller, but it needs shared state updated on every request rather than once a cycle, and
+the throughput it buys is not currently needed.
+
+**Staleness by heartbeat, not by PID liveness.** Checking whether a process still exists is
+awkward across platforms and unsound anyway, since PIDs get reused. The holder instead
+touches the lock file each cycle, and a lock with no heartbeat for 15 minutes is treated as
+abandoned and taken over with a printed notice. Fifteen minutes is comfortably longer than
+any poll cycle or backfill progress interval, so a live holder is never mistaken for a dead
+one.
+
+Verified: with a lock held, `harvest_codes.py --once` exits 2 with a message naming the
+holder. `backfill.py` acquires only after the resume check, so a run with nothing to fetch
+never contends for it.
+
+**Date.** 2026-07-28

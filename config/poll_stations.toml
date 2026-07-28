@@ -1,0 +1,41 @@
+# Stratified station set for poll_live.py — 30 of 171 stations.
+#
+# The point of stratifying rather than just sampling is that the eventual claim is
+# "we beat the operator's ExpectedArrival on well-covered lines, and here is where we
+# cannot". That claim needs comparison events on each KIND of line, not a uniform
+# thinning of the network. A random 30 would be mostly Dublin commuter stops, because
+# that is where most stations are, and would leave the flagged lines with too few
+# events to say anything about. Reasoning in decisions.md D29.
+#
+# Every group name is written onto each captured record as `station_group`, so the
+# per-line-type comparison is a group-by rather than a manual station list later.
+#
+# Codes verified against getAllStationsXML, 2026-07-28.
+
+[dublin_hubs]
+why = "Highest event volume on the network; every line terminates or passes through here, so these anchor almost every long journey we predict."
+stations = ["CNLLY", "HSTON", "PERSE", "TARA"]
+
+[dart]
+why = "Electrified suburban with short headways and dense stops — the best-covered part of the network, and the hardest case in which to beat the operator."
+stations = ["HWTHJ", "MHIDE", "DLERY", "DLKEY", "BRAY"]
+
+[commuter_maynooth]
+why = "Diesel commuter on the Maynooth line; frequent but not DART, so it separates 'suburban' from 'electrified' as an explanation for any accuracy difference."
+stations = ["MYNTH", "CLSLA"]
+
+[commuter_kildare]
+why = "Kildare line commuter, sharing track with Cork-corridor intercity services — the clearest place to see delay propagating between train types."
+stations = ["KDARE", "NBRGE", "SALNS"]
+
+[intercity_cork_corridor]
+why = "Dublin-Cork stops with long inter-stop gaps; this is the 60+ minute horizon band where our interval coverage falls to 75% (D28), so it is where the operator comparison matters most."
+stations = ["PTRTN", "PTLSE", "TPMOR", "THRLS", "LMRKJ"]
+
+[intercity_other]
+why = "Athlone and Waterford are named on the weak-coverage list in data-dictionary 5.1; Galway is the unexplained 38.8% exact-match outlier from the coverage analysis that 5.1 does not mention."
+stations = ["ATLNE", "GALWY", "WFORD"]
+
+[weak_coverage]
+why = "Lines Irish Rail documents as returning scheduled times only (data-dictionary 5.1). FFORE is the Mallow-Tralee intermediate stop; expect sparse and echo-prone data here, and report it honestly rather than dropping it."
+stations = ["CORK", "MLLOW", "TRLEE", "FFORE", "COBH", "MDLTN", "LMRCK", "ENNIS"]

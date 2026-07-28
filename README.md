@@ -99,14 +99,18 @@ python src\train_quantile.py
 ```
 
 Capture the operator's live `ExpectedArrival` — the benchmark, which cannot be
-backfilled. A missed poll is lost permanently.
+backfilled. A missed poll is lost permanently. Polls the 30 stratified stations in
+[config/poll_stations.toml](config/poll_stations.toml); `--all-stations` for all 171.
 
 ```powershell
 python src\poll_live.py
 ```
 
-Do not run the harvester and the backfill at the same time. The 2 requests/second budget
-is per-host, not per-script, and neither one knows about the other.
+The three collectors take an exclusive lock and refuse to run concurrently — the
+2 req/s budget is per host, not per script, so running two would silently double it.
+
+The collectors will not run at the same time — `src/hostlock.py` enforces it, because the
+2 requests/second budget is per host rather than per script.
 
 ## Techniques
 

@@ -40,6 +40,8 @@ from pathlib import Path
 
 import requests
 
+import hostlock
+
 BASE = "http://api.irishrail.ie/realtime/realtime.asmx"
 NS = "{http://api.irishrail.ie/realtime/}"
 USER_AGENT = "rail-delay/0.1 (research project; low-volume polling)"
@@ -188,8 +190,25 @@ def main() -> int:
     ap.add_argument("--no-snapshots", action="store_true",
                     help="extract codes only, do not archive the raw bodies")
     ap.add_argument("--once", action="store_true", help="single poll, then exit")
+    ap.add_argument("--force-lock", action="store_true",
+                    help="take the API lock even if another collector holds it")
     args = ap.parse_args()
 
+    # The 2 req/s budget is per host. See src/hostlock.py and decisions.md D29.
+    try:
+        lock = hostlock.acquire("harvest_codes", force=args.force_lock)
+        lock.__enter__()
+    except hostlock.LockHeld as e:
+        print(f"cannot start: {e}")
+        return 2
+
+    try:
+        return _run(args)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _run(args) -> int:
     state = load_state(args.state)
     print(f"harvest_codes — polling every {args.interval:.0f}s, state at {args.state}")
     print(f"  loaded {len(state['codes'])} known codes from {state['_meta'].get('polls', 0)} "
@@ -206,6 +225,7 @@ def main() -> int:
         while True:
             started = time.monotonic()
             now = datetime.now()
+            hostlock.heartbeat()
             body = poll(session)
 
             if body is not None:

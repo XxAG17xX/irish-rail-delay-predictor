@@ -59,6 +59,8 @@ from pathlib import Path
 
 import requests
 
+import hostlock
+
 BASE = "http://api.irishrail.ie/realtime/realtime.asmx"
 USER_AGENT = "rail-delay/0.1 (research project; throttled bulk fetch)"
 
@@ -313,6 +315,7 @@ def run(pairs: list[tuple[date, str]], out_dir: Path, pacer: Pacer,
         item_times.append(time.monotonic() - item_started)
 
         if i % 25 == 0 or i == total:
+            hostlock.heartbeat()
             # Median, not mean: one 60-second backoff poisons a mean permanently.
             per_item = statistics.median(item_times)
             remaining = (total - i) * per_item
@@ -345,6 +348,8 @@ def main() -> int:
                     help="re-fetch the pairs in the failure log instead of a date range")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be fetched and exit without requesting anything")
+    ap.add_argument("--force-lock", action="store_true",
+                    help="take the API lock even if another collector holds it")
     args = ap.parse_args()
 
     if args.rate <= 0:
@@ -421,12 +426,20 @@ def main() -> int:
     pacer = Pacer(args.rate)
     started = time.monotonic()
     interrupted = False
+    stats = None
+    # The 2 req/s budget is per host, not per script. See src/hostlock.py, decisions.md D29.
     try:
-        stats = run(todo, args.out, pacer, args.failure_log, not args.no_manifest)
-    except KeyboardInterrupt:
-        interrupted = True
-        stats = None
-        print("\n\ninterrupted — rerun the same command to resume where this stopped")
+        with hostlock.acquire("backfill", force=args.force_lock):
+            try:
+                stats = run(todo, args.out, pacer, args.failure_log,
+                            not args.no_manifest)
+            except KeyboardInterrupt:
+                interrupted = True
+                print("\n\ninterrupted — rerun the same command to resume "
+                      "where this stopped")
+    except hostlock.LockHeld as e:
+        print(f"cannot start: {e}")
+        return 2
 
     if stats:
         elapsed = time.monotonic() - started
