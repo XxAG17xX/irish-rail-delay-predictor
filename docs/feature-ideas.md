@@ -45,7 +45,7 @@ What the model **cannot** do is invent a column I never gave it. That is the who
 | `scheduled_dwell_time` at upcoming stops | Slack in the timetable is where recovery happens. |
 | `scheduled_run_time` for the next segment | Some segments are padded, some are tight. |
 | `is_public_holiday` | See note below. |
-| `train_type` (DART / commuter / intercity) | Different stopping patterns and different delay dynamics. Identity-free, so allowed. |
+| `train_type` (DART / commuter / intercity) | Different stopping patterns and different delay dynamics. Identity-free, so allowed. **See the dedicated section below — this is a modelling-structure question, not just a column.** |
 | `direction` | Northbound/southbound asymmetry, e.g. peak flow into Dublin. |
 
 ## Tier 3 — later, needs external data or long history
@@ -55,6 +55,7 @@ What the model **cannot** do is invent a column I never gave it. That is the who
 | Weather (Open-Meteo: rain, wind, temperature) | Plausible effect, especially wind on coastal DART. Requires joining a second source. |
 | `month` / seasonality | **Requires 2+ years of data.** Cannot be learned from a 30-day slice. |
 | Network congestion — trains ahead on the same line | Conceptually the most interesting feature here: delay propagates between trains, not just within one. Expensive to compute. Closest thing to thesis territory. |
+| `is_c_segment` — cancellation / not-served signal | `LocationType=C` marks a contiguous route segment, stable per service across weeks, where only 5.8% of records carry an actual arrival against 87.7% at ordinary stops. Reads as "not served on this run". If that holds it is a *cancellation* signal, which is a different prediction target from lateness — and possibly a more useful one to a passenger. Meaning not yet established; see data-dictionary.md section 6. Do not use as an input until it is. |
 
 ## Note on holidays, since it is a good illustration
 
@@ -67,6 +68,50 @@ a handful of examples.
 
 This is the clearest case of feature engineering beating "hope the model figures it out."
 I am encoding knowledge that the raw data cannot supply on its own.
+
+## Train type — one model with a feature, or separate models?
+
+This is the one structural modelling question in this file. Everything else is a column;
+this is a choice about how many models there are.
+
+**Why it matters.** DART, commuter and intercity are barely the same problem. A DART is a
+short, frequent, electric suburban hop — stops a couple of minutes apart, delays measured
+in a minute or two, and plenty of chances to recover across a dense stopping pattern. An
+intercity run is multi-hour with sometimes an hour between stops, where a delay picked up
+early has a long time to grow or decay and far fewer opportunities to recover. The
+relationship between "delay at previous stop" and "delay at the stop being predicted" —
+the feature expected to dominate everything — almost certainly has a different shape in
+each case.
+
+**Two options, both testable once the evaluation harness exists.**
+
+1. **One model, `train_type` as a feature.** Gradient boosting can split on it and learn
+   different thresholds per branch. Keeps all the data in one place, so rare situations in
+   one type still borrow strength from patterns shared across all of them. Simpler to
+   train, serve and retrain.
+2. **Separate models per type.** Guarantees the model cannot average across categories
+   that behave differently, and lets each one have its own hyperparameters and its own
+   quantile calibration. Costs sample size per model and triples the serving and
+   retraining surface.
+
+The honest expectation is that option 1 wins unless the interaction is very strong,
+because trees already handle this and splitting the data is a real cost. But that is a
+prediction, not a result. Decide it by measuring, per type, not by argument.
+
+**Getting the label is the awkward part.** Three known problems, in order of how much they
+matter:
+
+- `getCurrentTrainsXML_WithTrainType` exposes the type as `A` / `M` / `S` / `D`. That is a
+  fourth endpoint, and CLAUDE.md currently scopes the project to three — treat adding it
+  as a scope decision, not a detail.
+- The backfilled `getTrainMovementsXML` records **may not carry the type at all**. Check
+  the parsed Parquet before assuming it does. If it is absent, none of the historical data
+  is labelled.
+- Fallbacks if it is absent: join it on from the harvested live snapshots in
+  `data/raw/current/`, which cover only the dates the harvester ran; or infer it from the
+  route — stopping pattern, stop spacing, and origin/destination are all strong proxies.
+  Inference is cheap and covers the whole archive, but it is a derived label and any result
+  that depends on it needs saying so out loud.
 
 ## What NOT to include
 

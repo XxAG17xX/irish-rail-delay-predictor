@@ -233,11 +233,36 @@ bounds needed. **[VERIFIED]**
 - **`LocationType=C` occurs on 0.54% of records** (2,580 of 481,935). Undocumented; the
   documentation lists only `O`/`S`/`T`/`D`, with `C` belonging to `StopType`. Observed on
   ordinary named stations that are `S` elsewhere (Raheny, Harmonstown, Killester), on
-  consecutive `LocationOrder` values within one train, carrying valid arrivals and
-  `AutoArrival=1`, with `StopType` set to `-`. **[VERIFIED]**
-  **OPEN:** likely marks the train's position at capture time rather than a property of
-  the location — which would mean `LocationType` is not stable per location across
-  records, and a parser must not key on it as if it were. Untested. **[UNKNOWN]**
+  consecutive `LocationOrder` values within one train, with `StopType` set to `-`.
+  **[VERIFIED]**
+
+  **DISPROVEN 2026-07-28 — it does not mark the train's position at capture time.** An
+  earlier reading in this file said it likely did. If that were true, `C` would cluster on
+  the dates that were live when the backfill ran. It does not: `C` appears on 31 of 32
+  dates at 0.07%–1.86% with no trend, and the two most recently fetched dates are among
+  the lowest (2026-07-25 at 0.07%, the minimum). **[VERIFIED]**
+
+  **What it does look like.** `C` marks a *contiguous segment of a route*, perfectly stable
+  per service across weeks. Train D541 carries 9 `C` records on all 24 dates it ran, always
+  the identical set — `CORK, CK78, CE453, LSLND, GHANE, FOTA, CGLOE, RBROK, COBH`, the
+  Cork–Cobh line. P541 is the same nine in reverse across 25 dates. One distinct set each.
+  P503 shows a second pattern, `CORK, CK789, RP805, MW807, KRLYJ, MLLOW` (Cork–Mallow).
+  **[VERIFIED]**
+
+  Only **5.8%** of `C` records carry a populated `Arrival`, against 87.7% for `S` stops.
+  **[VERIFIED]**
+
+  **OPEN:** a contiguous route segment, stable per service, with nine in ten records
+  carrying no actual time reads as **"not served on this run"** — a cancellation or
+  curtailment marker. Not established. Complicating evidence: `C` is not confined to the
+  weakly-covered lines — E244's `C` records sit at Raheny, Harmonstown and Killester on the
+  DART Northern line, which is not on the 5.1 list. Test whether `C` segments are always
+  terminal or branch portions of a journey, and whether the 5.8% that do carry arrivals
+  differ systematically. **[UNKNOWN]**
+
+  **Regardless of meaning: `LocationType` is not a stable property of a location.** The
+  same location is `S` on one record and `C` on another. A parser must preserve it as
+  recorded and must not key on it as location metadata.
 
 ---
 

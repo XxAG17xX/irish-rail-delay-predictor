@@ -53,8 +53,11 @@ data/        gitignored, never committed
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install requests
+pip install requests pyarrow
 ```
+
+`requests` for ingestion, `pyarrow` for the Parquet stage. There is still no
+`requirements.txt`, which CLAUDE.md's conventions call for.
 
 ## Running
 
@@ -77,6 +80,14 @@ Survey what landed.
 
 ```powershell
 python scripts\inspect_raw.py
+python scripts\coverage_by_location.py
+```
+
+Parse the raw archive into Parquet, partitioned by date. Idempotent — already-written
+partitions are skipped.
+
+```powershell
+python src\parse_raw.py
 ```
 
 Do not run the harvester and the backfill at the same time. The 2 requests/second budget
