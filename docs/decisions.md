@@ -222,3 +222,148 @@ in fact return empties on weekends. Until that check has been run against real d
 optimisation is trading a certain small saving for an undetectable loss.
 
 **Date.** 2026-07-25
+
+---
+
+## D12 — Monotonic clock for every interval and duration
+
+**Decision.** All pacing, backoff, ETA and elapsed-time arithmetic uses
+`time.monotonic()`. Wall-clock time (`datetime.now()`) is used only for timestamps
+written into files, never for measuring a gap.
+
+**Alternatives.** Use wall-clock time throughout, which is what most examples do.
+
+**Why rejected.** The wall clock can jump — NTP correction, a DST transition, a laptop
+resuming from sleep. A backfill run is hours long and will cross at least one of those.
+A backwards jump makes an elapsed time negative and can make the pacer sleep for what it
+computes as hours; a forward jump silently skips the throttle. The monotonic clock only
+ever moves forward, which is the only property the pacing logic actually needs.
+
+**Date.** 2026-07-25
+
+---
+
+## D13 — Full jitter on backoff, not plain exponential
+
+**Decision.** Backoff sleeps a random duration in `[0, 2^(n-1) * base)` rather than
+exactly `2^(n-1) * base`.
+
+**Alternatives.** Plain exponential backoff, or "equal jitter" (half fixed, half random).
+
+**Why rejected.** Plain exponential means every client that failed at the same moment
+retries at the same moment, so the retry itself arrives as a spike — the thundering-herd
+problem. We are currently one client, so this buys little today, but it costs one function
+call and it stops the retry pattern from being a synchronised burst if the script is ever
+run from two machines or alongside anything else. Full jitter is the variant AWS measured
+as best for total completion time.
+
+**Date.** 2026-07-25
+
+---
+
+## D14 — Failures go to an append-only log, not an exception
+
+**Decision.** A pair that exhausts its retries is written as one JSON line to
+`data/logs/backfill_failures.jsonl` and the run continues. `--retry-failures` replays that
+log, rotating the old file aside first.
+
+**Alternatives.** (a) Raise and stop the run on the first unrecoverable failure.
+(b) Keep failures in memory and print a summary at the end.
+
+**Why rejected.** (a) means one bad train code on hour three of a four-hour run costs the
+remaining hour. (b) loses the list entirely if the process is killed, which is the case
+most likely to produce failures in the first place. This is the dead-letter-queue pattern:
+the bad item leaves the main path immediately, is recorded durably with enough context to
+retry, and gets processed separately. Rotating the log on retry stops a second retry pass
+re-walking items that have since succeeded.
+
+**Date.** 2026-07-25
+
+---
+
+## D15 — Train codes are allowlist-sanitised before becoming filenames
+
+**Decision.** `load_codes()` keeps only codes that are alphanumeric plus `-` and `_`, and
+reports how many it dropped.
+
+**Alternatives.** Trust the codes file, since we wrote it ourselves.
+
+**Why rejected.** The code goes straight into a write path. A value containing `..` or a
+path separator — from a corrupted file, a hand-edit, or a future feed change — would write
+outside the target directory. This is standard path-traversal defence, and the argument
+"we control the input" is exactly the assumption that stops being true later. The
+allowlist form is deliberate: enumerate what is permitted rather than trying to enumerate
+what is dangerous.
+
+**Date.** 2026-07-25
+
+---
+
+## D16 — Dates for the API are built from an explicit month table
+
+**Decision.** `api_date()` formats `25 jul 2026` from a hardcoded tuple of month
+abbreviations rather than `strftime("%d %b %Y")`.
+
+**Alternatives.** Use `strftime`, as the original probe scripts do.
+
+**Why rejected.** `%b` is locale-dependent. On a machine with a non-English locale it
+emits `juil` or `Juli`, the API returns nothing, and every file in the run is a 209-byte
+empty envelope — a failure that looks exactly like "those trains did not run" and would
+not be caught by any check we have. A nine-element tuple removes the dependency entirely.
+
+**Date.** 2026-07-25
+
+---
+
+## D17 — Analysis lives in `scripts/` and is strictly read-only
+
+**Decision.** `src/` holds the pipeline that writes data. `scripts/` holds one-off probes
+and surveys that only read. `inspect_raw.py` opens files for reading and has no write path
+at all.
+
+**Alternatives.** One directory for everything, or let the inspector cache its results
+next to the data.
+
+**Why rejected.** The archive is the one artefact that is expensive to reproduce — hours
+of throttled downloading. Anything that surveys it should be incapable of damaging it, and
+that is easiest to guarantee structurally rather than by care. A cache would also become a
+second source of truth that can go stale against the files it describes.
+
+**Date.** 2026-07-25
+
+---
+
+## D18 — Read the gzip ISIZE trailer instead of decompressing
+
+**Decision.** `inspect_raw.py` gets each file's uncompressed size from the last four bytes
+of the gzip member rather than inflating it.
+
+**Alternatives.** Decompress every file to measure it.
+
+**Why rejected.** The size columns are needed for every file, but parsing is only needed
+for the sample. Inflating 18k files to count bytes is minutes of pointless I/O that grows
+with the archive. The trailer stores the uncompressed length exactly, for single-member
+files under 4 GB, which ours are. Trade-off accepted: it would be wrong for multi-member
+gzip, which nothing in this project produces.
+
+**Date.** 2026-07-25
+
+---
+
+## D19 — Seeded sampling, and structural nulls excluded from comparison
+
+**Decision.** `inspect_raw.py` samples files with a seeded RNG, and when comparing
+`Arrival` against `ScheduledArrival` it skips records where the scheduled value is
+`00:00:00`.
+
+**Alternatives.** (a) Unseeded random sampling. (b) Take the first N files.
+(c) Compare every record with a populated arrival.
+
+**Why rejected.** (a) makes two runs incomparable, so you cannot tell a real change in the
+data from a different draw. (b) biases toward whatever sorts first, which here is
+alphabetical by train code and therefore by service type. (c) is a correctness bug rather
+than a preference: `00:00:00` at an origin means the arrival is structurally absent, not
+missing, so every such record would be counted as a difference and inflate the headline
+number. See data-dictionary.md section 3.
+
+**Date.** 2026-07-25
