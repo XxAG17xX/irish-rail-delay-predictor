@@ -10,7 +10,7 @@ what we established empirically, and what remains open.
 - **[INFERRED]** our interpretation, consistent with observation but not proven
 - **[UNKNOWN]** open question
 
-Last updated: 2026-07-25
+Last updated: 2026-07-28
 
 ---
 
@@ -51,11 +51,11 @@ No published rate limit. Be conservative — throttle to ~2 requests/second. **[
 | `LocationCode` | 4–5 char location abbreviation | **[DOC]** |
 | `LocationFullName` | Long name. **Sometimes empty** (e.g. codes PL277, LJ352). | empty case **[VERIFIED]** |
 | `LocationOrder` | Sequence position along the journey | **[DOC]** |
-| `LocationType` | `O` Origin, `S` Stop, `T` TimingPoint (non-stopping), `D` Destination | **[DOC]** |
+| `LocationType` | `O` Origin, `S` Stop, `T` TimingPoint (non-stopping), `D` Destination. **A fifth value `C` also occurs — undocumented.** | **[DOC]** / `C` **[VERIFIED]** |
 | `ScheduledArrival` / `ScheduledDeparture` | Timetabled times. `00:00:00` at origin arrival and destination departure — structurally absent, not missing. | **[DOC]** / nulls **[VERIFIED]** |
 | `ExpectedArrival` / `ExpectedDeparture` | Live prediction, updated as the train progresses | **[DOC]** |
 | `Arrival` / `Departure` | **Actual** times. Empty element when absent. | **[DOC]** |
-| `AutoArrival` / `AutoDepart` | Whether the time was automatically generated. Values `0` and `1` seen. Empty when the corresponding actual is empty. | meaning **[DOC]**, values **[VERIFIED]** |
+| `AutoArrival` / `AutoDepart` | Whether the time was automatically generated. Values `0` and `1` only. Empty when the corresponding actual is empty — **never empty when `Arrival` is populated**. **This is the strongest label-quality signal in the feed — see 5.1.** | meaning **[DOC]**, values and behaviour **[VERIFIED]** |
 | `StopType` | `C` Current, `N` Next. We have also observed `-`. | **[DOC]** / `-` **[VERIFIED]** |
 
 ### `TrainStatus` (in `getCurrentTrainsXML`)
@@ -132,12 +132,41 @@ Supporting observation: Cork (flagged) shows `Arrival` exactly equal to
 `ScheduledArrival` on 25 Jun 2026 and 25 Jun 2024, but differing on 25 Jun 2025 and
 25 Jun 2020 — so some records are genuine and some are likely echoes. **[VERIFIED]**
 
-**OPEN — highest priority analysis:** measure the rate of exact
-`Arrival == ScheduledArrival` matches on flagged lines versus well-covered lines
-(e.g. Dublin – Portlaoise). If materially higher on flagged lines, treat exact matches
-there as missing rather than observed. **[UNKNOWN]**
+### 5.1a RESOLVED 2026-07-28 — the risk is real, but it does not follow the line list
 
-Also worth raising with Bidisha Ghosh — if internal Iarnród Éireann data is available,
+Measured over 26,532 archived responses, 32 dates, 481,935 records, 319,980 of them
+comparable (`Arrival` populated and a real `ScheduledArrival` to compare against).
+
+Archive-wide exact-match rate: **2.92%**. **[VERIFIED]**
+
+The line-based test appeared to confirm the documentation — flagged locations 21.23%
+against 2.73% elsewhere. **That aggregate is misleading.** Splitting by `AutoArrival`
+reverses it: **[VERIFIED]**
+
+| Line group | `AutoArrival` | Comparable | Exact | Exact rate |
+|---|---|---|---|---|
+| Flagged | `0` | 1,616 | 712 | 44.06% |
+| Flagged | `1` | 1,823 | 18 | **0.99%** |
+| Unflagged | `0` | 4,885 | 1,201 | 24.59% |
+| Unflagged | `1` | 311,656 | 7,425 | **2.38%** |
+
+Among machine-captured records, flagged lines echo *less* than everywhere else. The
+aggregate gap is Simpson's paradox, driven entirely by composition: 46.99% of flagged-line
+comparable records are `AutoArrival=0` against 1.54% elsewhere, and 97.53% of the flagged
+group's exact matches sit in that one cell. **[VERIFIED]**
+
+**Consequence: use `AutoArrival`, not the line list.** A line-name filter fails in both
+directions — 75.14% of `AutoArrival=0` records are on lines the documentation never
+flagged, and it would discard 1,823 machine-captured records on flagged lines that echo
+below the network average. **[VERIFIED]**
+
+**An exact match is suspicious, not proven fake.** Machine-captured records still match
+exactly 2.37% of the time — the coincidence floor — and 70.57% of non-auto records are
+*not* exact matches. Policy is therefore flag-and-keep, with exclusion decided at
+evaluation time. See decisions.md D20–D23 and the plain-language walkthrough in
+[label-quality.md](label-quality.md). **[VERIFIED]**
+
+Still worth raising with Bidisha Ghosh — if internal Iarnród Éireann data is available,
 it may not have this limitation.
 
 ### 5.2 Missing actuals at passed locations
@@ -192,6 +221,24 @@ bounds needed. **[VERIFIED]**
 - TrainDate accepts both zero-padded and unpadded days (05 jul 2026 and 5 jul 2026). Verified 2026-07-25.
 
 - Weekend/weekday service patterns appear correctly in backfilled data — Sundays show 31/36 harvested codes empty, Saturdays 0/36, weekdays 2/36, consistently across four weeks. Independent corroboration that historical responses reflect the real timetable of that date.
+- **All times are quantised to 6-second steps.** `Arrival` seconds, `ScheduledArrival`
+  seconds and the resulting delay are 100.00% divisible by 6 across all 319,980 comparable
+  records — no exceptions. Only ten distinct second-values exist within a minute
+  (`:00 :06 :12 … :54`), with `:00` mildly over-represented at 11.5% against ~9.8% for the
+  rest. **[VERIFIED]**
+  Any histogram or density analysis of delay must divide by reachable 6-second buckets,
+  not by seconds — getting this wrong inflates apparent spikes sixfold. See decisions.md
+  D22. Six seconds being one tenth of a minute suggests the source stores decimal minutes
+  and converts on output, but that is a guess, not a measurement. **[INFERRED]**
+- **`LocationType=C` occurs on 0.54% of records** (2,580 of 481,935). Undocumented; the
+  documentation lists only `O`/`S`/`T`/`D`, with `C` belonging to `StopType`. Observed on
+  ordinary named stations that are `S` elsewhere (Raheny, Harmonstown, Killester), on
+  consecutive `LocationOrder` values within one train, carrying valid arrivals and
+  `AutoArrival=1`, with `StopType` set to `-`. **[VERIFIED]**
+  **OPEN:** likely marks the train's position at capture time rather than a property of
+  the location — which would mean `LocationType` is not stable per location across
+  records, and a parser must not key on it as if it were. Untested. **[UNKNOWN]**
+
 ---
 
 ## 7. Modelling implications
@@ -207,3 +254,11 @@ bounds needed. **[VERIFIED]**
    must account for the fact that some lines are barely observed.
 4. **Baseline to beat:** `ExpectedArrival` from the station-board endpoint is Irish Rail's
    own live prediction. Beating that is a much stronger claim than beating the timetable.
+   It is the benchmark, never a model input — feeding it in makes the comparison
+   meaningless.
+5. **Carry `AutoArrival` through to training and evaluation.** It is the strongest
+   label-quality signal in the feed (5.1a) and it is per-record, so it survives into any
+   split or subgroup analysis. Report headline accuracy both with and without non-auto
+   records rather than silently choosing one. Note this cuts across point 3: null
+   missingness is geographically clustered, but echo risk is *not* — it follows capture
+   method, and three quarters of it sits on lines the documentation never flagged.

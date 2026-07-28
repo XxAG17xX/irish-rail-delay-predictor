@@ -367,3 +367,112 @@ missing, so every such record would be counted as a difference and inflate the h
 number. See data-dictionary.md section 3.
 
 **Date.** 2026-07-25
+
+---
+
+## D20 — Echo detection by line name: tried, appeared to work, abandoned
+
+**Decision.** Detect schedule echoes by flagging locations whose name matches one of the
+ten lines documented as weakly covered, then compare exact-match rates against everywhere
+else. **Superseded by D21.** Recorded because the sequence matters more than the answer.
+
+**What happened.** The test ran and looked like clean confirmation: flagged lines matched
+the schedule exactly 21.23% of the time (3,439 comparable records) against 2.73%
+everywhere else (316,541). Eightfold gap, in the direction the documentation predicted.
+The obvious next step was to widen the keyword list to cover the rest of the ten lines and
+start distrusting those records.
+
+**Why it was abandoned.** Splitting the same data by `AutoArrival` reversed the result.
+Within machine-captured records, flagged lines echo *less* than unflagged — 0.99% against
+2.38%. The aggregate gap was Simpson's paradox: flagged lines carry 46.99% non-auto
+records against 1.54% elsewhere, and 97.53% of their exact matches sit in that one cell.
+Give them the network's normal auto/non-auto mix and their rate falls to 1.65%, better
+than average.
+
+Two further failures, once the right comparison existed. **It misses most of the
+problem** — 75.14% of non-auto records are on lines the documentation never flagged.
+**It condemns good data** — 1,823 machine-captured records on flagged lines that echo
+below the network average. Name matching was also only ever a proxy: the documentation
+lists *lines*, the data has *locations*, and intermediate stops like Carrigtwohill on the
+Cobh line never matched at all.
+
+**The lesson worth keeping.** The first result agreed with the documentation, which is
+exactly why it went unchallenged for a whole analysis cycle. Confirmation is not
+verification. What broke it was not a better idea but a per-record signal that allowed the
+aggregate to be decomposed.
+
+**Date.** 2026-07-28
+
+---
+
+## D21 — `AutoArrival` is the echo signal
+
+**Decision.** Schedule-echo risk is identified per record via `AutoArrival`, not by line,
+location, or name. The keyword list is retained only as a documentation cross-reference.
+
+**Alternatives.** The line-keyword approach of D20; a per-location echo rate learned from
+the data; no echo handling at all.
+
+**Why rejected.** `AutoArrival` separates the data far more sharply than any geographic
+proxy: 2.37% exact on machine-captured records (313,479) against 29.43% on non-auto
+(6,501). It is present on every record carrying an arrival, needs no name matching, and
+works on the 41 locations whose `LocationFullName` is empty. A learned per-location rate
+would be circular — it would use the statistic we are trying to explain as its own
+explanation — and could not distinguish an echoing location from a genuinely punctual one.
+
+**Date.** 2026-07-28
+
+---
+
+## D22 — Times are quantised to 6 seconds; spike ratios must account for it
+
+**Decision.** Any density or histogram analysis of arrival delay divides by the number of
+*reachable* 6-second buckets, not by the number of seconds in the window.
+
+**What was measured.** `Arrival` seconds, `ScheduledArrival` seconds, and the resulting
+delay are **100.00%** divisible by 6 across all 319,980 comparable records — every one,
+no exceptions. Only ten distinct second-values exist within a minute.
+
+**Why it matters.** A first pass looked for a spike at exactly zero delay against the
+surrounding ±60 seconds and found ratios of 6.0–9.5 at all twenty of the busiest
+locations, including the best-covered DART stations. That looked like network-wide
+echoing. It was an artefact: five of every six second-values in the window are
+structurally empty, so dividing by 120 rather than 20 understates the baseline sixfold.
+Corrected, the same locations sit at **0.99–1.58** — no meaningful excess. Booterstown at
+1.58 and OSSRY at 1.53 are mildly elevated and worth a look; nothing else is.
+
+**Open, marked [INFERRED] not [VERIFIED].** Six seconds is one tenth of a minute, so the
+source system plausibly stores decimal minutes and converts on output. That explains the
+observation but is not established by it. The quantisation is fact; the reason is a guess.
+
+**Second-order note.** Quantisation also raises the coincidence floor — with ten possible
+second-values instead of sixty, exact matches by luck are commoner than to-the-second
+timing would suggest. This is part of why 2.37% of trusted records still match exactly.
+
+**Date.** 2026-07-28
+
+---
+
+## D23 — Flag non-auto records, do not drop them
+
+**Decision.** `AutoArrival` is carried through the pipeline as a column. No record is
+excluded at ingestion. Whether to exclude non-auto records is an evaluation-time decision,
+and results get reported both ways.
+
+**Alternatives.** (a) Drop every `AutoArrival=0` record during parsing. (b) Drop only the
+exact matches within the non-auto group. (c) Ignore the field.
+
+**Why rejected.** (a) destroys far more than it fixes: 70.57% of non-auto records are not
+exact matches and are almost certainly genuine observations that happened to be entered by
+hand. Removing 1,913 echoes would cost roughly 4,588 real labels. Worse, it falls hardest
+where coverage is already thinnest — non-auto is 46.99% of arrivals on the flagged lines,
+so the cut would come close to erasing Cork, Tralee and Westport from the dataset, which
+are exactly the places an honest answer is most wanted. (b) is more targeted but bakes an
+unproven assumption into the data itself: an exact match is suspicious, not proven fake,
+and the 2.37% coincidence floor means some of them are real. (c) ignores the strongest
+signal available.
+
+Consistent with the quarantine-not-delete policy already set for anomalous records in
+data-dictionary.md 5.3. Deletion at ingestion is irreversible; a column is not.
+
+**Date.** 2026-07-28
