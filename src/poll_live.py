@@ -1,0 +1,351 @@
+"""
+poll_live.py — capture the operator's own live estimate, which cannot be backfilled.
+
+`ExpectedArrival` is Irish Rail's live prediction for a train at a station. It is the
+benchmark this project has to beat (CLAUDE.md), and it exists **only in the moment**.
+`getTrainMovementsXML` serves fifteen years of history; the station board serves the next
+ninety minutes and nothing else. Every minute this is not running is a minute of benchmark
+data that can never be recovered.
+
+What it does, each cycle:
+
+  1. `getCurrentTrainsXML` — one call. Archived raw; also the live fleet snapshot, whose
+     PublicMessage delay text is equally unrecoverable.
+  2. `getStationDataByCodeXML_WithNumMins` — one call per station. Archived raw, and every
+     `objStationData` record appended to a JSONL log with the poll timestamp.
+
+The `_WithNumMins` variant is used rather than plain `getStationDataByCodeXML` because it
+is the one verified in docs/data-dictionary.md and it makes the lookahead window explicit.
+
+**Repeated observations of the same train are the point, not duplication.** The operator
+revises `ExpectedArrival` as a train approaches. Comparing our prediction against theirs
+requires knowing what they were saying *at the moment we would have predicted*, so every
+poll is kept. Nothing is deduplicated.
+
+Pacing and retries are imported from backfill.py — the same AIMD pacer, the same
+three-class retry policy (transport / throttled / permanent), the same atomic gzip writes.
+See decisions.md D6, D7, D8. Only the endpoint and the body guard differ, so nothing is
+reimplemented here.
+
+Output
+------
+    data/raw/live/current/{UTC}.xml.gz              raw fleet snapshots
+    data/raw/live/station/{CODE}/{UTC}.xml.gz       raw station boards
+    data/live/expected/{YYYY-MM-DD}.jsonl           one line per (poll, station, train)
+
+Every field the feed returns is preserved verbatim, plus `polled_at`, `station_code` and
+`source_file`. JSONL rather than Parquet because this appends continuously and must
+survive a kill at any instant; converting to Parquet later is trivial and safe.
+
+Recovery
+--------
+There is none, and that is the point of the reliability principle in CLAUDE.md: a live
+feed cannot be re-fetched. If this stops, restart it — the gap stays a gap. Interrupting is
+otherwise safe: raw files are written atomically and JSONL lines are flushed per record.
+
+Politeness
+----------
+The 2 req/s budget is per-host, not per-script. Do not run this alongside backfill.py or
+harvest_codes.py. harvest_codes.py also polls getCurrentTrainsXML; this writes to a
+separate directory so the two archives stay distinguishable, but running both doubles the
+request rate against one server for no extra information.
+
+Usage (PowerShell, from the repo root, venv active):
+
+    python src\\poll_live.py                       # all stations, every 5 min
+    python src\\poll_live.py --once                # one cycle, then exit
+    python src\\poll_live.py --stations CNLLY,HSTON,CORK
+    python src\\poll_live.py --interval 600 --no-quiet-hours
+"""
+
+import argparse
+import json
+import sys
+import time
+import xml.etree.ElementTree as ET
+from collections import Counter
+from datetime import datetime, time as dtime, timezone
+from pathlib import Path
+
+import requests
+
+# Reuse, not reimplementation — see decisions.md D6/D7/D8.
+from backfill import (BASE, MAX_THROTTLE_ATTEMPTS, MAX_TRANSPORT_ATTEMPTS,
+                      MAX_BADBODY_ATTEMPTS, THROTTLE_CODES, TIMEOUT, Failure, Pacer,
+                      append_jsonl, fmt_duration, jittered_backoff, retry_after_seconds,
+                      write_gz)
+
+NS = "{http://api.irishrail.ie/realtime/}"
+USER_AGENT = "rail-delay/0.1 (research project; live benchmark capture)"
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_RAW = REPO_ROOT / "data" / "raw" / "live"
+DEFAULT_OUT = REPO_ROOT / "data" / "live" / "expected"
+STATION_CACHE = REPO_ROOT / "data" / "live" / "stations.json"
+
+# data-dictionary.md section 6: the network is quiet roughly 00:30-05:30. Polling an
+# empty railway 60 times is 10,000 pointless requests a night.
+QUIET_START = dtime(0, 30)
+QUIET_END = dtime(5, 30)
+
+
+def looks_like_xml(body: bytes, expect: str) -> bool:
+    """Byte-level guard. ASMX returns HTTP 200 with an HTML error page often enough."""
+    head = body[:4096].lstrip(b"\xef\xbb\xbf")
+    return head.startswith(b"<?xml") and expect.encode() in head.lower()
+
+
+def fetch(session, path: str, params: dict, pacer: Pacer, expect: str):
+    """One request under the backfill retry policy, parameterised by endpoint.
+
+    Same three classes as backfill.fetch: a transport error retries without touching the
+    global pace (the server never complained), a 429/503 widens the pace and waits, and
+    any other 4xx is permanent and gets no retry at all.
+    """
+    url = f"{BASE}/{path}"
+    transport = throttled = badbody = 0
+    while True:
+        pacer.wait()
+        try:
+            r = session.get(url, params=params, timeout=TIMEOUT)
+        except requests.RequestException as e:
+            transport += 1
+            if transport >= MAX_TRANSPORT_ATTEMPTS:
+                raise Failure("transport", f"{type(e).__name__}: {e}")
+            time.sleep(jittered_backoff(transport))
+            continue
+
+        if r.status_code in THROTTLE_CODES:
+            throttled += 1
+            pacer.slow_down()
+            if throttled >= MAX_THROTTLE_ATTEMPTS:
+                raise Failure("throttled", f"HTTP {r.status_code} after {throttled} tries",
+                              r.status_code)
+            wait = retry_after_seconds(r)
+            time.sleep(wait if wait is not None else pacer.interval)
+            continue
+
+        if r.status_code >= 400:
+            raise Failure("permanent", f"HTTP {r.status_code}", r.status_code)
+
+        body = r.content
+        if not looks_like_xml(body, expect):
+            badbody += 1
+            if badbody >= MAX_BADBODY_ATTEMPTS:
+                raise Failure("badbody", f"{len(body)} bytes, not {expect}", r.status_code)
+            time.sleep(jittered_backoff(badbody))
+            continue
+
+        pacer.record_success()
+        return body
+
+
+def load_stations(session, pacer, refresh: bool) -> list[dict]:
+    """Station list from getAllStationsXML, cached — it changes on a scale of years."""
+    if STATION_CACHE.exists() and not refresh:
+        with open(STATION_CACHE, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    body = fetch(session, "getAllStationsXML", {}, pacer, "objstation")
+    root = ET.fromstring(body)
+    stations = []
+    for s in root.findall(NS + "objStation"):
+        code = s.find(NS + "StationCode")
+        desc = s.find(NS + "StationDesc")
+        if code is not None and code.text and code.text.strip():
+            stations.append({"code": code.text.strip(),
+                             "name": (desc.text or "").strip() if desc is not None else ""})
+    stations.sort(key=lambda s: s["code"])
+    STATION_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    with open(STATION_CACHE, "w", encoding="utf-8") as f:
+        json.dump(stations, f, indent=2)
+    return stations
+
+
+def utc_stamp(now: datetime) -> str:
+    return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def in_quiet_hours(now: datetime) -> bool:
+    t = now.time()
+    return QUIET_START <= t < QUIET_END
+
+
+def extract_station_records(body: bytes, station_code: str, polled_at: str,
+                            source_file: str) -> list[dict]:
+    """Every objStationData record, all fields preserved verbatim plus provenance."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return []
+    out = []
+    for rec in root.findall(NS + "objStationData"):
+        row = {"polled_at": polled_at, "station_code": station_code,
+               "source_file": source_file}
+        for child in rec:
+            row[child.tag.replace(NS, "")] = (child.text or "").strip()
+        out.append(row)
+    return out
+
+
+def poll_cycle(session, pacer, stations, args, stats: Counter) -> int:
+    """One full sweep. Returns the number of ExpectedArrival records captured."""
+    now = datetime.now()
+    stamp = utc_stamp(now)
+    day = now.strftime("%Y-%m-%d")
+    captured = 0
+
+    # 1. fleet snapshot
+    try:
+        body = fetch(session, "getCurrentTrainsXML", {}, pacer, "objtrainpositions")
+    except Failure as f:
+        stats["current_failed"] += 1
+        print(f"  ! getCurrentTrainsXML {f.kind}: {f.detail}")
+    else:
+        write_gz(args.raw / "current" / f"{stamp}.xml.gz", body)
+        stats["current_ok"] += 1
+
+    # 2. station boards
+    for st in stations:
+        code = st["code"]
+        try:
+            body = fetch(session, "getStationDataByCodeXML_WithNumMins",
+                         {"StationCode": code, "NumMins": args.num_mins},
+                         pacer, "objstationdata")
+        except Failure as f:
+            stats["station_failed"] += 1
+            append_jsonl(args.out.parent / "poll_failures.jsonl", {
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "station": code, "kind": f.kind, "detail": f.detail,
+            })
+            continue
+
+        source_file = f"station/{code}/{stamp}.xml.gz"
+        write_gz(args.raw / "station" / code / f"{stamp}.xml.gz", body)
+        stats["station_ok"] += 1
+
+        rows = extract_station_records(body, code, now.isoformat(timespec="seconds"),
+                                       source_file)
+        if not rows:
+            stats["station_empty"] += 1
+        for row in rows:
+            append_jsonl(args.out / f"{day}.jsonl", row)
+            captured += 1
+
+    stats["records"] += captured
+    return captured
+
+
+def sleep_until(deadline: float) -> None:
+    """Short slices so Ctrl-C lands immediately rather than minutes later."""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(remaining, 1.0))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--interval", type=float, default=300,
+                    help="seconds between cycle starts (default: 300)")
+    ap.add_argument("--num-mins", type=int, default=90,
+                    help="station board lookahead, 5-90 (default: 90)")
+    ap.add_argument("--rate", type=float, default=2.0, help="requests/second (default: 2)")
+    ap.add_argument("--stations", default="",
+                    help="comma-separated station codes (default: all)")
+    ap.add_argument("--max-stations", type=int, default=0,
+                    help="cap the station count, for testing (0 = no cap)")
+    ap.add_argument("--raw", type=Path, default=DEFAULT_RAW)
+    ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--refresh-stations", action="store_true",
+                    help="re-fetch the station list instead of using the cache")
+    ap.add_argument("--no-quiet-hours", action="store_true",
+                    help="poll through 00:30-05:30 as well")
+    ap.add_argument("--once", action="store_true", help="one cycle, then exit")
+    args = ap.parse_args()
+
+    if not 5 <= args.num_mins <= 90:
+        print("--num-mins must be between 5 and 90 (documented API limit)")
+        return 2
+    if args.rate <= 0:
+        print("--rate must be positive")
+        return 2
+
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    pacer = Pacer(args.rate)
+
+    try:
+        stations = load_stations(session, pacer, args.refresh_stations)
+    except Failure as f:
+        print(f"could not load the station list ({f.kind}: {f.detail})")
+        return 2
+
+    if args.stations:
+        wanted = {s.strip().upper() for s in args.stations.split(",") if s.strip()}
+        stations = [s for s in stations if s["code"].upper() in wanted]
+        missing = wanted - {s["code"].upper() for s in stations}
+        if missing:
+            print(f"  ! unknown station codes ignored: {', '.join(sorted(missing))}")
+    if args.max_stations:
+        stations = stations[:args.max_stations]
+    if not stations:
+        print("no stations selected")
+        return 2
+
+    per_cycle = len(stations) + 1
+    cycle_secs = per_cycle / args.rate
+    active_hours = 24 if args.no_quiet_hours else 19
+    per_day = int(per_cycle * (active_hours * 3600 / args.interval))
+
+    print(f"poll_live — {len(stations)} stations, every {args.interval:.0f}s, "
+          f"{args.num_mins} min lookahead")
+    print(f"  {per_cycle} requests/cycle at {args.rate:g} req/s "
+          f"-> ~{fmt_duration(cycle_secs)} per cycle")
+    print(f"  ~{per_day:,} requests/day, average {per_day / (active_hours * 3600):.2f} "
+          f"req/s over the polling window")
+    if cycle_secs > args.interval:
+        print(f"  ! a cycle takes longer than the interval; cycles will run back to back")
+    print(f"  quiet hours 00:30-05:30: "
+          f"{'polled anyway' if args.no_quiet_hours else 'skipped'}")
+    print(f"  raw -> {args.raw}")
+    print(f"  records -> {args.out}")
+    print("  Ctrl-C is safe. There is no recovery for a missed poll — restart promptly.\n")
+
+    stats = Counter()
+    cycles = 0
+    started = time.monotonic()
+    try:
+        while True:
+            cycle_started = time.monotonic()
+            now = datetime.now()
+
+            if not args.no_quiet_hours and in_quiet_hours(now):
+                print(f"  {now:%H:%M:%S}  quiet hours, skipping")
+            else:
+                n = poll_cycle(session, pacer, stations, args, stats)
+                cycles += 1
+                print(f"  {now:%H:%M:%S}  {stats['station_ok']:>5} boards ok, "
+                      f"{stats['station_empty']:>4} empty, {n:>5} records this cycle, "
+                      f"{stats['records']:>7} total  pace={pacer.interval:.2f}s")
+
+            if args.once:
+                break
+            sleep_until(cycle_started + args.interval)
+    except KeyboardInterrupt:
+        print("\ninterrupted")
+
+    print(f"\n{cycles} cycles in {fmt_duration(time.monotonic() - started)}")
+    print(f"  ExpectedArrival records captured: {stats['records']}")
+    print(f"  station boards ok {stats['station_ok']}, "
+          f"empty {stats['station_empty']}, failed {stats['station_failed']}")
+    print(f"  fleet snapshots ok {stats['current_ok']}, failed {stats['current_failed']}")
+    if pacer.throttle_events:
+        print(f"  {pacer.throttle_events} throttle events — the server asked for less")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

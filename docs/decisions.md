@@ -580,4 +580,82 @@ Both predictors are biased negative — persistence by −32.8 s — meaning del
 *grows* along a journey. That is a learnable pattern, not noise, and a model that does
 nothing but add a horizon-dependent constant to persistence should already beat it.
 
+**Correction 2026-07-28:** the negative bias is largely *expected*, not a defect. A q0.50
+model on a right-skewed delay distribution will show a negative mean signed error even
+when perfectly calibrated, because the median sits below the mean. The trained model's
+coverage numbers (D28) confirm the quantiles are honest. The claim that a constant offset
+would beat persistence was too strong.
+
+**Date.** 2026-07-28
+
+---
+
+## D27 — Quantile outputs are sorted before use
+
+**Decision.** The three quantile predictions are sorted per row so that
+q0.10 <= q0.50 <= q0.90 always holds.
+
+**Alternatives.** (a) Leave them as fitted. (b) Fit a single multi-quantile model that
+enforces monotonicity structurally.
+
+**Why rejected.** (a) is indefensible in a service that quotes intervals: an interval
+whose lower bound exceeds its upper bound is not a weaker answer, it is a broken one.
+(b) is the principled fix and worth revisiting, but it changes the model rather than the
+post-processing and is not a step to take before the untuned baseline is understood.
+
+Sorting is the standard remedy (quantile rearrangement, Chernozhukov et al.) and is free:
+sorting a set of quantile estimates weakly reduces the pinball loss of every one of them,
+so it cannot make calibration worse. Overall coverage moved 80.0% -> 80.2%.
+
+**The original diagnostic understated the problem by about seventy-fold.** The first run
+reported 33 crossings, but that counted only the extreme case q0.10 > q0.90. Counting all
+non-monotonic rows — including q0.50 falling outside its own interval — gives **2,355 of
+226,370 rows, 1.040%**. Roughly one prediction in a hundred was internally inconsistent,
+not one in seven thousand. Worth remembering as a lesson about what a check actually
+measures.
+
+**Date.** 2026-07-28
+
+---
+
+## D28 — Interval coverage degrades with horizon; never quote one number
+
+**Decision.** Coverage is reported **per horizon**, never as a single figure. Any
+user-facing or writeup claim of "80% confidence" must be qualified by horizon, or the
+interval must be widened until the claim holds at the horizon being served.
+
+**Measured** on validation, AutoArrival=1 both ends, untuned model, after sorting:
+
+| Subset | Coverage | Median width |
+|---|---|---|
+| overall | 80.2% | 154 s |
+| horizon 1 | 80.6% | 67 s |
+| horizon 3 | 80.0% | 141 s |
+| horizon 5 | 80.2% | 208 s |
+| horizon 10 | 79.3% | 285 s |
+| 0–5 min | 80.9% | 56 s |
+| 5–15 min | 80.1% | 139 s |
+| 15–30 min | 80.1% | 249 s |
+| 30–60 min | 78.8% | 349 s |
+| **60+ min** | **75.0%** | 468 s |
+
+Misses split 9.6% below q0.10 and 10.2% above q0.90 — balanced, so the problem is interval
+*width*, not skew.
+
+**Why this is a limitation and not a curiosity.** The headline 80.2% is an average over a
+query mix dominated by short horizons — 60+ minute queries are 4,210 of 226,370 examples,
+1.9%. Quoting it uniformly would mean telling a passenger asking about a stop an hour away
+that the range holds 80% of the time when it actually holds 75%. One arrival in four falls
+outside a range advertised as containing four in five. That is the specific failure mode
+CLAUDE.md's success criterion warns about: being honest about where the data cannot
+support a claim matters more than the headline number.
+
+It is also exactly where the service is most useful. Nobody needs a prediction interval
+for a train two minutes away.
+
+**Not yet addressed.** The model is untuned and this is the first fit. Candidate remedies:
+horizon-conditional calibration, a monotone multi-quantile model (D27), or simply
+declining to serve long-horizon intervals until coverage holds. Decide after tuning, not
+before.
+
 **Date.** 2026-07-28

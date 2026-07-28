@@ -89,6 +89,11 @@ SCHEMA = pa.schema([
     ("vantage_sched_arrival", pa.string()),
     ("target_sched_arrival", pa.string()),
     ("vantage_hour", pa.int32()),
+    ("vantage_minute_of_day", pa.int32()),
+    # No `line` field exists in the feed. Origin->destination is the closest available
+    # proxy for route, and unlike a station code it identifies the whole corridor.
+    ("TrainOrigin", pa.string()),
+    ("TrainDestination", pa.string()),
     ("current_delay_sec", pa.int32()),      # feature: delay at V
     ("prev_delay_sec", pa.int32()),         # feature: one observed stop before V
     ("prev2_delay_sec", pa.int32()),        # feature: two observed stops before V
@@ -134,7 +139,8 @@ def build(parsed: Path, horizons):
     """Returns {(split, date): [example dicts]} plus counters."""
     dataset = ds.dataset(parsed, format="parquet", partitioning="hive")
     cols = ["file_date", "TrainCode", "LocationOrder", "LocationCode",
-            "ScheduledArrival", "AutoArrival", "arrival_delay_sec"]
+            "ScheduledArrival", "AutoArrival", "arrival_delay_sec",
+            "TrainOrigin", "TrainDestination"]
     table = dataset.to_table(columns=cols).to_pydict()
 
     journeys = defaultdict(list)
@@ -150,6 +156,8 @@ def build(parsed: Path, horizons):
             "sched": table["ScheduledArrival"][i],
             "auto": table["AutoArrival"][i],
             "delay": table["arrival_delay_sec"][i],
+            "origin": table["TrainOrigin"][i],
+            "destination": table["TrainDestination"][i],
         })
 
     out = defaultdict(list)
@@ -184,6 +192,9 @@ def build(parsed: Path, horizons):
                     "vantage_sched_arrival": v["sched"],
                     "target_sched_arrival": s["sched"],
                     "vantage_hour": (hour // 3600) if hour is not None else None,
+                    "vantage_minute_of_day": (hour // 60) if hour is not None else None,
+                    "TrainOrigin": v["origin"],
+                    "TrainDestination": v["destination"],
                     "current_delay_sec": v["delay"],
                     "prev_delay_sec": recs[i - 1]["delay"] if i >= 1 else None,
                     "prev2_delay_sec": recs[i - 2]["delay"] if i >= 2 else None,

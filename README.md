@@ -90,6 +90,21 @@ partitions are skipped.
 python src\parse_raw.py
 ```
 
+Build training examples, then the baselines a model must beat, then the model.
+
+```powershell
+python src\build_examples.py
+python src\baseline.py
+python src\train_quantile.py
+```
+
+Capture the operator's live `ExpectedArrival` — the benchmark, which cannot be
+backfilled. A missed poll is lost permanently.
+
+```powershell
+python src\poll_live.py
+```
+
 Do not run the harvester and the backfill at the same time. The 2 requests/second budget
 is per-host, not per-script, and neither one knows about the other.
 
