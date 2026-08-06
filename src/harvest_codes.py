@@ -167,6 +167,38 @@ def archive_snapshot(snapshot_dir: Path, body: bytes, now: datetime) -> None:
     os.replace(tmp, dest)
 
 
+def merge_from_snapshots(state: dict, directory: Path) -> tuple[int, int, int]:
+    """Fold codes out of already-archived getCurrentTrainsXML snapshots.
+
+    poll_live.py calls the same endpoint on the same cadence and archives every response,
+    so a weekend of live polling has already collected exactly what a weekend of harvesting
+    would have. This reads those files instead of re-requesting anything — no network, so
+    no API lock needed.
+
+    The observation date comes from the filename's UTC stamp converted to local time,
+    matching what a live harvest would have recorded via datetime.now().
+    """
+    files = sorted(directory.glob("*.xml.gz"))
+    read = failed = new_total = 0
+    for path in files:
+        try:
+            stamp = datetime.strptime(path.name.split(".")[0], "%Y%m%dT%H%M%SZ")
+            day = stamp.replace(tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d")
+        except ValueError:
+            failed += 1
+            continue
+        try:
+            with gzip.open(path, "rb") as z:
+                codes = extract_codes(z.read())
+        except (OSError, EOFError, ET.ParseError):
+            failed += 1
+            continue
+        read += 1
+        if codes:
+            new_total += merge_codes(state, codes, day)
+    return read, failed, new_total
+
+
 def sleep_until(deadline: float) -> None:
     """Sleep in short slices so Ctrl-C lands immediately rather than up to 5 minutes later."""
     while True:
@@ -192,7 +224,30 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="single poll, then exit")
     ap.add_argument("--force-lock", action="store_true",
                     help="take the API lock even if another collector holds it")
+    ap.add_argument("--from-snapshots", type=Path, default=None,
+                    help="merge codes from archived getCurrentTrainsXML snapshots "
+                         "(e.g. data/raw/live/current) instead of polling. No network, "
+                         "so no API lock is taken.")
     args = ap.parse_args()
+
+    if args.from_snapshots:
+        if not args.from_snapshots.exists():
+            print(f"no snapshot directory at {args.from_snapshots}")
+            return 2
+        state = load_state(args.state)
+        before = len(state["codes"])
+        print(f"harvest_codes — merging from {args.from_snapshots}")
+        print(f"  {before} codes already known")
+        read, failed, new = merge_from_snapshots(state, args.from_snapshots)
+        state["_meta"]["updated"] = datetime.now().isoformat(timespec="seconds")
+        save_state(args.state, state)
+        print(f"  {read} snapshots read, {failed} unreadable")
+        print(f"  {new} new codes  ->  {len(state['codes'])} total in {args.state}")
+        weekend = sum(1 for e in state["codes"].values()
+                      if {"Sat", "Sun"} & set(e.get("days_of_week", [])))
+        print(f"  {weekend} codes have now been seen on a weekend, "
+              f"{len(state['codes']) - weekend} still weekday-only")
+        return 0
 
     # The 2 req/s budget is per host. See src/hostlock.py and decisions.md D29.
     try:
