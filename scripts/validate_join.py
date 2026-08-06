@@ -62,9 +62,13 @@ def traindate_to_iso(s: str):
         return None
 
 
+PLACEHOLDER = {"", "00:00", "00:00:00"}
+
+
 def load_live(live_dir: Path, start, end):
     """Live rows grouped into events keyed by (iso_date, traincode, stationcode)."""
-    events = defaultdict(lambda: {"records": 0, "group": "", "sched": set()})
+    events = defaultdict(lambda: {"records": 0, "group": "", "sched": set(),
+                                  "eta": False})
     records = 0
     skipped_date = 0
     for path in sorted(live_dir.glob("*.jsonl")):
@@ -88,24 +92,29 @@ def load_live(live_dir: Path, start, end):
             e["group"] = r.get("station_group", "") or e["group"]
             if r.get("Scharrival"):
                 e["sched"].add(r["Scharrival"])
+            # A real operator ETA at any poll makes the event comparable.
+            if r.get("Exparrival", "") not in PLACEHOLDER:
+                e["eta"] = True
     return events, records, skipped_date
 
 
 def load_movements(parsed: Path):
     """Movements indexed for lookup: journey keys, and (journey, location) keys."""
     table = ds.dataset(parsed, format="parquet", partitioning="hive").to_table(
-        columns=["TrainDate", "TrainCode", "LocationCode", "file_date"]).to_pydict()
+        columns=["TrainDate", "TrainCode", "LocationCode", "file_date",
+                 "arrival_delay_sec", "AutoArrival"]).to_pydict()
     journeys = set()
-    stops = set()
+    stops = {}
     dates_present = set()
-    for td, tc, lc, fd in zip(table["TrainDate"], table["TrainCode"],
-                              table["LocationCode"], table["file_date"]):
+    for td, tc, lc, fd, dl, au in zip(
+            table["TrainDate"], table["TrainCode"], table["LocationCode"],
+            table["file_date"], table["arrival_delay_sec"], table["AutoArrival"]):
         iso = traindate_to_iso(td or "")
         if iso is None:
             continue
         code = (tc or "").strip().upper()
         journeys.add((iso, code))
-        stops.add((iso, code, (lc or "").strip().upper()))
+        stops[(iso, code, (lc or "").strip().upper())] = (dl, au)
         dates_present.add(fd)
     return journeys, stops, dates_present
 
@@ -191,6 +200,49 @@ def main() -> int:
         ok, tot = by_group[g]
         print(f"  {g:<26} {ok:>9,} {tot:>9,} {100 * ok / tot:>7.2f}%")
 
+    # ---- usability: matching is necessary, not sufficient
+    print("\n" + "=" * W)
+    print("USABILITY — a matched event is only comparable with BOTH sides present")
+    print("=" * W)
+    use = defaultdict(Counter)
+    for (iso, code, stn), e in events.items():
+        c = use[e["group"] or "(none)"]
+        c["events"] += 1
+        dl, au = stops.get((iso, code, stn), (None, None))
+        if e["eta"]:
+            c["eta"] += 1
+        if dl is not None:
+            c["actual"] += 1
+        if e["eta"] and dl is not None:
+            c["usable"] += 1
+            if au == "1":
+                c["auto"] += 1
+    print(f"\n  {'station_group':<26}{'events':>8}{'ETA':>8}{'actual':>8}"
+          f"{'usable':>8}{'auto=1':>8}{'usable%':>9}")
+    print("  " + "-" * 75)
+    grand = Counter()
+    for g in sorted(use, key=lambda k: -use[k]["events"]):
+        c = use[g]
+        grand.update(c)
+        print(f"  {g:<26}{c['events']:>8,}{c['eta']:>8,}{c['actual']:>8,}"
+              f"{c['usable']:>8,}{c['auto']:>8,}"
+              f"{100 * c['usable'] / c['events']:>8.1f}%")
+    print("  " + "-" * 75)
+    print(f"  {'TOTAL':<26}{grand['events']:>8,}{grand['eta']:>8,}{grand['actual']:>8,}"
+          f"{grand['usable']:>8,}{grand['auto']:>8,}"
+          f"{100 * grand['usable'] / grand['events']:>8.1f}%")
+    print("\n  ETA     = the operator issued a real ExpectedArrival at some poll")
+    print("  actual  = movements recorded an arrival, so there is something to score against")
+    print("  usable  = both. Only these can enter a comparison.")
+    print("  auto=1  = of those, the ones whose label is machine-captured rather than")
+    print("            possibly an echoed schedule (label-quality.md).")
+
+    usable_pct = 100 * grand["usable"] / grand["events"] if grand["events"] else 0
+    thin = [g for g in use if use[g]["auto"] < 200]
+    if thin:
+        print(f"\n  ! thin for any per-group claim (<200 trustworthy events): "
+              f"{', '.join(sorted(thin))}")
+
     # ---- diagnosis
     print("\n" + "=" * W)
     print("DIAGNOSIS OF UNMATCHED EVENTS")
@@ -219,8 +271,11 @@ def main() -> int:
 
     print("\n" + "=" * W)
     if rate >= args.threshold and not missing_dates:
-        print(f"PASS — {rate:.2f}% >= {args.threshold:.0f}%. Safe to build the "
-              f"comparison on this join.")
+        print(f"JOIN PASSES — {rate:.2f}% >= {args.threshold:.0f}%.")
+        print(f"But only {usable_pct:.1f}% of matched events are actually comparable, and")
+        print("the join rate says nothing about that. Both endpoints are views of the same")
+        print("timetable, so a high match rate is close to guaranteed once the codes and")
+        print("dates line up — read the usability table above, not this number.")
     else:
         print(f"DO NOT BUILD ON THIS JOIN YET — {rate:.2f}% against a "
               f"{args.threshold:.0f}% threshold.")
