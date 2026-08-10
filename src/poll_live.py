@@ -84,6 +84,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime, time as dtime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -108,6 +109,10 @@ DEFAULT_CONFIG = REPO_ROOT / "config" / "poll_stations.toml"
 # empty railway 60 times is 10,000 pointless requests a night.
 QUIET_START = dtime(0, 30)
 QUIET_END = dtime(5, 30)
+
+# The railway keeps Irish time, so the quiet window must be evaluated in Irish time —
+# not in whatever zone the machine running this happens to be set to.
+DUBLIN = ZoneInfo("Europe/Dublin")
 
 
 def looks_like_xml(body: bytes, expect: str) -> bool:
@@ -213,8 +218,18 @@ def utc_stamp(now: datetime) -> str:
 
 
 def in_quiet_hours(now: datetime) -> bool:
-    t = now.time()
-    return QUIET_START <= t < QUIET_END
+    """Is it quiet-hours in Europe/Dublin, whatever the host clock is set to?
+
+    `datetime.now()` returns naive local time. On a laptop in Ireland that is already
+    Irish time, so this conversion is a no-op today. The moment it runs anywhere with a
+    UTC clock — Lambda, a container, a VM in another region — a naive comparison shifts
+    the window by an hour during IST: it would poll through the dead hour and skip the
+    05:30 restart. Nothing would error and no output would look wrong, which is why this
+    is worth being explicit about rather than relying on the host being configured right.
+    """
+    if now.tzinfo is None:
+        now = now.astimezone()  # interpret a naive stamp as the host's local time
+    return QUIET_START <= now.astimezone(DUBLIN).time() < QUIET_END
 
 
 def extract_station_records(body: bytes, station_code: str, station_group: str,
