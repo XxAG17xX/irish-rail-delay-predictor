@@ -53,11 +53,12 @@ data/        gitignored, never committed
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install requests pyarrow
+pip install -r requirements.txt
 ```
 
-`requests` for ingestion, `pyarrow` for the Parquet stage. There is still no
-`requirements.txt`, which CLAUDE.md's conventions call for.
+`requests` for ingestion, `pyarrow` for the Parquet stage, `lightgbm` and `numpy` for the
+model, and `tzdata` because Windows ships no system timezone database and the poller
+evaluates its schedule in `Europe/Dublin`.
 
 ## Running
 

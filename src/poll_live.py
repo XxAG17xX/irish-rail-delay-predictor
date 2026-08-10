@@ -217,19 +217,23 @@ def utc_stamp(now: datetime) -> str:
     return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def in_quiet_hours(now: datetime) -> bool:
-    """Is it quiet-hours in Europe/Dublin, whatever the host clock is set to?
+def in_dublin(now: datetime) -> datetime:
+    """Convert a possibly-naive stamp to Europe/Dublin.
 
     `datetime.now()` returns naive local time. On a laptop in Ireland that is already
-    Irish time, so this conversion is a no-op today. The moment it runs anywhere with a
-    UTC clock — Lambda, a container, a VM in another region — a naive comparison shifts
-    the window by an hour during IST: it would poll through the dead hour and skip the
-    05:30 restart. Nothing would error and no output would look wrong, which is why this
-    is worth being explicit about rather than relying on the host being configured right.
+    Irish time, so this is a no-op today. The moment it runs anywhere with a UTC clock —
+    Lambda, a container, a VM in another region — anything derived from a naive stamp is
+    an hour out during IST. Nothing errors and no output looks wrong, which is why the
+    zone is made explicit rather than left to host configuration.
     """
     if now.tzinfo is None:
         now = now.astimezone()  # interpret a naive stamp as the host's local time
-    return QUIET_START <= now.astimezone(DUBLIN).time() < QUIET_END
+    return now.astimezone(DUBLIN)
+
+
+def in_quiet_hours(now: datetime) -> bool:
+    """Is it quiet-hours on the Irish railway, whatever the host clock is set to?"""
+    return QUIET_START <= in_dublin(now).time() < QUIET_END
 
 
 def extract_station_records(body: bytes, station_code: str, station_group: str,
@@ -257,7 +261,10 @@ def poll_cycle(session, pacer, stations, args, stats: Counter) -> int:
     """One full sweep. Returns the number of ExpectedArrival records captured."""
     now = datetime.now()
     stamp = utc_stamp(now)
-    day = now.strftime("%Y-%m-%d")
+    # The day key must be the Irish calendar date, not the host's. On a UTC host an
+    # evening's records either side of midnight would otherwise split across two files
+    # an hour early, and the service day is an Irish-time concept.
+    day = in_dublin(now).strftime("%Y-%m-%d")
     captured = 0
 
     # 1. fleet snapshot
