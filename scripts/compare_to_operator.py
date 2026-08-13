@@ -81,13 +81,12 @@ PLACEHOLDER = {"", "00:00", "00:00:00"}
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DUBLIN = ZoneInfo("Europe/Dublin")
 
-# horizon_observed_stops deliberately absent — see note 2 in the module docstring.
-NUMERIC = ["current_delay_sec", "prev_delay_sec", "prev2_delay_sec",
-           "horizon_route_stops", "horizon_sched_sec",
-           "vantage_hour", "vantage_minute_of_day"]
-CATEGORICAL = ["day_of_week", "vantage_location", "target_location",
-               "TrainOrigin", "TrainDestination"]
-FEATURES = NUMERIC + CATEGORICAL
+# Single definition, shared with src/train_quantile.py. These lists used to be
+# maintained separately here and diverged: the trained artifact carried
+# horizon_observed_stops while this file excluded it, so the saved model could not have
+# served a live request and nothing detected it. See src/features.py and decisions.md D35.
+sys.path.insert(0, str(REPO_ROOT / "src"))
+from features import CATEGORICAL, FEATURES, NUMERIC  # noqa: E402
 
 PARAMS = {"objective": "quantile", "alpha": 0.5, "learning_rate": 0.1,
           "num_leaves": 31, "min_data_in_leaf": 20, "verbose": -1,

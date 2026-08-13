@@ -61,17 +61,17 @@ DEFAULT_EXAMPLES = REPO_ROOT / "data" / "examples"
 DEFAULT_MODELS = REPO_ROOT / "data" / "models"
 LATEST = "LATEST"
 
-NUMERIC = [
-    "current_delay_sec", "prev_delay_sec", "prev2_delay_sec",
-    "horizon_observed_stops", "horizon_route_stops", "horizon_sched_sec",
-    "vantage_hour", "vantage_minute_of_day",
-]
-CATEGORICAL = [
-    "day_of_week", "vantage_location", "target_location",
-    "TrainOrigin", "TrainDestination",
-]
-FEATURES = NUMERIC + CATEGORICAL
+# Single definition, shared with scripts/compare_to_operator.py — see src/features.py
+# for why membership is decided by "computable at prediction time", and why
+# horizon_observed_stops is excluded despite being available offline.
+from features import CATEGORICAL, FEATURES, NUMERIC  # noqa: E402
+
 LABEL = "target_delay_sec"
+
+# Loaded for reporting only, never as model inputs. horizon_observed_stops cannot be
+# computed at prediction time (features.py), but it is still the axis the per-horizon
+# evaluation is broken down by, which is an offline question.
+REPORTING = ["horizon_observed_stops"]
 
 QUANTILES = (0.1, 0.5, 0.9)
 
@@ -224,7 +224,7 @@ def load_artifact(models_dir: Path, version: str = "latest"):
 
 
 def load(examples: Path, split: str):
-    cols = FEATURES + [LABEL, "auto_vantage", "auto_target", "file_date"]
+    cols = FEATURES + REPORTING + [LABEL, "auto_vantage", "auto_target", "file_date"]
     table = ds.dataset(examples / f"split={split}", format="parquet",
                        partitioning="hive").to_table(columns=cols).to_pydict()
     keep = [i for i in range(len(table[LABEL]))

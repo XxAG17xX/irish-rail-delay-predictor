@@ -729,3 +729,126 @@ holder. `backfill.py` acquires only after the resume check, so a run with nothin
 never contends for it.
 
 **Date.** 2026-07-28
+
+---
+
+## D31 — A model artifact bundles boosters, vocabularies and the feature list
+
+**Decision.** One artifact directory holds the three quantile boosters *and* the
+categorical vocabularies *and* the ordered feature list, in LightGBM's native text format,
+with a `manifest.json` carrying a sha256 per file. Loading verifies every checksum and
+refuses a mismatch.
+
+**Alternatives.** (a) Save only the boosters and rebuild vocabularies from the training
+data at load time. (b) Pickle the whole Python object graph.
+
+**Why rejected.** (a) is the dangerous one, and it fails silently. Categorical features are
+encoded as integers via vocabularies built from whatever training rows were present at fit
+time. Rebuild them later from a different slice — one more day of data, one fewer station —
+and `CNLLY` maps to a different integer than the model was trained on. The model loads. It
+predicts. It returns plausible-looking seconds. Every number is wrong and nothing raises.
+No test that only checks "does it run" would catch it. (b) breaks across library versions
+and makes the artifact executable code, which is a poor thing to fetch from S3 later.
+
+Native text is stable, diffable and version-independent. The checksums exist because a
+truncated download is otherwise indistinguishable from a valid model.
+
+**Verification is part of the decision.** After saving, the artifact is immediately
+reloaded and its predictions compared bit-for-bit against the run that produced it. That
+check is what would catch the vocabulary bug this bundling prevents, so it runs every time
+rather than being a test someone remembers to write.
+
+**Date.** 2026-08-13
+
+---
+
+## D32 — Version id is a UTC timestamp plus the git commit
+
+**Decision.** `20260813T220924Z-eb39350`, with a `-dirty` suffix when the working tree has
+uncommitted changes.
+
+**Alternatives.** (a) Timestamp alone. (b) A content hash of the artifact. (c) Sequential
+integers.
+
+**Why rejected.** CLAUDE.md's leakage rules require the model version on every logged
+prediction. A timestamp alone (a) tells you *when* but not *what code* — you would have to
+cross-reference the git history by date to find out what produced a prediction, and that
+mapping is ambiguous if you trained twice in a day. (b) is reproducible and deduplicating
+but opaque: you cannot tell which of two versions is newer, which matters when reading a
+prediction log. (c) needs a registry and races if anything ever trains concurrently.
+
+The `-dirty` suffix is the useful part in practice: it makes "this model came from code
+that was never committed" visible in the artifact name rather than something you discover
+later while trying to reproduce a number.
+
+**Date.** 2026-08-13
+
+---
+
+## D33 — An explicit LATEST pointer, not newest-by-name
+
+**Decision.** `data/models/LATEST` contains the version string. It is written last and
+atomically, after the artifact directory is in place.
+
+**Alternatives.** Sort the directory names and take the newest — timestamps sort correctly,
+so this needs no extra state.
+
+**Why rejected.** Rolling back would mean deleting or renaming a good artifact, which
+destroys the thing versioning exists to keep. With a pointer, a rollback is a one-line
+edit and both versions survive. It also makes "which model is serving" an explicit,
+auditable fact rather than an emergent property of filenames.
+
+Ordering matters: because LATEST is written after the directory, a save that fails partway
+leaves the pointer naming the previous good version rather than a half-written one.
+
+**Date.** 2026-08-13
+
+---
+
+## D34 — Saving is opt-in via `--save`
+
+**Decision.** `train_quantile.py` writes an artifact only when asked. Default behaviour is
+unchanged.
+
+**Alternatives.** Always save; or save unless `--no-save`.
+
+**Why rejected.** Most runs are exploratory — changing a feature, checking a breakdown,
+re-reading a number. Persisting each one fills `data/models/` with near-identical artifacts
+nobody will ever load, and makes LATEST churn for reasons that have nothing to do with
+serving. A model you intend to log predictions against is a deliberate choice, so the flag
+matches the intent. Opt-out (`--no-save`) has the same clutter problem, since the opt-out
+is exactly what you forget when iterating.
+
+**Date.** 2026-08-13
+
+---
+
+## D35 — One feature definition, in `src/features.py`
+
+**Decision.** `NUMERIC`, `CATEGORICAL` and `FEATURES` are defined once and imported by both
+`train_quantile.py` and `compare_to_operator.py`. Membership is decided by a single rule:
+**every feature must be computable at prediction time.**
+
+**What went wrong.** The two files each kept their own copy. `compare_to_operator.py`
+excluded `horizon_observed_stops` because it counts stops that *did* report — knowable only
+after a journey finishes, never at the moment of a live request. `train_quantile.py` still
+included it. So the saved artifact carried thirteen features while the honest comparison
+used twelve, and **the persisted model could not have served a live request.** Nothing
+detected this. It surfaced only because a human read both files.
+
+**Why one definition rather than two coordinated ones.** Two lists that must agree, kept in
+separate files, will diverge again — that is what just happened. Collapsing to the serving
+set costs 0.28% of gain (the measured importance of `horizon_observed_stops`), and
+`horizon_route_stops` carries the same information in a form that is actually knowable.
+Paying 0.28% to make a whole class of bug impossible is a good trade.
+
+**What is kept but not used as input.** `horizon_observed_stops` remains a column in the
+examples Parquet and is loaded under `REPORTING` for the per-horizon evaluation breakdown,
+which is an offline question. `features.EXCLUDED` records each exclusion with its reason
+next to the code, so the rationale does not live only in a commit message.
+
+**Cost accepted.** Validation MAE moved 75.9s to 76.1s and coverage 80.15% to 80.23%. The
+head-to-head against the operator is unchanged at 80.1s vs 109.7s, because that comparison
+already used the twelve-feature set.
+
+**Date.** 2026-08-13
