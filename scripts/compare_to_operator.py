@@ -64,6 +64,7 @@ import sys
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import lightgbm as lgb
 import numpy as np
@@ -78,6 +79,7 @@ MONTHS = ("jan", "feb", "mar", "apr", "may", "jun",
           "jul", "aug", "sep", "oct", "nov", "dec")
 PLACEHOLDER = {"", "00:00", "00:00:00"}
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+DUBLIN = ZoneInfo("Europe/Dublin")
 
 # horizon_observed_stops deliberately absent — see note 2 in the module docstring.
 NUMERIC = ["current_delay_sec", "prev_delay_sec", "prev2_delay_sec",
@@ -185,7 +187,13 @@ def load_polls(live: Path, dates):
                 p = datetime.fromisoformat(r["polled_at"])
             except (ValueError, KeyError):
                 continue
-            base = datetime.fromisoformat(iso)
+            # Records written before poll_live carried an offset are naive stamps from
+            # an Irish host, so Europe/Dublin is the correct interpretation for both
+            # forms. Anchoring the service date in the same zone keeps the subtraction
+            # meaningful whatever machine wrote the record.
+            if p.tzinfo is None:
+                p = p.replace(tzinfo=DUBLIN)
+            base = datetime.fromisoformat(iso).replace(tzinfo=DUBLIN)
             poll_s = (p - base).total_seconds()
             events[(iso, r["Traincode"].strip().upper(),
                     r["Stationcode"].strip().upper())].append(

@@ -296,8 +296,12 @@ def poll_cycle(session, pacer, stations, args, stats: Counter) -> int:
         write_gz(args.raw / "station" / code / f"{stamp}.xml.gz", body)
         stats["station_ok"] += 1
 
-        rows = extract_station_records(body, code, st.get("group", ""),
-                                       now.isoformat(timespec="seconds"), source_file)
+        # Offset-aware: a bare '2026-08-10T21:44:54' is only interpretable if you also
+        # know which machine wrote it. The stamp is the temporal cutoff the whole
+        # operator comparison rests on, so it carries its own zone.
+        rows = extract_station_records(
+            body, code, st.get("group", ""),
+            in_dublin(now).isoformat(timespec="seconds"), source_file)
         if not rows:
             stats["station_empty"] += 1
         for row in rows:
