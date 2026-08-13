@@ -39,17 +39,27 @@ Usage (PowerShell, from the repo root, venv active):
 """
 
 import argparse
+import hashlib
+import json
+import os
+import platform
+import shutil
 import statistics
+import subprocess
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
+import pyarrow as pa
 import pyarrow.dataset as ds
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_EXAMPLES = REPO_ROOT / "data" / "examples"
+DEFAULT_MODELS = REPO_ROOT / "data" / "models"
+LATEST = "LATEST"
 
 NUMERIC = [
     "current_delay_sec", "prev_delay_sec", "prev2_delay_sec",
@@ -84,6 +94,133 @@ TIME_BANDS = [
     (1800, 3600, "30-60 min"),
     (3600, 10 ** 9, "60+ min"),
 ]
+
+
+# ------------------------------------------------------------------ persistence
+#
+# The artifact bundles boosters, vocabularies and the ordered feature list as ONE unit,
+# and that is the whole point. Categorical features are encoded as integers via
+# vocabularies built from the training data. Save the boosters alone, reload them later
+# against vocabularies rebuilt from different data, and CNLLY maps to a different integer
+# than it did at fit time. The model runs. It returns plausible seconds. Every prediction
+# is wrong and nothing raises. Bundling is what prevents that.
+#
+# Format is LightGBM's native text, not pickle: pickles break across library versions and
+# are executable code, which is a poor thing to fetch from S3 later.
+
+
+def git_info():
+    """Short commit and whether the tree is dirty. ('unknown', False) if git is absent."""
+    def run(*args):
+        return subprocess.run(args, cwd=REPO_ROOT, capture_output=True,
+                              text=True, timeout=10)
+    try:
+        sha = run("git", "rev-parse", "--short", "HEAD")
+        status = run("git", "status", "--porcelain")
+        if sha.returncode != 0:
+            return "unknown", False
+        return sha.stdout.strip(), bool(status.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return "unknown", False
+
+
+def make_version() -> str:
+    sha, dirty = git_info()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}-{sha}" + ("-dirty" if dirty else "")
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def save_artifact(models_dir: Path, boosters: dict, vocabs: dict,
+                  train_splits, train_rows: int, metrics: dict) -> str:
+    """Write a versioned artifact atomically and repoint LATEST at it."""
+    version = make_version()
+    dest = models_dir / version
+    tmp = models_dir / f".{version}.tmp"
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    tmp.mkdir(parents=True)
+
+    files = {}
+    for q, booster in boosters.items():
+        name = f"q{int(q * 100):02d}.txt"
+        booster.save_model(str(tmp / name))
+        files[name] = sha256_file(tmp / name)
+
+    sha, dirty = git_info()
+    manifest = {
+        "version": version,
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git_commit": sha,
+        "git_dirty": dirty,
+        "train_splits": list(train_splits),
+        "train_rows": train_rows,
+        "features": FEATURES,
+        "categorical": CATEGORICAL,
+        "vocabs": vocabs,
+        "quantiles": list(QUANTILES),
+        "params": PARAMS,
+        "num_boost_round": NUM_ROUNDS,
+        "metrics": metrics,
+        "libraries": {"lightgbm": lgb.__version__, "numpy": np.__version__,
+                      "pyarrow": pa.__version__, "python": platform.python_version()},
+        "files": files,
+    }
+    with open(tmp / "manifest.json", "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
+
+    if dest.exists():
+        shutil.rmtree(dest)
+    os.replace(tmp, dest)
+
+    # LATEST is written last and atomically: if anything above failed, the pointer still
+    # names the previous good version rather than a half-written one.
+    ptr_tmp = models_dir / ".LATEST.tmp"
+    with open(ptr_tmp, "w", encoding="utf-8") as f:
+        f.write(version + "\n")
+    os.replace(ptr_tmp, models_dir / LATEST)
+    return version
+
+
+def load_artifact(models_dir: Path, version: str = "latest"):
+    """Load boosters + vocabs + feature list. Refuses a corrupted or mismatched artifact."""
+    if version == "latest":
+        ptr = models_dir / LATEST
+        if not ptr.exists():
+            raise FileNotFoundError(f"no {LATEST} pointer in {models_dir}")
+        version = ptr.read_text(encoding="utf-8").strip()
+
+    d = models_dir / version
+    manifest_path = d / "manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"no manifest at {manifest_path}")
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    for name, expected in manifest["files"].items():
+        actual = sha256_file(d / name)
+        if actual != expected:
+            raise ValueError(f"{version}/{name} is corrupt: sha256 {actual[:12]} "
+                             f"does not match the manifest's {expected[:12]}")
+
+    if manifest["features"] != FEATURES:
+        raise ValueError(
+            f"{version} was trained on a different feature set.\n"
+            f"  artifact: {manifest['features']}\n  this code: {FEATURES}")
+
+    boosters = {q: lgb.Booster(model_file=str(d / f"q{int(q * 100):02d}.txt"))
+                for q in manifest["quantiles"]}
+    if manifest["libraries"]["lightgbm"] != lgb.__version__:
+        print(f"  ! artifact trained with lightgbm "
+              f"{manifest['libraries']['lightgbm']}, running {lgb.__version__}")
+    return boosters, manifest["vocabs"], manifest
 
 
 def load(examples: Path, split: str):
@@ -145,6 +282,12 @@ def main() -> int:
     ap.add_argument("--examples", type=Path, default=DEFAULT_EXAMPLES)
     ap.add_argument("--train-split", default="train")
     ap.add_argument("--eval-split", default="val", choices=["train", "val", "test"])
+    ap.add_argument("--models", type=Path, default=DEFAULT_MODELS)
+    ap.add_argument("--save", action="store_true",
+                    help="write a versioned artifact and repoint LATEST at it")
+    ap.add_argument("--load", default=None, metavar="VERSION",
+                    help="evaluate a saved artifact instead of training; "
+                         "'latest' or a version id")
     args = ap.parse_args()
 
     if args.eval_split == "test":
@@ -152,35 +295,50 @@ def main() -> int:
         print("! OPENING THE TEST WEEK — decisions.md D25 says once, at the end.")
         print("!" * 72)
 
-    tr, tr_total = load(args.examples, args.train_split)
     ev, ev_total = load(args.examples, args.eval_split)
+    boosters = {}
 
-    vocabs = {f: {v: i for i, v in enumerate(sorted({x for x in tr[f] if x is not None}))}
-              for f in CATEGORICAL}
+    if args.load:
+        boosters, vocabs, manifest = load_artifact(args.models, args.load)
+        Xev, yev = build_matrix(ev, vocabs)
+        ytr_n, train_splits = manifest["train_rows"], manifest["train_splits"]
+        raw = {q: b.predict(Xev) for q, b in boosters.items()}
+        print(f"\nloaded artifact {manifest['version']}")
+        print(f"  trained {manifest['created_at']} on split(s) "
+              f"{', '.join(manifest['train_splits'])}, {ytr_n:,} examples")
+        print(f"  git {manifest['git_commit']}"
+              f"{' (dirty tree)' if manifest['git_dirty'] else ''}")
+        print(f"  recorded metrics: {manifest['metrics']}")
+    else:
+        tr, tr_total = load(args.examples, args.train_split)
+        vocabs = {f: {v: i for i, v
+                      in enumerate(sorted({x for x in tr[f] if x is not None}))}
+                  for f in CATEGORICAL}
+        Xtr, ytr = build_matrix(tr, vocabs)
+        Xev, yev = build_matrix(ev, vocabs)
+        ytr_n, train_splits = len(ytr), [args.train_split]
 
-    Xtr, ytr = build_matrix(tr, vocabs)
-    Xev, yev = build_matrix(ev, vocabs)
+        print(f"\ntrain '{args.train_split}': {len(ytr)} of {tr_total} examples "
+              f"(AutoArrival=1 both ends)")
+        print(f"eval  '{args.eval_split}': {len(yev)} of {ev_total} examples")
+        print(f"features: {len(FEATURES)} — {len(NUMERIC)} numeric, "
+              f"{len(CATEGORICAL)} categorical")
+        print(f"params: LightGBM defaults, {NUM_ROUNDS} rounds, lr "
+              f"{PARAMS['learning_rate']}, num_leaves {PARAMS['num_leaves']}, "
+              f"seed {PARAMS['seed']} — NOT tuned")
+        print("train type: not in the feed, deliberately absent (see module docstring)")
 
-    print(f"\ntrain '{args.train_split}': {len(ytr)} of {tr_total} examples "
-          f"(AutoArrival=1 both ends)")
-    print(f"eval  '{args.eval_split}': {len(yev)} of {ev_total} examples")
-    print(f"features: {len(FEATURES)} — {len(NUMERIC)} numeric, "
-          f"{len(CATEGORICAL)} categorical")
-    print(f"params: LightGBM defaults, {NUM_ROUNDS} rounds, lr "
-          f"{PARAMS['learning_rate']}, num_leaves {PARAMS['num_leaves']}, "
-          f"seed {PARAMS['seed']} — NOT tuned")
-    print("train type: not in the feed, deliberately absent (see module docstring)")
+        cat_idx = [FEATURES.index(f) for f in CATEGORICAL]
+        raw = {}
+        for q in QUANTILES:
+            dtrain = lgb.Dataset(Xtr, label=ytr, feature_name=FEATURES,
+                                 categorical_feature=cat_idx, free_raw_data=False)
+            boosters[q] = lgb.train({**PARAMS, "alpha": q}, dtrain,
+                                    num_boost_round=NUM_ROUNDS)
+            raw[q] = boosters[q].predict(Xev)
 
-    cat_idx = [FEATURES.index(f) for f in CATEGORICAL]
-    raw = {}
-    for q in QUANTILES:
-        dtrain = lgb.Dataset(Xtr, label=ytr, feature_name=FEATURES,
-                             categorical_feature=cat_idx, free_raw_data=False)
-        booster = lgb.train({**PARAMS, "alpha": q}, dtrain, num_boost_round=NUM_ROUNDS)
-        raw[q] = booster.predict(Xev)
-        if q == 0.5:
-            gains = sorted(zip(FEATURES, booster.feature_importance("gain")),
-                           key=lambda kv: -kv[1])
+    gains = sorted(zip(FEATURES, boosters[0.5].feature_importance("gain")),
+                   key=lambda kv: -kv[1])
 
     # Each quantile is fitted independently, so nothing forces q0.10 <= q0.50 <= q0.90.
     # Sorting each row restores monotonicity. This is the standard remedy and it cannot
@@ -248,6 +406,42 @@ def main() -> int:
     total = sum(v for _, v in gains) or 1
     for f, v in gains:
         print(f"  {f:<26} {100 * v / total:6.2f}%")
+
+    if args.save:
+        if args.load:
+            print("\n--save ignored: --load evaluated an existing artifact, "
+                  "there is nothing new to persist.")
+            return 0
+        m = metrics(p50, yev)
+        summary = {
+            "eval_split": args.eval_split,
+            "eval_rows": int(len(yev)),
+            "mae_sec": round(m["mae"], 3),
+            "medae_sec": round(m["medae"], 3),
+            "coverage_pct": round(100 * float(inside.mean()), 3),
+            "median_interval_width_sec": round(float(np.median(width)), 1),
+        }
+        version = save_artifact(args.models, boosters, vocabs,
+                                train_splits, int(ytr_n), summary)
+        print("\n" + "=" * W)
+        print("SAVED")
+        print("=" * W)
+        print(f"  {args.models / version}")
+        print(f"  LATEST -> {version}")
+
+        # Round-trip immediately. This is the check that catches the vocabulary bug the
+        # bundling exists to prevent: a mismatch here means a reloaded model would have
+        # silently predicted something different from the one just measured.
+        b2, v2, _ = load_artifact(args.models, version)
+        s2 = np.sort(np.vstack([b2[q].predict(build_matrix(ev, v2)[0])
+                                for q in QUANTILES]), axis=0)
+        if np.array_equal(s2, stacked):
+            print("  round-trip verified: reloaded predictions are bit-identical")
+        else:
+            worst = float(np.max(np.abs(s2 - stacked)))
+            print(f"  ! ROUND-TRIP MISMATCH — max difference {worst:.6f}s.")
+            print("  ! The saved artifact does not reproduce this run. Do not serve it.")
+            return 1
 
     return 0
 
