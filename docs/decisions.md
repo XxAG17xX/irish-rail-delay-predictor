@@ -852,3 +852,65 @@ head-to-head against the operator is unchanged at 80.1s vs 109.7s, because that 
 already used the twelve-feature set.
 
 **Date.** 2026-08-13
+
+---
+
+## D36 — The Lambda parallel run is a time-boxed exception to D30, and it expires
+
+**Decision.** During cutover the Lambda poller and the local poller run **at the same
+time**, both polling api.irishrail.ie. This is a deliberate, named exception to D30, which
+exists to stop two collectors ever running together. It runs for **seven days** and then
+ends, whether or not cutover happens.
+
+**Dates.** Start: the first Lambda invocation (record the actual date here on the day).
+**Hard stop: seven days later, no extension.**
+
+**What "ends" means.** At the stop date exactly one of two things happens:
+
+- the diff met the bar, so the **local poller stops** and the Lambda takes over; or
+- the diff did not meet the bar, so the **Lambda stops** and the local poller carries on
+  alone while the problem is fixed.
+
+There is no third option where both keep running. The exception expires on a **date**, not
+on success. That is the whole point of writing it down: a temporary doubling of load on
+somebody else's free service is exactly the kind of thing that becomes permanent by
+nobody deciding anything.
+
+**Why the exception is acceptable at all.** Each poller is 31 requests per five-minute
+cycle, ~0.10 req/s. Both together are ~0.20 req/s against a 2 req/s budget — a tenth of
+what the politeness rule allows. D30's lock exists to prevent a bulk backfill running
+alongside a poller (4+ req/s), not this. The `hostlock` is per-host and cannot see across
+machines anyway, so the control has to be a written decision with an end date rather than
+code.
+
+**The bar for cutover.** Measured over the full seven days, which covers every weekday and
+both weekend days since the timetables differ:
+
+- record **schema identical** — exact match, no tolerance
+- **≥99.5% overlap** on the set of `(date, train, station)` events, every miss explained
+- per-station-per-hour record volume within a few percent
+- for cycle pairs landing within ~30s of each other, `Exparrival` agrees on shared events
+
+Byte-level record equality is *not* the bar and expecting it would be wrong: the two
+pollers hit the API at different instants and the API's answer changes between them.
+
+**A forced-failure test runs inside the week, not after it.** The Lambda is deliberately
+broken mid-week — bad permissions and an induced timeout — to confirm the alarms actually
+fire. An alarm that has never fired is not a verified alarm. Doing this during the window
+rather than extending to a second week gets the same evidence for no extra calendar time,
+which matters against a mid-September deadline.
+
+**Comparison method.** The local poller is the **control and is not modified**: it keeps
+writing to local disk exactly as it does today. The Lambda's S3 prefix is synced down and
+diffed against those files. Giving the local poller an S3 sink too would be symmetric, but
+a bug in the shared sink would then affect both sides identically and stay invisible.
+
+**Related breakage to clear before the local poller stops.**
+`harvest_codes.py --from-snapshots` reads a local directory of archived
+`getCurrentTrainsXML` responses. Once the local poller stops, that directory stops growing
+and the script reports "0 new codes" — indistinguishable from a genuinely unchanged
+network. Fix before cutover day: a staleness guard that complains when the newest snapshot
+is more than ~3 days old, plus an `aws s3 sync` step in the cutover runbook. A native S3
+reader is not needed; harvesting is rare and manual.
+
+**Date.** 2026-08-16
