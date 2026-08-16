@@ -332,6 +332,7 @@ def poll_cycle(session, pacer, stations, sink, stats: Counter, num_mins: int,
 
     if skipped:
         stats["partial_cycles"] += 1
+        stats["stations_skipped"] += len(skipped)
         print(f"  ! partial cycle — {len(skipped)} stations skipped on the time "
               f"budget: {', '.join(skipped)}")
 
