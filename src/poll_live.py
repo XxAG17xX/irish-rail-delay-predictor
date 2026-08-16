@@ -89,6 +89,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 import hostlock
+from sinks import LocalSink
 
 # Reuse, not reimplementation — see decisions.md D6/D7/D8.
 from backfill import (BASE, MAX_THROTTLE_ATTEMPTS, MAX_TRANSPORT_ATTEMPTS,
@@ -113,6 +114,11 @@ QUIET_END = dtime(5, 30)
 # The railway keeps Irish time, so the quiet window must be evaluated in Irish time —
 # not in whatever zone the machine running this happens to be set to.
 DUBLIN = ZoneInfo("Europe/Dublin")
+
+# When a caller imposes a deadline (Lambda), stop starting new station requests with less
+# than this much left. A request plus its write needs headroom; being killed mid-write is
+# how you get a truncated object that looks complete.
+TIME_BUDGET_FLOOR_MS = 20_000
 
 
 def looks_like_xml(body: bytes, expect: str) -> bool:
@@ -257,15 +263,32 @@ def extract_station_records(body: bytes, station_code: str, station_group: str,
     return out
 
 
-def poll_cycle(session, pacer, stations, args, stats: Counter) -> int:
-    """One full sweep. Returns the number of ExpectedArrival records captured."""
+def poll_cycle(session, pacer, stations, sink, stats: Counter, num_mins: int,
+               time_left=None) -> int:
+    """One full sweep. Returns the number of ExpectedArrival records captured.
+
+    All storage goes through `sink` (src/sinks.py) so this stays the single
+    implementation whether output lands on local disk or in S3. Duplicating it for a
+    Lambda handler would make the parallel-run diff test the duplicate rather than the
+    port — the mistake D35 records.
+
+    `time_left`, when supplied, returns remaining milliseconds. The sweep then stops
+    early rather than being killed mid-write, and closes the cycle as partial. Nothing
+    passes it locally: a local run has no deadline.
+    """
     now = datetime.now()
     stamp = utc_stamp(now)
     # The day key must be the Irish calendar date, not the host's. On a UTC host an
     # evening's records either side of midnight would otherwise split across two files
     # an hour early, and the service day is an Irish-time concept.
     day = in_dublin(now).strftime("%Y-%m-%d")
+    # Offset-aware: a bare '2026-08-10T21:44:54' is only interpretable if you also know
+    # which machine wrote it. This stamp is the temporal cutoff the whole operator
+    # comparison rests on, so it carries its own zone.
+    polled_at = in_dublin(now).isoformat(timespec="seconds")
+    sink.begin_cycle(stamp, day)
     captured = 0
+    attempted, skipped = [], []
 
     # 1. fleet snapshot
     try:
@@ -274,39 +297,52 @@ def poll_cycle(session, pacer, stations, args, stats: Counter) -> int:
         stats["current_failed"] += 1
         print(f"  ! getCurrentTrainsXML {f.kind}: {f.detail}")
     else:
-        write_gz(args.raw / "current" / f"{stamp}.xml.gz", body)
+        sink.put_raw("current", body)
         stats["current_ok"] += 1
 
     # 2. station boards
-    for st in stations:
+    for i, st in enumerate(stations):
         code = st["code"]
+        if time_left is not None and time_left() < TIME_BUDGET_FLOOR_MS:
+            skipped = [s["code"] for s in stations[i:]]
+            break
+        attempted.append(code)
+
         try:
             body = fetch(session, "getStationDataByCodeXML_WithNumMins",
-                         {"StationCode": code, "NumMins": args.num_mins},
+                         {"StationCode": code, "NumMins": num_mins},
                          pacer, "objstationdata")
         except Failure as f:
             stats["station_failed"] += 1
-            append_jsonl(args.out.parent / "poll_failures.jsonl", {
+            sink.put_failure({
                 "ts": datetime.now().isoformat(timespec="seconds"),
                 "station": code, "kind": f.kind, "detail": f.detail,
             })
             continue
 
-        source_file = f"station/{code}/{stamp}.xml.gz"
-        write_gz(args.raw / "station" / code / f"{stamp}.xml.gz", body)
+        source_file = sink.put_raw("station", body, station=code)
         stats["station_ok"] += 1
 
-        # Offset-aware: a bare '2026-08-10T21:44:54' is only interpretable if you also
-        # know which machine wrote it. The stamp is the temporal cutoff the whole
-        # operator comparison rests on, so it carries its own zone.
-        rows = extract_station_records(
-            body, code, st.get("group", ""),
-            in_dublin(now).isoformat(timespec="seconds"), source_file)
+        rows = extract_station_records(body, code, st.get("group", ""),
+                                       polled_at, source_file)
         if not rows:
             stats["station_empty"] += 1
-        for row in rows:
-            append_jsonl(args.out / f"{day}.jsonl", row)
-            captured += 1
+        sink.put_records(rows)
+        captured += len(rows)
+
+    if skipped:
+        stats["partial_cycles"] += 1
+        print(f"  ! partial cycle — {len(skipped)} stations skipped on the time "
+              f"budget: {', '.join(skipped)}")
+
+    sink.end_cycle({
+        "cycle_ts": stamp, "day": day, "polled_at": polled_at,
+        "status": "partial" if skipped else "complete",
+        "stations_attempted": attempted, "stations_skipped": skipped,
+        "records": captured,
+        "pacer_interval_sec": round(pacer.interval, 3),
+        "throttle_events": pacer.throttle_events,
+    })
 
     stats["records"] += captured
     return captured
@@ -426,6 +462,8 @@ def run(args) -> int:
     stats = Counter()
     cycles = 0
     started = time.monotonic()
+    sink = LocalSink(args.raw, args.out, args.out.parent / "poll_failures.jsonl",
+                     write_gz, append_jsonl)
     try:
         while True:
             cycle_started = time.monotonic()
@@ -435,7 +473,7 @@ def run(args) -> int:
             if not args.no_quiet_hours and in_quiet_hours(now):
                 print(f"  {now:%H:%M:%S}  quiet hours, skipping")
             else:
-                n = poll_cycle(session, pacer, stations, args, stats)
+                n = poll_cycle(session, pacer, stations, sink, stats, args.num_mins)
                 cycles += 1
                 print(f"  {now:%H:%M:%S}  {stats['station_ok']:>5} boards ok, "
                       f"{stats['station_empty']:>4} empty, {n:>5} records this cycle, "
