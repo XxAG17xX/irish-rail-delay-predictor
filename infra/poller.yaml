@@ -1,0 +1,293 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+# poller.yaml — the live poller on Lambda.
+#
+# DEPLOY infra/foundation.yaml FIRST and confirm the budget is live. This stack creates
+# billable resources; the spend guardrail goes up before they do.
+#
+# Region: eu-west-1 (Ireland) — nearest to api.irishrail.ie, and the sensible home for
+# Irish transport data. The budget stack lives in us-east-1 because AWS Budgets requires
+# it; these are deliberately different regions.
+#
+#   powershell scripts\build_lambda.ps1
+#   sam deploy --guided --region eu-west-1 --template-file infra/poller.yaml
+#
+# The alarm topic here is separate from the budget topic: a CloudWatch alarm can only
+# notify an SNS topic in its own region. Two topics means two email confirmations.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: S3 bucket for poller output. Created by this stack and RETAINED on delete.
+  Prefix:
+    Type: String
+    Default: parallel/lambda
+    Description: Key prefix. The parallel run (D36) writes here, separate from anything
+      the local poller produces, so the two can be diffed before cutover.
+  Stage:
+    Type: String
+    Default: parallel
+    AllowedValues: [parallel, live]
+    Description: Metric dimension, so parallel-run metrics do not contaminate the live
+      series after cutover.
+  AlarmEmail:
+    Type: String
+    Description: Address to notify on alarms. Requires email confirmation.
+  PollRate:
+    Type: Number
+    Default: 2
+    Description: Requests per second. The politeness ceiling is 2 (CLAUDE.md).
+  NumMins:
+    Type: Number
+    Default: 90
+    Description: Station board lookahead, 5-90.
+
+Resources:
+
+  # ---------------------------------------------------------------- storage
+  PollBucket:
+    Type: AWS::S3::Bucket
+    # Retain is not negotiable. ExpectedArrival exists only in the moment it is polled and
+    # cannot be re-fetched at any price; a stack delete must not be able to take it.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          # Versioning protects against an accidental overwrite or delete. Expiring
+          # noncurrent versions after 30 days bounds the worst-case storage cost while
+          # still leaving a month to notice a mistake.
+          - Id: ExpireNoncurrentVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          # Costs nothing, prevents orphaned multipart uploads billing forever.
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  # Declared explicitly rather than letting Lambda create it: this lets the function drop
+  # logs:CreateLogGroup from its policy entirely, and sets a retention (the implicit
+  # default is never-expire, which accumulates cost quietly forever).
+  PollerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-poller
+      RetentionInDays: 30
+
+  # ------------------------------------------------------------------ IAM
+  # Written out rather than using SAM's Policies shorthand, which also attaches
+  # AWSLambdaBasicExecutionRole and its logs:* on "*". The point of this role is that it
+  # is exactly three actions.
+  PollerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: poller-minimal
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub ${PollerLogGroup.Arn}:*
+              # PutObject only, and only under this prefix. No GetObject, no ListBucket,
+              # no DeleteObject: the function writes new objects and can do nothing else,
+              # so even a compromised function cannot read or destroy the archive.
+              # No cloudwatch:PutMetricData either — metrics go out as Embedded Metric
+              # Format on stdout and CloudWatch extracts them from the logs.
+              - Sid: WriteOwnPrefixOnly
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${PollBucket.Arn}/${Prefix}/*
+
+  # -------------------------------------------------------------- function
+  PollerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-poller
+      CodeUri: ../build/lambda
+      Handler: lambda_poll.lambda_handler
+      Runtime: python3.13
+      # arm64 is ~20% cheaper and every dependency is pure Python, so there is no
+      # compatibility question.
+      Architectures: [arm64]
+      # 128 MB deliberately: the cycle is I/O bound and spends most of its time asleep in
+      # the pacer, so extra CPU buys nothing while GB-seconds scale with memory.
+      MemorySize: 128
+      # 4 minutes, below the 5-minute schedule. With reserved concurrency 1 an invocation
+      # still running when the next fires would block it, so the function must finish
+      # before its own successor arrives. poll_cycle stops early on the remaining-time
+      # budget rather than being killed mid-write.
+      Timeout: 240
+      ReservedConcurrentExecutions: 1
+      Role: !GetAtt PollerRole.Arn
+      # No VpcConfig. A Lambda in a VPC needs a NAT Gateway for outbound internet
+      # (~EUR33/mo, forbidden by CLAUDE.md). Outside a VPC it reaches the API directly
+      # and costs nothing.
+      Environment:
+        Variables:
+          POLL_BUCKET: !Ref PollBucket
+          POLL_PREFIX: !Ref Prefix
+          POLL_STAGE: !Ref Stage
+          POLL_RATE: !Ref PollRate
+          POLL_NUM_MINS: !Ref NumMins
+          # Set explicitly so the handler never has to guess where the packaged config
+          # landed. See the HERE-relative defaults in lambda_poll.py.
+          POLL_CONFIG: /var/task/config/poll_stations.toml
+          POLL_STATIONS: /var/task/stations.json
+      EventInvokeConfig:
+        # EventBridge invokes Lambda ASYNCHRONOUSLY and retries twice by default. A
+        # transient failure would re-poll Irish Rail two more times. The schedule is the
+        # retry: the next attempt is five minutes away.
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 60
+      Events:
+        Tick:
+          Type: Schedule
+          Properties:
+            # Every 5 minutes, 24/7. Quiet hours are enforced INSIDE the function, not
+            # here: cron is UTC-only, so "00:30-05:30 Irish time" would need two
+            # expressions swapped on the last Sundays of March and October. Polling
+            # round the clock also gives the liveness alarm below a continuous heartbeat.
+            Schedule: rate(5 minutes)
+            Name: !Sub ${AWS::StackName}-tick
+            Description: One poll cycle
+
+  # ------------------------------------------------------------- alarming
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${AWS::StackName}-alarms
+
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+      TopicArn: !Ref AlarmTopic
+
+  # "Irish Rail has never throttled us" is a claim this project repeats. This is what
+  # keeps it a claim being checked rather than an assumption.
+  ThrottledAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-throttled-by-operator
+      AlarmDescription: Irish Rail returned 429/503. Slow down, do not retry harder.
+      Namespace: RailDelay
+      MetricName: ThrottleEvents
+      Dimensions: [{ Name: Stage, Value: !Ref Stage }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  PartialCycleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-partial-cycle
+      AlarmDescription: A cycle hit the time budget and skipped stations.
+      Namespace: RailDelay
+      MetricName: PartialCycle
+      Dimensions: [{ Name: Stage, Value: !Ref Stage }]
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  ErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-function-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref PollerFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  # The important one. Everything else fails loudly; a poller that silently stops being
+  # invoked costs unrecoverable data and produces no error anywhere.
+  #
+  # This alarms on Invocations rather than RecordsCaptured precisely BECAUSE quiet hours
+  # live in the function: the Lambda still runs every five minutes overnight and returns
+  # early, so invocations are a continuous 24/7 heartbeat. Alarming on records would fire
+  # every single night.
+  NotRunningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-not-running
+      AlarmDescription: The poller has not been invoked for 30 minutes. Data is being
+        lost and cannot be backfilled.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions: [{ Name: FunctionName, Value: !Ref PollerFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 6
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  # With reserved concurrency 1, a cycle that overruns means the next invocation is
+  # throttled away. Skipping is the behaviour we want, but it must be visible.
+  ConcurrencyThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-invocation-dropped
+      AlarmDescription: A scheduled invocation was throttled, so a cycle was skipped.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions: [{ Name: FunctionName, Value: !Ref PollerFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  BucketName:
+    Value: !Ref PollBucket
+  Prefix:
+    Value: !Ref Prefix
+  FunctionName:
+    Value: !Ref PollerFunction
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic
+  SyncCommand:
+    Description: Pull the Lambda output down for the parallel-run diff (D36)
+    Value: !Sub aws s3 sync s3://${PollBucket}/${Prefix}/ data/live/lambda/ --region ${AWS::Region}

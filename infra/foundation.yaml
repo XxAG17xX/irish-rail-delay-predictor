@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# foundation.yaml — spend guardrail. DEPLOY THIS FIRST, and confirm the budget is live
+# before the poller stack goes up (CLAUDE.md: "A budget alarm must exist before anything
+# is deployed").
+#
+# Deploy to us-east-1, NOT the poller's region. AWS Budgets requires its SNS topic in
+# us-east-1; a topic anywhere else is rejected. That is why this is a separate stack
+# rather than a section of the poller template — CloudFormation cannot span regions.
+#
+# It is also separate so that tearing down or recreating the poller stack cannot remove
+# the spend alarm. The moment you most want a budget watching is the moment you are
+# rebuilding something.
+#
+#   aws cloudformation deploy --region us-east-1 \
+#     --template-file infra/foundation.yaml \
+#     --stack-name rail-delay-foundation \
+#     --parameter-overrides AlarmEmail=you@example.com
+#
+# Then confirm the SNS subscription from your inbox. Until you click that link the topic
+# has no confirmed subscriber and every notification is silently discarded.
+
+Parameters:
+  AlarmEmail:
+    Type: String
+    Description: Address to notify on budget thresholds. Requires email confirmation.
+  BudgetAmount:
+    Type: Number
+    Default: 5
+    Description: Monthly budget. Real cost should be a few cents, so this only fires
+      if something is genuinely wrong.
+  Currency:
+    Type: String
+    Default: EUR
+    AllowedValues: [EUR, USD, GBP]
+    Description: Must match the account's billing currency, or the budget will not
+      evaluate against actual spend.
+
+Resources:
+  BudgetTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: rail-delay-budget
+      DisplayName: rail-delay budget
+
+  BudgetTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+      TopicArn: !Ref BudgetTopic
+
+  # Without this, AWS Budgets cannot publish to the topic and notifications vanish with
+  # no error anywhere. The condition pins it to this account so the topic is not an open
+  # relay for any budget in any account.
+  BudgetTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref BudgetTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowBudgetsToPublish
+            Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref BudgetTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: rail-delay-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref BudgetAmount
+          Unit: !Ref Currency
+      NotificationsWithSubscribers:
+        # 80% actual — early warning while there is still time to look.
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
+        # 100% actual — the budget is spent.
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
+        # 100% forecast — catches a runaway early, before the money is gone. This is the
+        # one that would actually save you from a misconfigured resource billing hourly.
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref BudgetTopic
+
+Outputs:
+  BudgetTopicArn:
+    Description: SNS topic receiving budget notifications
+    Value: !Ref BudgetTopic
+    Export:
+      Name: rail-delay-budget-topic

@@ -63,10 +63,13 @@ from poll_live import (USER_AGENT, in_dublin, in_quiet_hours, load_station_confi
 from backfill import Pacer
 from sinks import S3Sink
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-CONFIG = Path(os.environ.get("POLL_CONFIG", REPO_ROOT / "config" / "poll_stations.toml"))
-STATIONS = Path(os.environ.get("POLL_STATIONS",
-                               REPO_ROOT / "data" / "live" / "stations.json"))
+# Relative to THIS file, not to a repo root. Under Lambda the code lives at
+# /var/task/lambda_poll.py, so a `parent.parent` root resolves to /var and every config
+# lookup fails — a guaranteed first-deploy failure. The build script stages config/ and
+# stations.json alongside the modules, and the template sets these explicitly anyway.
+HERE = Path(__file__).resolve().parent
+CONFIG = Path(os.environ.get("POLL_CONFIG", HERE / "config" / "poll_stations.toml"))
+STATIONS = Path(os.environ.get("POLL_STATIONS", HERE / "stations.json"))
 
 NAMESPACE = "RailDelay"
 

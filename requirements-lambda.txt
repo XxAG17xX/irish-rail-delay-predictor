@@ -1,0 +1,18 @@
+# Runtime dependencies for the Lambda poller ONLY. Deliberately not requirements.txt.
+#
+# boto3 is absent on purpose: the Lambda runtime provides it. Vendoring it wastes ~15 MB
+# and risks the packaged version clashing with the runtime's.
+#
+# lightgbm, numpy, pyarrow and scipy are absent because the poller never imports them.
+# They would add ~200 MB for code that does not run, and blow the 250 MB unzipped limit.
+#
+# tzdata is included even though Amazon Linux ships a system timezone database. Pinning it
+# means local and Lambda resolve Europe/Dublin from identical data, which is a
+# precondition for the parallel-run diff (D36) meaning anything.
+#
+# Both are pure Python, which is the only reason a Windows machine can build a working
+# Linux package. If a compiled dependency is ever added, this build must move to a Linux
+# container or pass --platform manylinux2014_aarch64 --only-binary :all:.
+
+requests==2.34.2
+tzdata==2026.3
