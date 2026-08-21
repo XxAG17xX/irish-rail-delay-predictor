@@ -45,8 +45,9 @@ The offline phase is complete. Do not redo it.
 - **Backfill:** 28,706 gzipped XML files, 1,087 train codes, 34 dates. Done once, not
   repeated.
 - **Model:** LightGBM quantile regression, trained on 27 June – 12 July, validated
-  13–19 July. Trained locally. **There is no persisted model artifact** — training runs
-  in-process and saves nothing. Model persistence is unbuilt work, not a completed step.
+  13–19 July. Twelve features, all computable at prediction time (`src/features.py`).
+  Versioned artifacts under `data/models/{version}/` with a `LATEST` pointer; save with
+  `python src\train_quantile.py --save`, load with `--load latest`. See D31–D35.
 - **The test week (20–26 July) has never been opened** and stays closed until the end,
   per decisions.md D25. Every number quoted anywhere is validation, not test.
 - **Head-to-head vs the operator's own `ExpectedArrival`:** 80.1s vs 109.7s MAE across
@@ -54,6 +55,33 @@ The offline phase is complete. Do not redo it.
   headline claim and every future change must not silently break it.
 
 Current phase is **serving**: get the system running in AWS with a public URL.
+
+### Where serving has got to
+
+Written and committed, **nothing deployed**: `src/sinks.py` (Local/S3/Memory sinks),
+`src/lambda_poll.py`, `infra/foundation.yaml`, `infra/poller.yaml`,
+`scripts/build_lambda.ps1`, `requirements-lambda.txt`. Both templates lint clean.
+
+Next actions, in this order:
+
+1. Install the tooling: `winget install Amazon.AWSCLI Amazon.SAM-CLI` (neither is present).
+2. Deploy `infra/foundation.yaml` to **us-east-1** and confirm the budget is live in the
+   Billing console. Budgets require their SNS topic in us-east-1, which is why it is a
+   separate stack from the poller.
+3. Confirm the SNS email subscription. Until the link is clicked the topic has no
+   subscriber and every notification is silently dropped.
+4. `scripts\build_lambda.ps1`, then `sam deploy --guided --region eu-west-1
+   --template-file infra/poller.yaml`.
+5. Start the seven-day parallel run and **write the start date into D36**, which has a
+   hard expiry.
+
+Open items that will not announce themselves:
+
+- `harvest_codes.py --from-snapshots` reads a local directory. Once the local poller
+  stops it reports "0 new codes", which is indistinguishable from a network with no new
+  services. Needs a staleness guard **before** cutover (D36).
+- `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
+  networkx). Worth splitting the way `requirements-lambda.txt` already does.
 
 ## Who I am, and how to work with me
 
@@ -275,8 +303,34 @@ interviewer will ask about. The deadline is real.
 - Secrets in `.env`, never committed
 - Commit small and often — the history is itself evidence of the work
 - `requirements.txt` kept current via `pip freeze`
+- **Comment the non-obvious only.** A comment that restates the next line is noise. Keep
+  the ones naming a trap, a ceiling, or a rejected alternative. Reasoning belongs in
+  `docs/decisions.md`, not repeated in the source.
+- **Commit messages:** short imperative subject. A body only when there is a non-obvious
+  reason worth recording, not by default. No co-author trailers.
 - **Write down what was tested and what the evidence was, not just the conclusion.**
   Two claims in this file were wrong until tested against raw records.
+
+## Review tooling
+
+Installed and available. None of it needs to run before shipping.
+
+| Need | Command |
+|---|---|
+| Correctness bugs | `/code-review` |
+| Security | `/security-review` |
+| Redundancy, over-engineering | `/ponytail-audit` (repo) or `/ponytail-review` (diff) |
+| Harsh maintainability gate | `thermo-nuclear-code-quality-review` |
+| Module structure, seams | `improve-codebase-architecture` |
+
+`ponytail` is a persistent lazy-coding mode, active by default via a session hook. Its
+three review skills all state that correctness, security and performance are **out of
+scope**, so it never substitutes for `/code-review`.
+
+Architecture refactors are cheap early and dangerous late: the headline claim rests on a
+specific pipeline, and a restructure that quietly changes a feature or a join breaks it
+with nothing catching it. Before publishing, run the reports to know the weak spots and
+**act on nothing**.
 
 ## Reliability principle
 
