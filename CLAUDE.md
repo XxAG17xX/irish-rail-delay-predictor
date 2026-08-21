@@ -64,7 +64,10 @@ Written and committed, **nothing deployed**: `src/sinks.py` (Local/S3/Memory sin
 
 Next actions, in this order:
 
-1. Install the tooling: `winget install Amazon.AWSCLI Amazon.SAM-CLI` (neither is present).
+0. An AWS account exists (done outside this repo). The machine is **not** set up for it:
+   `~/.aws/` is empty, no CLI, no credentials, no `AWS_*` env vars.
+1. Install the tooling: `winget install Amazon.AWSCLI Amazon.SAM-CLI` (neither is
+   present), then `aws configure` and check with `aws sts get-caller-identity`.
 2. Deploy `infra/foundation.yaml` to **us-east-1** and confirm the budget is live in the
    Billing console. Budgets require their SNS topic in us-east-1, which is why it is a
    separate stack from the poller.
