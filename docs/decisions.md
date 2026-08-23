@@ -911,6 +911,13 @@ percentage for that reason. Run it once on day 1 as a smoke test of the tooling 
 broken sync or a crashing script is worth finding on day 1, not on day 7 while trying to
 make the cutover call.
 
+**Stopping and restarting local.** Ctrl+C before shutting the laptop down; that runs the
+cleanup and releases the host lock. A hard shutdown does not, so the lock survives with a
+recent heartbeat and `hostlock` refuses to start a new poller for 15 minutes. Either wait,
+or use `--force-lock`. The lock file is the liveness check too: no
+`data/.irishrail-api.lock` means local is not running, and it does not restart itself
+after a reboot. Automating that is not worth it for a seven-day window.
+
 **A forced-failure test runs inside the week, not after it — 2026-08-27, day 5 of 7.**
 
 Why day 5 and not day 1: you need to know what working looks like before you break it,
