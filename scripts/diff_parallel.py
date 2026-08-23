@@ -139,7 +139,13 @@ def main():
                     help="gap that ends a local coverage window (default: 15)")
     ap.add_argument("--trim-cycles", type=int, default=1,
                     help="cycles dropped from each window edge (default: 1)")
-    ap.add_argument("--pair-seconds", type=int, default=30)
+    # Half the poll interval. The two pollers run on independent 5-minute schedules with
+    # a fixed phase offset (85s when measured), so a tight threshold never pairs anything
+    # and the check silently measures nothing.
+    ap.add_argument("--pair-seconds", type=int, default=150)
+    ap.add_argument("--min-hours", type=float, default=2.0,
+                    help="below this many covered hours, results are edge-dominated "
+                         "and reported as provisional (default: 2)")
     ap.add_argument("--overlap-target", type=float, default=99.5)
     args = ap.parse_args()
 
@@ -200,6 +206,18 @@ def main():
     print(f"  {'TOTAL':<12}{len(wins):>8}{tot_cov:>11.1f}{tot_act:>10.1f}{total_pct:>10}")
     print("\n  Gaps are laptop downtime, not missing data. Everything below is measured")
     print("  inside the covered hours only.")
+
+    # Window edges are local cycle timestamps, so local necessarily has a cycle at each
+    # end while the Lambda's may fall just outside. The two samplers also run on
+    # independent schedules with a fixed phase offset. Over a short window that skews
+    # everything downstream; over a full day the difference is one cycle in ~144.
+    n_local = sum(1 for c in lc if in_windows(c, wins))
+    n_lambda = sum(1 for c in mc if in_windows(c, wins))
+    print(f"  cycles inside windows: local {n_local}, lambda {n_lambda}")
+    if n_local != n_lambda:
+        skew = abs(n_local - n_lambda) / max(n_local, n_lambda) * 100
+        print(f"  sampling skew {skew:.0f}% — expect that much one-sided difference "
+              f"below, independent of any real disagreement")
 
     if not wins:
         need = 2 * args.trim_cycles + 2
@@ -288,6 +306,12 @@ def main():
                 key = (day, r["Traincode"].strip().upper(),
                        r["Stationcode"].strip().upper())
                 dest[t][key] = r.get("Exparrival", "")
+    offsets = [min(abs((t - lt).total_seconds()) for t in mby) for lt in lby] if mby else []
+    if offsets:
+        offsets.sort()
+        print(f"  median phase offset between the two schedules: "
+              f"{offsets[len(offsets) // 2]:.0f}s")
+
     agree = total = pairs = 0
     for lt, lmap in lby.items():
         near = [t for t in mby if abs((t - lt).total_seconds()) <= args.pair_seconds]
@@ -300,12 +324,23 @@ def main():
             agree += lmap[k] == mmap[k]
     rate = f"{100 * agree / total:.1f}%" if total else "-"
     print(f"  {pairs} paired cycles, {total} shared events, {rate} identical Exparrival")
+    if offsets and not pairs:
+        print(f"  ! nothing paired: the schedules never land within {args.pair_seconds}s "
+              f"of each other.")
+        print("    Raise --pair-seconds, but expect lower agreement as the operator")
+        print("    legitimately revises its estimate across a wider gap.")
 
     print("\n" + "=" * W)
     ok = identical and overlap_pct >= args.overlap_target
-    print(f"{'MEETS' if ok else 'DOES NOT MEET'} the D36 bar "
-          f"(schema identical, overlap >= {args.overlap_target}%)")
-    print(f"  measured over {tot_cov:.1f} covered hours")
+    if tot_cov < args.min_hours:
+        print(f"PROVISIONAL — only {tot_cov:.1f} covered hours, below the "
+              f"{args.min_hours:.0f}h floor.")
+        print("  At this length the numbers are dominated by window-edge sampling, not")
+        print("  by agreement. Not a pass or a fail; come back with a full day.")
+    else:
+        print(f"{'MEETS' if ok else 'DOES NOT MEET'} the D36 bar "
+              f"(schema identical, overlap >= {args.overlap_target}%)")
+        print(f"  measured over {tot_cov:.1f} covered hours")
     print("=" * W)
     return 0
 
