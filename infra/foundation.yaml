@@ -31,10 +31,10 @@ Parameters:
       if something is genuinely wrong.
   Currency:
     Type: String
-    Default: EUR
-    AllowedValues: [EUR, USD, GBP]
-    Description: Must match the account's billing currency, or the budget will not
-      evaluate against actual spend.
+    Default: USD
+    Description: Must be the account's billing currency. AWS Budgets rejects anything
+      else outright rather than converting - deploying this with EUR failed with
+      "EUR is not in the supported unit set':' [USD]". This account bills in USD.
 
 Resources:
   BudgetTopic:
