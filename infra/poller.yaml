@@ -141,7 +141,14 @@ Resources:
       # before its own successor arrives. poll_cycle stops early on the remaining-time
       # budget rather than being killed mid-write.
       Timeout: 240
-      ReservedConcurrentExecutions: 1
+      # ReservedConcurrentExecutions: 1 is deliberately ABSENT. AWS refuses any
+      # reservation that leaves the account under 100 unreserved concurrent executions,
+      # and this account's total limit is 10, so no reservation is possible at all.
+      # Overlap is prevented structurally anyway: the 240s timeout is below the 300s
+      # schedule, retries are 0, and MaximumEventAgeInSeconds caps late delivery, so an
+      # invocation cannot still be running when its successor fires. The reservation was
+      # defence in depth, not the mechanism. Add it back if the concurrency quota is ever
+      # raised above 100. See decisions.md D37.
       Role: !GetAtt PollerRole.Arn
       # No VpcConfig. A Lambda in a VPC needs a NAT Gateway for outbound internet
       # (~EUR33/mo, forbidden by CLAUDE.md). Outside a VPC it reaches the API directly
@@ -261,8 +268,10 @@ Resources:
       TreatMissingData: breaching
       AlarmActions: [!Ref AlarmTopic]
 
-  # With reserved concurrency 1, a cycle that overruns means the next invocation is
-  # throttled away. Skipping is the behaviour we want, but it must be visible.
+  # Without a reservation (see the function above) a throttle means the account-wide
+  # limit of 10 was exhausted, which should never happen with one function on a
+  # five-minute schedule. If this fires, something else in the account is consuming
+  # concurrency, or a cycle is overrunning its timeout.
   ConcurrencyThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

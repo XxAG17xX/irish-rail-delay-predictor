@@ -914,3 +914,65 @@ is more than ~3 days old, plus an `aws s3 sync` step in the cutover runbook. A n
 reader is not needed; harvesting is rare and manual.
 
 **Date.** 2026-08-16
+
+---
+
+## D37 — cfn-lint validates shape, not service rules; check quotas and units before deploying
+
+**Decision.** Before deploying any CloudFormation template, check the values that a
+service API validates at create time rather than at template-parse time: currency units,
+account quotas, globally-unique names, and region-restricted services. A clean cfn-lint
+run says the template is well-formed, not that AWS will accept it.
+
+**What prompted it.** Two failures of exactly this shape, one caught the expensive way
+and one caught before it cost anything.
+
+`infra/foundation.yaml` deployed and failed on:
+
+```
+Unable to create/update budget - EUR is not in the supported unit set: [USD]
+```
+
+The budget was denominated in EUR because CLAUDE.md quotes euro figures for the cost
+rules. AWS Budgets does not convert; it accepts only the account's billing currency. The
+template had `AllowedValues: [EUR, USD, GBP]` sitting next to a comment saying "must
+match the account's billing currency" — a list advertising three options when the API
+accepts one. Fixed by defaulting to USD and deleting the AllowedValues, since a list of
+three that only ever accepts one is a trap rather than documentation.
+
+Note the account is AISPL (Amazon Web Services India Private Limited): invoices are in
+INR, but Budgets still works in USD because AWS prices in USD. The budget unit follows
+the pricing currency, not the invoice currency.
+
+`infra/poller.yaml` had not been deployed yet, and would have failed on:
+
+```
+ReservedConcurrentExecutions: 1
+```
+
+AWS refuses any reservation leaving the account below **100** unreserved concurrent
+executions. `aws lambda get-account-settings` reports this account's total limit as
+**10**, so no reservation is possible at all. Removed rather than worked around: overlap
+was already prevented structurally, because the 240s timeout sits below the 300s schedule
+with retries at 0, so an invocation cannot still be running when its successor fires. The
+reservation was defence in depth, not the mechanism.
+
+**Why this is a rule and not a pair of bugfixes.** Both passed cfn-lint. Both would pass
+`aws cloudformation validate-template`. Neither is a typo. The class is: **CloudFormation
+validates structure; the underlying service validates business rules, and only at create
+time.** A failed initial create is also auto-deleted now, so the stack vanishes and
+`describe-stacks` reports "does not exist" — the evidence has to be recovered from
+`list-stacks --stack-status-filter DELETE_COMPLETE` and then `describe-stack-events`
+against the deleted stack's ARN.
+
+**The pre-deploy checks, concretely.**
+
+- Currency or unit fields: confirm against the account, not against the docs.
+- Anything with a quota: `aws lambda get-account-settings`, `aws service-quotas
+  get-service-quota`. New accounts get far lower limits than the published defaults.
+- S3 bucket names are globally unique across every AWS account. `aws s3api head-bucket`
+  returns 404 if free, 403 if taken by someone else.
+- Region-restricted services: Budgets requires its SNS topic in us-east-1, which is why
+  the foundation stack is a separate stack in a separate region.
+
+**Date.** 2026-08-23
