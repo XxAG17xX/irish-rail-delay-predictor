@@ -862,8 +862,12 @@ time**, both polling api.irishrail.ie. This is a deliberate, named exception to 
 exists to stop two collectors ever running together. It runs for **seven days** and then
 ends, whether or not cutover happens.
 
-**Dates.** Start: the first Lambda invocation (record the actual date here on the day).
-**Hard stop: seven days later, no extension.**
+**Dates.** Started **2026-08-23**, first two Lambda cycles landing in S3 at 14:03 and
+14:08 UTC. **Hard stop 2026-08-30, no extension.**
+
+**Forced-failure test: 2026-08-27**, mid-window and during active hours. Late enough that
+normal operation is established, early enough that a silent alarm can still be fixed
+before the window closes.
 
 **What "ends" means.** At the stop date exactly one of two things happens:
 

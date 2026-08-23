@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "rail-delay-poller"
+resolve_s3 = true
+s3_prefix = "rail-delay-poller"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "BucketName=\"rail-delay-poller-kg\" Prefix=\"parallel/lambda\" Stage=\"parallel\" AlarmEmail=\"guptak1@tcd.ie\" PollRate=\"2\" NumMins=\"90\""
+image_repositories = []
+
+[default.global.parameters]
+region = "eu-west-1"
