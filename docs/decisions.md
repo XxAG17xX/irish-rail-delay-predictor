@@ -1010,3 +1010,51 @@ against the deleted stack's ARN.
   the foundation stack is a separate stack in a separate region.
 
 **Date.** 2026-08-23
+
+---
+
+## D38 — Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement
+
+**Decision.** `scripts/diff_parallel.py` reports its own sampling skew and schedule phase
+offset alongside every result, and refuses to give a pass or fail verdict below two
+covered hours. Both artefacts below look exactly like the pollers disagreeing, and neither
+is.
+
+**Artefact 1: window-edge sampling skew.** Comparison windows are built from local cycle
+timestamps, because local uptime is what has gaps. So the window edges *are* local cycles,
+and local necessarily has a cycle at each boundary while the Lambda's fall just outside.
+Measured on the first real window: **4 local cycles against 3 Lambda cycles**, a 25%
+sampling difference. That alone produced 8 local-only events, 0 lambda-only, and a 21.8%
+volume deviation.
+
+**The tell is the direction.** Sampling skew is one-sided: whichever poller sampled more
+finds extra events. Real disagreement scatters both ways. A `lambda only` column that
+stops being zero is worth investigating; a `local only` column on its own, with a matching
+skew percentage, is not. Over a full day the skew is one cycle in ~144 and the effect
+disappears.
+
+**Artefact 2: fixed phase offset.** The two schedules are independent and never drift into
+step. Measured at **exactly 85 seconds**, on every single cycle: local fires at :21:50,
+the Lambda at :23:15. Two consequences.
+
+First, the original 30-second pairing threshold for the value-agreement check matched
+nothing at all, so the check silently measured zero for its whole existence and reported
+a bare "-". A check that cannot fire is worse than no check, because it reads as a pass.
+Threshold now defaults to half the poll interval, and the observed median offset is
+printed so it cannot go stale silently.
+
+Second, `ExpectedArrival` is *supposed* to change across 85 seconds — that is the operator
+revising its estimate as the train approaches, which is the entire signal this project
+captures. Measured agreement is **89.2% across 743 shared events**, and the missing 11% is
+mostly legitimate revision rather than error. Do not read that number as an error rate.
+
+**Why a provisional floor rather than a verdict.** The first run printed "DOES NOT MEET
+the D36 bar" off twelve minutes of data, where every number was edge-dominated. That would
+have sent someone chasing a defect that does not exist. Below two covered hours the script
+now says PROVISIONAL and explains why, which is the honest answer.
+
+**Found by running the tool on day 1 rather than day 7.** Neither artefact appears in a
+synthetic test, because both come from the interaction of two real schedules. Both would
+have been actively misleading on the day the cutover decision was due.
+
+**Date.** 2026-08-23
