@@ -155,8 +155,22 @@ def main():
 
     now = datetime.now(timezone.utc)
     W = 78
+
+    # The parallel run begins when the Lambda begins. Local cycles older than that are
+    # pre-run smoke tests, and counting their days as active hours would drag coverage
+    # down for the whole window against days that were never part of it.
+    run_start = mc[0]
+    dropped = sum(1 for c in lc if c < run_start)
+    lc = [c for c in lc if c >= run_start]
+    lrows = [r for r in lrows if (cycle_of(r) or run_start) >= run_start]
+    if not lc:
+        print(f"no local cycles since the run began at {run_start:%Y-%m-%d %H:%M}Z")
+        return 2
+
     print(f"local  {len(lc):>5} cycles  {lc[0]:%Y-%m-%d %H:%M} .. {lc[-1]:%Y-%m-%d %H:%M}Z")
     print(f"lambda {len(mc):>5} cycles  {mc[0]:%Y-%m-%d %H:%M} .. {mc[-1]:%Y-%m-%d %H:%M}Z")
+    if dropped:
+        print(f"       {dropped} local cycles before the run start were excluded")
 
     stale_min = (lc[-1] - mc[-1]).total_seconds() / 60
     if stale_min > 30:
@@ -186,6 +200,23 @@ def main():
     print(f"  {'TOTAL':<12}{len(wins):>8}{tot_cov:>11.1f}{tot_act:>10.1f}{total_pct:>10}")
     print("\n  Gaps are laptop downtime, not missing data. Everything below is measured")
     print("  inside the covered hours only.")
+
+    if not wins:
+        need = 2 * args.trim_cycles + 2
+        longest = 0
+        gap = timedelta(minutes=args.gap_minutes)
+        run = 1
+        for prev, nxt in zip(lc, lc[1:]):
+            run = run + 1 if nxt - prev <= gap else 1
+            longest = max(longest, run)
+        longest = max(longest, 1)
+        print(f"\n  No comparison windows yet. Longest unbroken local run is {longest} "
+              f"cycles;")
+        print(f"  {need} are needed ({args.trim_cycles} trimmed from each edge, 2 left "
+              f"to span a window).")
+        print(f"  At a 5-minute interval that is about {need * 5} minutes of continuous "
+              f"local uptime.")
+        return 0
 
     lw = [r for r in lrows if in_windows(cycle_of(r), wins)]
     mw = [r for r in mrows if in_windows(cycle_of(r), wins)]
