@@ -282,6 +282,16 @@ a journey. Seasonality and holiday effects are third-order polish.
   in Actions secrets.
 - A budget alarm must exist before anything is deployed.
 
+**Measured cost, 2026-08-23.** One cycle writes 3 S3 objects totalling ~18 KB, so a month
+of five-minute polling is ~20,500 PUTs and ~123 MB. That comes to about **$0.10/month**,
+effectively all of it S3 PUT requests — Lambda, CloudWatch, SNS and Budgets all sit inside
+their permanent free tiers. In INR that is roughly ₹12 including GST.
+
+Two thresholds worth watching, because they move quietly: the deployment uses **8 of the
+10 free CloudWatch custom metrics** and **5 of the 10 free alarms**. Past those it is
+$0.30 per metric and $0.10 per alarm per month. The per-cycle object batching is what
+keeps PUTs at 20,500 rather than 210,000; see the S3 write batching note above.
+
 **Note, not a rule — S3 write batching.** If the poller is rewritten for AWS anyway,
 prefer one object per poll cycle over one per station: 30 objects every 5 minutes is
 ~259k PUTs/month for no gain. This does not justify rewriting the current poller on its

@@ -898,11 +898,41 @@ both weekend days since the timetables differ:
 Byte-level record equality is *not* the bar and expecting it would be wrong: the two
 pollers hit the API at different instants and the API's answer changes between them.
 
-**A forced-failure test runs inside the week, not after it.** The Lambda is deliberately
-broken mid-week — bad permissions and an induced timeout — to confirm the alarms actually
-fire. An alarm that has never fired is not a verified alarm. Doing this during the window
-rather than extending to a second week gets the same evidence for no extra calendar time,
-which matters against a mid-September deadline.
+**Running the comparison.** Daily, once there is a full day of overlap:
+
+```
+aws s3 sync s3://rail-delay-poller-kg/parallel/lambda/ data/live/lambda/ --region eu-west-1
+python scripts\diff_parallel.py
+```
+
+The script scopes everything to windows where local was demonstrably running, because the
+laptop gets shut down and a gap is not a miss. Coverage hours print above every
+percentage for that reason. Run it once on day 1 as a smoke test of the tooling itself: a
+broken sync or a crashing script is worth finding on day 1, not on day 7 while trying to
+make the cutover call.
+
+**A forced-failure test runs inside the week, not after it — 2026-08-27, day 5 of 7.**
+
+Why day 5 and not day 1: you need to know what working looks like before you break it,
+or you cannot tell a real alarm from a misconfigured one. Why not day 6 or 7: the point
+is to discover an alarm that *does not* fire, and that needs days left to fix and
+re-test. An alarm that has never fired is not a verified alarm — the failure mode being
+guarded against is finding out the "poller is dead" alarm never worked on the day the
+poller actually died, having already lost unrecoverable `ExpectedArrival` data.
+
+Three failures, three alarms, roughly 45 minutes. Revert each and confirm the alarm
+returns to OK before starting the next; an alarm that fires but never clears is its own
+bug.
+
+| Break | How | Expect | Delay |
+|---|---|---|---|
+| S3 permission | point the role's `s3:PutObject` resource at a bogus prefix, redeploy | `function-errors` | ~5 min |
+| Timeout | set `Timeout: 3`, redeploy | `function-errors`, maybe `partial-cycle` | ~5 min |
+| Schedule | `aws events disable-rule --name rail-delay-poller-tick --region eu-west-1` | `not-running` | **30 min** |
+
+The third is the important one and the slowest: `not-running` needs six consecutive empty
+five-minute periods. It is also the only alarm that catches the silent failure, since a
+poller that stops being invoked produces no error anywhere.
 
 **Comparison method.** The local poller is the **control and is not modified**: it keeps
 writing to local disk exactly as it does today. The Lambda's S3 prefix is synced down and
