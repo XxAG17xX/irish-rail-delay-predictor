@@ -58,12 +58,30 @@ def cycle_of(row):
 
 
 def load_local(exp_dir, cyc_dir):
-    cycles = sorted(parse_ts(p.stem) for p in cyc_dir.glob("*/*.json")
-                    if TS_RE.fullmatch(p.stem))
+    """Productive local cycles only, plus how many were dropped.
+
+    A cycle that recorded nothing is not coverage. On 2026-08-24 an ISP interception page
+    returned HTTP 200 for seven hours: the poller kept cycling and writing cycle files,
+    the body guard correctly rejected every response, and zero records were produced.
+    Counting those 78 cycles as uptime would claim seven hours of comparison against a
+    window that holds no local events at all.
+    """
+    cycles, barren = [], 0
+    for p in sorted(cyc_dir.glob("*/*.json")):
+        if not TS_RE.fullmatch(p.stem):
+            continue
+        try:
+            meta = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if meta.get("records", 0) > 0 and meta.get("status") != "failed":
+            cycles.append(parse_ts(p.stem))
+        else:
+            barren += 1
     rows = []
     for f in sorted(exp_dir.glob("*.jsonl")):
         rows += [json.loads(line) for line in f.open(encoding="utf-8") if line.strip()]
-    return cycles, rows
+    return sorted(cycles), rows, barren
 
 
 def load_lambda(root):
@@ -153,10 +171,10 @@ def main():
         print(f"no Lambda data at {args.lambda_root}. Run the aws s3 sync first.")
         return 2
 
-    lc, lrows = load_local(args.local_expected, args.local_cycles)
+    lc, lrows, barren = load_local(args.local_expected, args.local_cycles)
     mc, mrows = load_lambda(args.lambda_root)
     if not lc or not mc:
-        print(f"not enough cycles yet: local {len(lc)}, lambda {len(mc)}")
+        print(f"not enough productive cycles yet: local {len(lc)}, lambda {len(mc)}")
         return 2
 
     now = datetime.now(timezone.utc)
@@ -177,6 +195,9 @@ def main():
     print(f"lambda {len(mc):>5} cycles  {mc[0]:%Y-%m-%d %H:%M} .. {mc[-1]:%Y-%m-%d %H:%M}Z")
     if dropped:
         print(f"       {dropped} local cycles before the run start were excluded")
+    if barren:
+        print(f"       {barren} local cycles recorded zero records and are excluded from")
+        print(f"       coverage — the poller was up but producing nothing")
 
     stale_min = (lc[-1] - mc[-1]).total_seconds() / 60
     if stale_min > 30:

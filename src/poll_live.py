@@ -288,7 +288,7 @@ def poll_cycle(session, pacer, stations, sink, stats: Counter, num_mins: int,
     polled_at = in_dublin(now).isoformat(timespec="seconds")
     sink.begin_cycle(stamp, day)
     captured = 0
-    attempted, skipped = [], []
+    attempted, skipped, failed = [], [], []
 
     # 1. fleet snapshot
     try:
@@ -314,6 +314,7 @@ def poll_cycle(session, pacer, stations, sink, stats: Counter, num_mins: int,
                          pacer, "objstationdata")
         except Failure as f:
             stats["station_failed"] += 1
+            failed.append(code)
             sink.put_failure({
                 "ts": datetime.now().isoformat(timespec="seconds"),
                 "station": code, "kind": f.kind, "detail": f.detail,
@@ -336,10 +337,27 @@ def poll_cycle(session, pacer, stations, sink, stats: Counter, num_mins: int,
         print(f"  ! partial cycle — {len(skipped)} stations skipped on the time "
               f"budget: {', '.join(skipped)}")
 
+    # A cycle where every station failed is not "complete". On 2026-08-24 an ISP
+    # interception page returned HTTP 200 for seven hours; the body guard rejected all
+    # 2,460 responses correctly, but the cycle still recorded status "complete" with zero
+    # records, so a total outage was indistinguishable from a quiet railway.
+    if attempted and not failed:
+        status = "partial" if skipped else "complete"
+    elif len(failed) == len(attempted):
+        status = "failed"
+        stats["failed_cycles"] += 1
+        print(f"  !! CYCLE FAILED — all {len(failed)} stations errored. "
+              f"Nothing recorded. Check connectivity.")
+    else:
+        status = "degraded"
+        print(f"  ! degraded cycle — {len(failed)} of {len(attempted)} stations "
+              f"failed: {', '.join(failed)}")
+
     sink.end_cycle({
         "cycle_ts": stamp, "day": day, "polled_at": polled_at,
-        "status": "partial" if skipped else "complete",
+        "status": status,
         "stations_attempted": attempted, "stations_skipped": skipped,
+        "stations_failed": failed,
         "records": captured,
         "pacer_interval_sec": round(pacer.interval, 3),
         "throttle_events": pacer.throttle_events,
@@ -474,10 +492,15 @@ def run(args) -> int:
             if not args.no_quiet_hours and in_quiet_hours(now):
                 print(f"  {now:%H:%M:%S}  quiet hours, skipping")
             else:
+                was_ok, was_failed = stats["station_ok"], stats["station_failed"]
                 n = poll_cycle(session, pacer, stations, sink, stats, args.num_mins)
                 cycles += 1
-                print(f"  {now:%H:%M:%S}  {stats['station_ok']:>5} boards ok, "
-                      f"{stats['station_empty']:>4} empty, {n:>5} records this cycle, "
+                # Per-cycle, not cumulative. The cumulative counter froze at 420 during
+                # the 2026-08-24 outage and read as healthy for seven hours.
+                ok = stats["station_ok"] - was_ok
+                bad = stats["station_failed"] - was_failed
+                print(f"  {now:%H:%M:%S}  {ok:>3}/{len(stations)} boards ok, "
+                      f"{bad:>3} failed, {n:>5} records this cycle, "
                       f"{stats['records']:>7} total  pace={pacer.interval:.2f}s")
 
             if args.once:
