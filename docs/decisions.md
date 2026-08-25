@@ -1198,3 +1198,37 @@ or more than a few hundred lines of JavaScript, the vanilla version will start h
 That is a v2 problem and there is no v2 before mid-September.
 
 **Date.** 2026-08-25
+
+---
+
+## D42 — Predictions page loads per train on demand; no precomputation yet
+
+**Decision.** The Predictions page shows a station board with Irish Rail's own
+`ExpectedArrival` for each train immediately, and fetches our prediction per train on
+demand. Nothing is precomputed. Revisit after the parallel run closes on 2026-08-30.
+
+**The problem.** `/predict` costs one upstream `getTrainMovementsXML` call per train. A
+station page listing ten trains would be eleven upstream calls, about 5.5 seconds at the
+2 req/s politeness limit. That is too slow for a page load and rude to a free service.
+
+**The obvious fix, and why not yet.** The poller already fetches all 30 station boards
+every five minutes. It could compute and store a prediction for every train at every
+polled station in the same cycle, turning the page into a single S3 read.
+
+That change would land in `poll_live.py`, which is **the control for the parallel run
+until 30 August**. Changing the control mid-experiment invalidates the comparison it
+exists to produce: any divergence afterwards could be the port or could be the change, and
+there would be no way to tell. Same reasoning as moving cycle metadata into `LocalSink`
+*before* the run started rather than during it.
+
+**What the deferral costs.** The page shows operator ETAs instantly and our predictions
+arrive progressively as each request returns. That is honest rather than degraded: the
+operator answers for every train while we answer for roughly 44% of them, and a page that
+fills in unevenly makes the coverage gap visible instead of hiding it behind a spinner.
+
+**What to weigh at cutover.** Precomputing generates predictions nobody asked for, which
+inflates the prediction log and makes the coverage denominator mean something different:
+"what the model could answer" rather than "what users asked for". D39 logs requests, and
+that distinction should be settled before precomputation lands, not after.
+
+**Date.** 2026-08-25

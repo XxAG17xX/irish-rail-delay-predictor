@@ -58,9 +58,18 @@ Current phase is **serving**: get the system running in AWS with a public URL.
 
 ### Where serving has got to
 
-Written and committed, **nothing deployed**: `src/sinks.py` (Local/S3/Memory sinks),
-`src/lambda_poll.py`, `infra/foundation.yaml`, `infra/poller.yaml`,
-`scripts/build_lambda.ps1`, `requirements-lambda.txt`. Both templates lint clean.
+**Deployed and live:**
+
+- Budget stack (`infra/foundation.yaml`, us-east-1) and poller stack
+  (`infra/poller.yaml`, eu-west-1). Lambda poller running every 5 minutes.
+- **Parallel run 2026-08-23 to 08-30** (D36, hard expiry). Forced-failure test 08-27.
+  Compare with `python scripts\diff_parallel.py` after an `aws s3 sync`.
+- API stack (`infra/api.yaml`, eu-west-1):
+  **https://u57p35imryiymiihvvs2wc3r2q0vpgmc.lambda-url.eu-west-1.on.aws**
+  Try `/health`, `/docs`, `/predict?train=A220&station=THRLS`. Cold start ~3.2s,
+  warm ~30ms. Predictions log to `s3://rail-delay-poller-kg/predictions/`.
+
+**Not built:** nightly scorer, three web pages.
 
 Next actions, in this order:
 
@@ -282,6 +291,12 @@ a journey. Seasonality and holiday effects are third-order polish.
 - GitHub Actions authenticates to AWS via OIDC. No long-lived access keys in the repo or
   in Actions secrets.
 - A budget alarm must exist before anything is deployed.
+- **The API package needs three things a normal `pip install` will not give you**, all
+  found the hard way and all encoded in `scripts/build_api.ps1`: two `--platform` tags
+  (numpy past 2.2.6 ships only `manylinux_2_28`, lightgbm only `manylinux2014`, and
+  either alone fails to resolve), `--python-version 3.13` because this machine runs 3.14,
+  and a vendored `libgomp.so.1` because lightgbm links against OpenMP and the Lambda
+  runtime does not ship it. Without the last one the import dies at `ctypes.LoadLibrary`.
 
 **Measured cost, 2026-08-23.** One cycle writes 3 S3 objects totalling ~18 KB, so a month
 of five-minute polling is ~20,500 PUTs and ~123 MB. That comes to about **$0.10/month**,

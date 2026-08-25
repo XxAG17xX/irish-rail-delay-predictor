@@ -1,0 +1,25 @@
+# Runtime dependencies for the prediction API Lambda.
+#
+# Not boto3: the Lambda runtime provides it, and vendoring risks a version clash with the
+# runtime's own copy.
+#
+# Not pyarrow: the API never touches Parquet. It reads a live XML response and a baked
+# LightGBM text model, and pyarrow alone is ~90MB.
+#
+# scipy and narwhals are here because lightgbm requires them, not because this code uses
+# them. lightgbm imports both at module load, so omitting either fails at cold start
+# rather than at prediction time.
+#
+# Unlike requirements-lambda.txt, these are NOT pure Python. numpy, scipy and
+# pydantic-core all ship compiled extensions, so a Windows machine cannot build a working
+# Linux package by copying its own site-packages. The build must pass
+# --platform manylinux2014_aarch64 --only-binary=:all:, which is exactly the case
+# build_lambda.ps1's comment predicted.
+
+fastapi==0.141.1
+mangum==0.22.0
+requests==2.34.2
+lightgbm==4.7.0
+numpy==2.5.1
+scipy==1.18.0
+tzdata==2026.3

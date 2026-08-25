@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+# api.yaml — the prediction API.
+#
+# Separate stack from the poller on purpose: separate roles, so a mistake in one cannot
+# grant the other write access it should not have. The API may write predictions and
+# nothing else; the poller may write poll output and nothing else.
+#
+#   powershell scripts\build_api.ps1 -Version <version>
+#   sam deploy --guided --region eu-west-1 --template-file infra/api.yaml \
+#     --parameter-overrides ServingModelVersion=<version>
+#
+# The version passed here must be the version baked by the build script. api.py refuses to
+# start if they differ, and the build script refuses to bake anything but what it was
+# asked for, so the two cannot drift silently in either direction.
+
+Parameters:
+  ServingModelVersion:
+    Type: String
+    Description: Pinned model version, e.g. 20260813T221035Z-0c444e3. Must match the
+      artifact baked into build/api by scripts/build_api.ps1. Promotion is a deploy with
+      this parameter changed, which is what makes promotion deliberate and auditable
+      rather than a side effect of saving an artifact (see decisions.md D33 amendment).
+  BucketName:
+    Type: String
+    Description: Existing bucket, shared with the poller stack. Created and retained there.
+  PredictionsPrefix:
+    Type: String
+    Default: predictions
+    Description: Key prefix for the prediction log. The API can write here and nowhere else.
+  AlarmEmail:
+    Type: String
+    Description: Address to notify on API errors. Requires email confirmation.
+
+Resources:
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-api
+      # The prediction log's second copy lands here, timestamped by AWS at ingestion
+      # (D39). 30 days is longer than the nightly scorer needs and keeps the cost at zero.
+      RetentionInDays: 30
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: api-minimal
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${ApiLogGroup.Arn}:*
+              # PutObject on the prediction prefix and nothing else. No GetObject, so the
+              # API cannot read back what it wrote; no DeleteObject, so it cannot unwrite
+              # it. The scorer gets the mirror image of this (read predictions, write
+              # scores) so "never regenerate historical predictions" is enforced by
+              # credentials rather than by discipline. See D39.
+              - Sid: WritePredictionsOnly
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PredictionsPrefix}/*
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-api
+      CodeUri: ../build/api
+      Handler: api.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      # Larger than the poller because importing numpy, scipy and lightgbm dominates cold
+      # start, and Lambda scales CPU with memory. At this traffic the whole thing stays
+      # inside the free tier either way, so the smaller setting would buy nothing but a
+      # slower first request.
+      MemorySize: 1024
+      Timeout: 30
+      Role: !GetAtt ApiRole.Arn
+      Environment:
+        Variables:
+          SERVING_MODEL_VERSION: !Ref ServingModelVersion
+          POLL_BUCKET: !Ref BucketName
+          PREDICTIONS_PREFIX: !Ref PredictionsPrefix
+          MODEL_DIR: /var/task/model
+      FunctionUrlConfig:
+        # A Function URL rather than API Gateway: this is one public read-only endpoint,
+        # and API Gateway would add $1/million requests plus a second thing to configure
+        # for features nothing here uses.
+        AuthType: NONE
+        Cors:
+          AllowOrigins: ["*"]
+          AllowMethods: [GET]
+      # No ReservedConcurrentExecutions: the account limit is 10 and AWS refuses any
+      # reservation leaving under 100 unreserved (D37).
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${AWS::StackName}-alarms
+
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+      TopicArn: !Ref AlarmTopic
+
+  # Fires on a failed prediction-log write too, since those return 503 by design (D39):
+  # an unlogged prediction is not served, so log trouble must be visible as API trouble.
+  ApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-api-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref ApiFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  ApiUrl:
+    Description: Public endpoint. Try /health and /docs.
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
+  ServingModelVersion:
+    Value: !Ref ServingModelVersion
