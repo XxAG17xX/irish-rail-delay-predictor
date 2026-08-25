@@ -1346,3 +1346,123 @@ rather than something to do to working code three weeks from a deadline. New cod
 from `feedtime`.
 
 **Date.** 2026-08-25
+
+---
+
+## D46 — How the head-to-head against the operator is kept fair
+
+**This entry should have been written on 2026-07-28 when the comparison was built.** It
+was not: the reasoning went into `scripts/compare_to_operator.py`'s docstring and stayed
+there. It is the methodology behind the project's headline claim, so it belongs here.
+
+**The claim.** Model 80.1s MAE against Irish Rail's `ExpectedArrival` at 109.7s, a 27%
+improvement, over 9,077 comparisons on 2,654 distinct events (2026-08-01/02).
+
+**Four ways the comparison could have been unfair, each handled explicitly.**
+
+**1. Temporal leakage.** The operator issued its ETA at an instant. Our model must use only
+what was knowable then. So for a poll at time P, the vantage is the last stop whose
+**actual arrival clock time** was before P — not the last stop in the journey, and not the
+last stop with a recorded arrival. A stop that reported at 10:20 is invisible to a
+prediction made at 10:15 even though it sits earlier in the route with a perfectly good
+delay against it. Polls taken after the train already arrived are dropped: a board keeps
+listing a train past arrival, and at that point `Exparrival` is not a prediction.
+
+**2. A feature that cannot exist at prediction time.** `horizon_observed_stops` counts
+stops that *did* report, knowable only once the journey finished. Including it would have
+measured a model that could not be deployed. Excluded, at a cost of 0.28% of gain. This is
+what later forced the 12-feature retrain and D35.
+
+**3. Output granularity.** `Exparrival` is minute-precision; actual arrivals are 6-second
+(D22). Scoring a to-the-second prediction against a to-the-minute one hands us up to 30
+seconds of free accuracy on every event. Both variants are reported and **the
+minute-rounded one is the headline**: 80.1s rather than the flattering 77.9s. Giving away
+2.2 seconds to make the comparison honest is the right trade for a claim that has to
+survive scrutiny.
+
+**4. Correlated repeats.** Each event is polled ~18 times as the train approaches.
+Treating those as 18 independent comparisons would inflate every count and narrow every
+interval. One comparison is kept per (event, lead-time band), the last poll in that band
+being the most informed prediction the operator made at that range.
+
+**What the comparison cannot say.** 29,118 polls (~56%) were dropped because the train had
+not reported anywhere yet. The operator answers those; we cannot. So "27% better" is
+conditional on us having anything to say at all, and that limit belongs beside the number
+everywhere it appears.
+
+**Where it loses.** Weak-coverage lines: MAE looks 2.3% better but the median is worse
+(183s against 159s) and the model loses 58.7% of head-to-head comparisons on n=104.
+Reported as a loss.
+
+**Date.** 2026-08-25 (recording work done 2026-07-28)
+
+---
+
+## D47 — A 100% join rate is necessary and nearly meaningless; usability is the number
+
+**Also written late.** The reasoning lived in `scripts/validate_join.py` and in one
+conversation.
+
+**Decision.** `validate_join.py` reports match rate *and* usability, and its verdict line
+says explicitly that the match rate should not be read as readiness.
+
+**Why the match rate is close to guaranteed.** Live station boards and
+`getTrainMovementsXML` are two views of the same timetable. If the board says a train
+calls at Connolly, the movements record lists Connolly. The join was only ever at risk
+from *formatting* mismatches — train-code whitespace, station-code vocabulary, date
+format — and all three were ruled out before running it. Result: 4,179 of 4,179 events,
+100.00%, every station group.
+
+**The number that gates the comparison.** How many matched events have **both** a real
+operator ETA and a real recorded arrival. A matched event with a null `Arrival` cannot be
+scored against anything.
+
+| group | events | usable | with AutoArrival=1 |
+|---|---|---|---|
+| dart | 1,212 | 1,068 (88.1%) | 1,053 |
+| dublin_hubs | 1,195 | 961 (80.4%) | 848 |
+| **weak_coverage** | **683** | **180 (26.4%)** | **74** |
+| TOTAL | 4,179 | 3,103 (74.3%) | 2,818 |
+
+Weak-coverage lines join perfectly and are still unusable: the operator issues an ETA for
+398 of 683 events but an arrival is recorded for only 180, and with trustworthy labels it
+is 74. A weekend of data yields 74 comparable events on the lines where an honest answer
+matters most, which is not enough to claim anything in either direction.
+
+**Events, not records.** Distinct `(date, train, station)` triples are the unit, because
+that is what the comparison consumes — one prediction, one operator ETA, one actual. Raw
+polled rows are ~18x that and would inflate every count. Both are printed so the ratio is
+visible.
+
+**A useful incidental finding.** For most groups `has ETA` and `has actual` are identical
+counts — DART 1,068/1,068, Dublin hubs 961/961, Cork corridor 326/326. Both probably
+derive from the same signalling detection: when the system sees the train it produces
+both, when it cannot it produces neither. If that holds, operator-ETA availability is a
+usable proxy for label availability. Not confirmed.
+
+**Date.** 2026-08-25 (recording work done 2026-08-23)
+
+---
+
+## D48 — Line keywords are matched on word boundaries, not substrings
+
+**Small but it would have silently corrupted the label-quality analysis.**
+
+**Decision.** `coverage_by_location.py` matches the weak-coverage line keywords with
+`\b(cork|cobh|...|ballina|athlone)\b`, never as plain substrings, and prints every
+location name each keyword matched so the heuristic is checkable against reality.
+
+**Why.** `Ballina` is a prefix of **Ballinasloe**, which is on the Dublin–Galway line and
+is not flagged. `Ennis` is a prefix of **Enniscorthy**. A substring match would have
+labelled both as weak-coverage lines, inflating the flagged group with well-covered
+stations and corrupting the comparison that D20 was built to test. The bug would not have
+raised anything; it would have produced a plausible number.
+
+**The deeper caveat, which survives the fix.** data-dictionary 5.1 lists weakly-covered
+**lines**; the data has **locations**. Intermediate stops on a flagged line — Little Island
+or Carrigtwohill on the Cobh branch — never match any keyword, so the flagged group
+understates the affected set in the other direction. This is part of why the line-keyword
+approach was abandoned entirely for `AutoArrival` (D20, D21): it is a proxy that fails
+both ways, and no amount of regex care fixes that.
+
+**Date.** 2026-08-25 (recording work done 2026-07-28)
