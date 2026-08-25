@@ -263,7 +263,8 @@ a journey. Seasonality and holiday effects are third-order polish.
 ## Stack
 
 - Ingestion: Python + `requests`
-- Storage: gzipped raw on disk → Parquet → Postgres
+- Storage: gzipped raw on disk → Parquet → S3. **No database** — see decisions.md
+  D40 for why, because "why no database?" is an interview question.
 - Model: LightGBM, quantile loss, for prediction intervals
 - Serving: FastAPI
 - Deploy: AWS. **No scheduled retraining** — see the retraining policy above.
@@ -308,6 +309,11 @@ Exactly three pages:
 **Explicitly out of scope:** map view, route planning, user accounts, saved stations,
 notifications, mobile app, dark mode toggle. Reason: each costs a week and adds nothing an
 interviewer will ask about. The deadline is real.
+
+**Build them as plain HTML, CSS and vanilla JavaScript.** No React, no TypeScript, no
+build step, no npm. Reason in decisions.md D41. An earlier version of this file deferred
+React to "v2"; that line was removed in the July merge and the gap went unnoticed until
+2026-08-25, so the choice is stated explicitly here rather than left to inference.
 
 ## Conventions
 

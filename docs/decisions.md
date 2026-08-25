@@ -1123,3 +1123,78 @@ backoff absorbs a transient blip; a persistent failure raises and the request er
 Availability of a portfolio site is worth less than the integrity of its headline claim.
 
 **Date.** 2026-08-25
+
+---
+
+## D40 — No database. S3 and Parquet instead
+
+**Decision.** There is no relational database. Raw responses are gzipped on S3, parsed
+records are Parquet, and the API reads what it needs at request time. CLAUDE.md's Stack
+line said "Parquet → Postgres" until 2026-08-25; nothing ever implemented it, and this
+records why that drift was the right outcome rather than an oversight to fix.
+
+**Why not Postgres.** Three reasons, in order of weight.
+
+*Cost rules forbid it.* A 24/7 RDS instance bills hourly whether queried or not, roughly
+€15 a month at the smallest usable size, against a measured total spend of about $0.10.
+CLAUDE.md's AWS rules name RDS explicitly alongside NAT Gateways and load balancers as
+things never to provision. A database would be over 99% of the bill for a service that
+gets a handful of requests a day.
+
+*The data is file-shaped and read-mostly.* It arrives as whole objects on a five-minute
+cadence, is never updated in place, and is read in date-partitioned slices: "all movements
+for 2026-08-01", "yesterday's predictions". That is exactly what object storage plus
+partitioned Parquet does well. Writing it into rows first would be work that buys nothing.
+
+*There are no relational queries.* Nothing joins across entities at request time. The API
+answers one train at one station from one live upstream call. The scorer joins predictions
+to outcomes, but both sides are date-partitioned files read in bulk once a night, which is
+a batch job rather than a query workload.
+
+**What is given up.** No ad-hoc SQL, no indexes, no transactions, no concurrent writers.
+None of those are needed here, but the first would be genuinely convenient for exploring
+the data, and DuckDB over the Parquet files covers that without a server.
+
+**When this stops being right.** If the accuracy page ever needs per-request aggregation
+over months of scores rather than a precomputed summary, or if anything needs to update a
+record in place, revisit. Neither is on the path to mid-September.
+
+**Date.** 2026-08-25
+
+---
+
+## D41 — Plain HTML, CSS and vanilla JavaScript for the three pages
+
+**Decision.** No React, no TypeScript, no bundler, no npm. Three static files served from
+S3 behind CloudFront, calling the API with `fetch`.
+
+**How this came up is itself the point.** An earlier CLAUDE.md deferred React to "v2
+only". That line was removed in the July merge, correctly, because the frontend moved into
+scope. But nothing replaced it, so the framework question was left unanswered for six
+weeks, and on 2026-08-25 I asserted from memory that React was still deferred — citing a
+line that no longer existed. The rule is now written down rather than inferred.
+
+**Alternatives.** (a) React, with Vite. (b) A lighter framework such as Svelte or Alpine.
+(c) Server-rendered HTML from FastAPI.
+
+**Why rejected.** (a) buys component state management and a build pipeline. Three pages
+with no shared client state and no interactivity beyond a dropdown and a fetch have
+nothing for it to manage, and it adds npm, a bundler, a `node_modules`, and a build step
+between editing a file and seeing the change. (b) is lighter but still a dependency and
+still something to explain. (c) couples the pages to the API Lambda, so a page change
+means redeploying the prediction service, and it forfeits CloudFront caching of static
+assets that CLAUDE.md's AWS rules already assume.
+
+Vanilla also keeps the deployment honest: `aws s3 sync` of three files, no build artefacts
+to reconcile with source, and nothing that can drift between what is in git and what is
+served.
+
+**The real constraint is the deadline.** Three weeks, with the parallel run, the scorer
+and the API deploy still outstanding. A framework is a week of learning for a portfolio
+piece whose value is the data work behind it, not the widgets in front.
+
+**When this stops being right.** If the pages ever need shared client-side state, routing,
+or more than a few hundred lines of JavaScript, the vanilla version will start hurting.
+That is a v2 problem and there is no v2 before mid-September.
+
+**Date.** 2026-08-25
