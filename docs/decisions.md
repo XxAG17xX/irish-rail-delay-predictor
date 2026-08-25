@@ -1065,3 +1065,55 @@ synthetic test, because both come from the interaction of two real schedules. Bo
 have been actively misleading on the day the cutover decision was due.
 
 **Date.** 2026-08-23
+
+---
+
+## D39 — Prediction log: schema, write-once storage, and fail-closed serving
+
+**Decision.** Every served prediction is written to
+`s3://<bucket>/predictions/date={train_date}/{stamp}-{request_id}.jsonl` before the
+response is returned, and the same JSON line goes to stdout. A prediction that cannot be
+logged is not served.
+
+**The row stores outputs, not inputs.** It carries `pred_q10_sec`, `pred_q50_sec` and
+`pred_q90_sec` plus `model_version`, so scoring never re-runs the model. If the scorer
+could re-derive a prediction it would be running today's model against a known outcome,
+which is the regeneration CLAUDE.md forbids. Vantage and horizon fields are logged too,
+because D28 requires accuracy reported per horizon rather than as one blended number.
+
+`operator_eta` is logged despite never being a model input. The accuracy page compares
+against it on matched events, and reconstructing it afterwards would be its own form of
+regeneration. `scheduled_arrival` is logged even though the movements record has it, so a
+row is self-contained and a timetable change between prediction and scoring is detectable
+rather than silently corrupting the delay.
+
+**Partitioned by service date, not prediction date.** The scorer joins on
+`(train_date, train_code, station_code)` — the same triple the parallel-run diff uses — so
+scoring one day reads exactly one prefix.
+
+**Enforcement is IAM, not discipline.** The API role gets `PutObject` on `predictions/*`
+and nothing else. The scorer role gets `GetObject` there and `PutObject` only on
+`scores/*`. "The scorer reads outcomes, it never writes or recomputes predictions" stops
+being a rule someone must remember and becomes something the credentials refuse to do.
+
+**Honest limit, to be stated on the accuracy page.** Write-only IAM plus bucket versioning
+makes the log tamper-*evident*: casual or accidental modification is prevented, and an
+overwrite leaves the original recoverable. It is not tamper-*proof* — an account admin can
+still rewrite history. Object Lock would close that, but it can only be enabled at bucket
+creation and the bucket already exists; a migration was not worth it three weeks from the
+deadline. Better to state the limit than imply a guarantee that is not there.
+
+**Alternatives rejected.** CloudWatch Logs alone: free and AWS-timestamped, but the
+nightly scorer would need Logs Insights queries or an export task, which is more moving
+parts in the job that has to run unattended. S3 alone: fine, but one print statement buys
+a second copy whose timestamp is assigned by AWS at ingestion rather than by our own
+clock, which is independent corroboration of the ordering claim. Both, with S3 written
+first, so a CloudWatch line exists if and only if the prediction was logged and served.
+
+**Fail closed, with one retry.** Serving an unlogged prediction would bias the accuracy
+page, because unlogged predictions are not missing at random — they cluster during
+infrastructure trouble, which is exactly when behaviour is unusual. One retry with a short
+backoff absorbs a transient blip; a persistent failure raises and the request errors.
+Availability of a portfolio site is worth less than the integrity of its headline claim.
+
+**Date.** 2026-08-25
