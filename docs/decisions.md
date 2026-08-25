@@ -1232,3 +1232,117 @@ inflates the prediction log and makes the coverage denominator mean something di
 that distinction should be settled before precomputation lands, not after.
 
 **Date.** 2026-08-25
+
+---
+
+## D43 — The API's deployment shape: FastAPI behind Mangum, Function URL, baked artifact
+
+**Decision.** One FastAPI app in `src/api.py`, served as a Lambda through Mangum, exposed
+by a Lambda Function URL, with the model artifact baked into the deployment package and
+the serving version pinned as a CloudFormation parameter.
+
+**FastAPI plus Mangum, not a bare handler.** Three endpoints do not need a web framework,
+and a bare handler would be a smaller package and a faster cold start. The deciding reason
+was not on the original list of trade-offs: **the same app runs under `uvicorn` locally**,
+so every path — all four decline reasons, the version guard, the log failure — was tested
+before anything was deployed. Same principle as the lazy S3 client in `lambda_poll.py` and
+the injectable time budget in `poll_cycle`: if a thing can only be exercised in
+production, it will be debugged in production. FastAPI's generated `/docs` is a secondary
+benefit, and it is the honest answer to "did you build a FastAPI service".
+
+**Function URL, not API Gateway.** One public read-only endpoint. API Gateway adds
+$1/million requests and a second thing to configure, for throttling, auth and usage plans
+that nothing here uses. CORS is `*`, which is correct for a public read-only API and
+avoids pinning the frontend's CloudFront domain into the API stack.
+
+**Baked artifact, not fetched from S3.** With a pinned version there is nothing to fetch
+that a redeploy does not already carry. Baking removes the cold-start download, the
+cache-invalidation logic, the `s3:GetObject` permission and the failure mode where S3 is
+unreachable and the API cannot start. Cost is ~1MB in a package already carrying numpy and
+scipy.
+
+**Baking plus pinning puts the version in two places**, so `load_model` refuses to start
+unless the baked manifest matches `SERVING_MODEL_VERSION`, and `build_api.ps1` takes the
+version as a required argument rather than defaulting to LATEST, so a mismatch cannot
+originate in the build either. Verified: passing a wrong version raises rather than loading.
+
+**1024 MB, not 128.** The poller runs at 128 because it is I/O bound and sleeps. The API is
+dominated by importing numpy, scipy and lightgbm, and Lambda scales CPU with memory. At
+this traffic both settings sit inside the free tier, so the smaller one would buy nothing
+but a slower first request. Measured: 3.2s cold, 30ms warm.
+
+**Separate stack from the poller**, so the two roles cannot leak into each other. The API
+may write `predictions/` and nothing else; the poller may write its own prefix and nothing
+else.
+
+**Date.** 2026-08-25
+
+---
+
+## D44 — Packaging lightgbm for Lambda: three problems a normal pip install hides
+
+**Recorded because each cost real time to diagnose and none is discoverable from an error
+message.** All three are encoded in `scripts/build_api.ps1`, but a build script is where
+you look once you already know to look there.
+
+**1. The dependencies disagree about manylinux tags.** numpy past 2.2.6 publishes only
+`manylinux_2_28` wheels; lightgbm 4.7.0 publishes only `manylinux2014`. Either
+`--platform` alone fails to resolve the requirements file. pip accepts the flag more than
+once, and Amazon Linux 2023 satisfies both, so passing both tags is the fix.
+
+**2. Python version skew reports as a missing package.** This machine runs 3.14, the Lambda
+runtime is 3.13. Without `--python-version 3.13`, pip looks for cp314 wheels and says
+`Could not find a version that satisfies the requirement numpy==2.5.1 (from versions:
+none)`. "from versions: none" reads as "this package does not exist for this platform",
+which sent the first diagnosis toward architecture rather than interpreter version. Adding
+the flag changed the message to a real version list, which is what made the manylinux tag
+problem visible.
+
+**3. lightgbm needs OpenMP and Lambda does not ship it.** `lib_lightgbm.so` links against
+`libgomp.so.1`. The Lambda Python image has no OpenMP and the lightgbm wheel does not
+bundle it, so the import dies at `ctypes.LoadLibrary` with `libgomp.so.1: cannot open
+shared object file`. This one only appears **after a successful build and deploy**, as a
+502 from a function that looked fine.
+
+Fixed by extracting `libgomp.so.1` from a scikit-learn manylinux wheel, which bundles a
+matching aarch64 build, into `build/api/lib/`. Lambda's default `LD_LIBRARY_PATH` already
+contains `/var/task/lib`, so no environment variable is needed. Borrowed from that wheel
+rather than adding scikit-learn itself, which would be ~40MB for one shared object.
+
+**The general lesson.** `pip install` succeeding on the build machine says nothing about
+whether the package runs on the target. The build script now verifies the baked artifact
+before shipping, but only a deploy proves the native libraries load. Budget for that.
+
+**Date.** 2026-08-25
+
+---
+
+## D45 — Shared logic moves to a module the moment a second caller appears
+
+**Decision.** `featurise()` moved from `scripts/compare_to_operator.py` into
+`src/features.py`; the feed's time and date parsing moved into `src/feedtime.py`. Both
+moves happened when the API became a second caller, not later.
+
+**Why this is a standing rule and not two edits.** D35 records what happened when two
+copies of the feature list were maintained separately: they diverged, the trained artifact
+carried a feature the comparison excluded, the saved model could not have served a live
+request, and nothing detected it. A human reading both files caught it.
+
+Building the API would have created that situation twice more. `featurise` is the function
+that must agree between offline evaluation and live serving, or the measured accuracy
+describes a different model from the one answering requests. The time parsing had already
+been written three times over — `to_seconds` in `parse_raw.py`, `hms` in
+`compare_to_operator.py`, `iso_train_date` in `prediction_log.py` — and the API needed a
+fourth.
+
+**Verified rather than assumed.** After moving `featurise`, `compare_to_operator.py` was
+re-run and produced identical numbers: 80.1s against 109.7s, 27.0%, 9,077 comparisons.
+A refactor of the function that produces the headline claim is not something to take on
+faith.
+
+**Known incomplete.** `parse_raw.py` and `compare_to_operator.py` still carry their own
+time helpers. Both work and both have their own checks, so converging them is a follow-up
+rather than something to do to working code three weeks from a deadline. New code imports
+from `feedtime`.
+
+**Date.** 2026-08-25
