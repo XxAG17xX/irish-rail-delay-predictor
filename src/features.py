@@ -61,3 +61,44 @@ EXCLUDED = {
     "ExpectedArrival": "the baseline being compared against",
     "TrainCode": "identity, not situation",
 }
+
+
+def featurise(stops, vi, ti, dow, vocabs):
+    """Build one model input row: predicting stop `ti` from vantage `vi`.
+
+    Lives here rather than in a caller so the offline comparison and the live API cannot
+    drift apart. They already did once with the feature list itself (D35), producing a
+    trained artifact that could not have served a request, and nothing detected it.
+
+    `stops` is the journey ordered by LocationOrder, each with order, loc, sched, delay,
+    origin, destination. Only stops the train has already reported may appear before `vi`;
+    enforcing that is the caller's job, because only the caller knows the cutoff.
+    """
+    import numpy as np
+
+    v, s = stops[vi], stops[ti]
+    observed = [k for k in range(vi) if stops[k]["delay"] is not None]
+    row = {
+        "current_delay_sec": v["delay"],
+        "prev_delay_sec": stops[observed[-1]]["delay"] if observed else None,
+        "prev2_delay_sec": stops[observed[-2]]["delay"] if len(observed) > 1 else None,
+        "horizon_route_stops": s["order"] - v["order"],
+        "horizon_sched_sec": (s["sched"] - v["sched"])
+                             if (s["sched"] is not None and v["sched"] is not None) else None,
+        "vantage_hour": (v["sched"] % 86400) // 3600 if v["sched"] is not None else None,
+        "vantage_minute_of_day": (v["sched"] % 86400) // 60 if v["sched"] is not None else None,
+        "day_of_week": dow,
+        "vantage_location": v["loc"],
+        "target_location": s["loc"],
+        "TrainOrigin": v["origin"],
+        "TrainDestination": v["destination"],
+    }
+    out = np.full(len(FEATURES), np.nan)
+    for j, f in enumerate(FEATURES):
+        val = row[f]
+        if f in CATEGORICAL:
+            vocab = vocabs[f]
+            out[j] = vocab.get(val, len(vocab)) if val is not None else np.nan
+        elif val is not None:
+            out[j] = float(val)
+    return out

@@ -801,6 +801,12 @@ auditable fact rather than an emergent property of filenames.
 Ordering matters: because LATEST is written after the directory, a save that fails partway
 leaves the pointer naming the previous good version rather than a half-written one.
 
+**Amended 2026-08-25 (see D40).** The rationale above claimed LATEST makes "which model is
+serving" an explicit auditable fact. That is no longer true and should not be relied on.
+The serving version is pinned as a CloudFormation parameter, so LATEST now answers only
+"what did I last train". Two different questions with two different answers: LATEST for
+offline work (`--load latest`), the pinned parameter for production.
+
 **Date.** 2026-08-13
 
 ---

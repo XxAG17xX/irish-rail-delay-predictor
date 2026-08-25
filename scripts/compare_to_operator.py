@@ -86,7 +86,7 @@ DUBLIN = ZoneInfo("Europe/Dublin")
 # horizon_observed_stops while this file excluded it, so the saved model could not have
 # served a live request and nothing detected it. See src/features.py and decisions.md D35.
 sys.path.insert(0, str(REPO_ROOT / "src"))
-from features import CATEGORICAL, FEATURES, NUMERIC  # noqa: E402
+from features import CATEGORICAL, FEATURES, NUMERIC, featurise  # noqa: E402
 
 PARAMS = {"objective": "quantile", "alpha": 0.5, "learning_rate": 0.1,
           "num_leaves": 31, "min_data_in_leaf": 20, "verbose": -1,
@@ -229,36 +229,6 @@ def train_model(examples: Path, splits):
                          categorical_feature=[FEATURES.index(f) for f in CATEGORICAL])
     booster = lgb.train(PARAMS, dtrain, num_boost_round=NUM_ROUNDS)
     return booster, vocabs, n
-
-
-def featurise(stops, vi, ti, dow, vocabs):
-    """Feature row from vantage index vi to target index ti. Mirrors build_examples.py."""
-    v, s = stops[vi], stops[ti]
-    obs = [k for k in range(vi) if stops[k]["delay"] is not None]
-    row = {
-        "current_delay_sec": v["delay"],
-        "prev_delay_sec": stops[obs[-1]]["delay"] if obs else None,
-        "prev2_delay_sec": stops[obs[-2]]["delay"] if len(obs) > 1 else None,
-        "horizon_route_stops": s["order"] - v["order"],
-        "horizon_sched_sec": (s["sched"] - v["sched"])
-                             if (s["sched"] is not None and v["sched"] is not None) else None,
-        "vantage_hour": (v["sched"] % 86400) // 3600 if v["sched"] is not None else None,
-        "vantage_minute_of_day": (v["sched"] % 86400) // 60 if v["sched"] is not None else None,
-        "day_of_week": dow,
-        "vantage_location": v["loc"],
-        "target_location": s["loc"],
-        "TrainOrigin": v["origin"],
-        "TrainDestination": v["destination"],
-    }
-    out = np.full(len(FEATURES), np.nan)
-    for j, f in enumerate(FEATURES):
-        val = row[f]
-        if f in CATEGORICAL:
-            vb = vocabs[f]
-            out[j] = vb.get(val, len(vb)) if val is not None else np.nan
-        elif val is not None:
-            out[j] = float(val)
-    return out
 
 
 # ------------------------------------------------------------------- reporting

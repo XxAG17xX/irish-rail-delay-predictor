@@ -4,3 +4,4 @@ data/
 .env
 .CLAUDE.md
 build/
+src/model/

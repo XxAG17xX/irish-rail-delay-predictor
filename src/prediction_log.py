@@ -31,26 +31,25 @@ import time
 import uuid
 from datetime import datetime
 
-MONTHS = ("jan", "feb", "mar", "apr", "may", "jun",
-          "jul", "aug", "sep", "oct", "nov", "dec")
+from feedtime import iso_train_date
 
-# Without any one of these a row cannot be scored. Checked before the write rather than
+# Without these a row cannot be scored or counted. Checked before the write rather than
 # discovered by the scorer weeks later against a log that cannot be rebuilt.
-REQUIRED = (
-    "predicted_at", "model_version",
-    "train_date", "train_code", "station_code", "scheduled_arrival",
-    "pred_q10_sec", "pred_q50_sec", "pred_q90_sec",
+#
+# Declines are logged in the same prefix with quantiles absent, because coverage needs a
+# denominator: CLAUDE.md requires accuracy and coverage published together, and two
+# separate stores that must agree would drift (D35 in a different place). So validation
+# branches on outcome rather than demanding quantiles from every row.
+REQUIRED_ALWAYS = (
+    "outcome", "predicted_at", "model_version",
+    "train_date", "train_code", "station_code",
 )
+REQUIRED_PREDICTED = ("scheduled_arrival", "pred_q10_sec", "pred_q50_sec", "pred_q90_sec")
+REQUIRED_DECLINED = ("reason",)
 
 
 class LogWriteFailed(Exception):
     """The prediction could not be logged, so it must not be served."""
-
-
-def iso_train_date(s):
-    """'25 Aug 2026' -> '2026-08-25' for the partition key."""
-    d, m, y = s.strip().split()
-    return f"{int(y):04d}-{MONTHS.index(m[:3].lower()) + 1:02d}-{int(d):02d}"
 
 
 class PredictionLog:
@@ -68,9 +67,14 @@ class PredictionLog:
 
         request_id = request_id or uuid.uuid4().hex[:12]
         for row in rows:
-            missing = [f for f in REQUIRED if row.get(f) is None]
+            outcome = row.get("outcome")
+            if outcome not in ("predicted", "declined"):
+                raise LogWriteFailed(f"outcome must be predicted or declined, got {outcome!r}")
+            need = REQUIRED_ALWAYS + (REQUIRED_PREDICTED if outcome == "predicted"
+                                      else REQUIRED_DECLINED)
+            missing = [f for f in need if row.get(f) is None]
             if missing:
-                raise LogWriteFailed(f"row missing required fields: {missing}")
+                raise LogWriteFailed(f"{outcome} row missing required fields: {missing}")
             row.setdefault("prediction_id", uuid.uuid4().hex)
             row.setdefault("api_request_id", request_id)
 
@@ -112,6 +116,7 @@ def _self_check():
             self.puts.append((Key, Body))
 
     base = {
+        "outcome": "predicted",
         "predicted_at": "2026-08-25T14:03:11+01:00",
         "model_version": "20260813T221035Z-0c444e3",
         "train_date": "25 Aug 2026", "train_code": "A220", "station_code": "THRLS",
@@ -150,6 +155,32 @@ def _self_check():
     except LogWriteFailed as e:
         assert "pred_q50_sec" in str(e)
     assert not s.puts, "incomplete row was written anyway"
+
+    # a declined row is legitimate and must be accepted without quantiles, because
+    # coverage needs the denominator
+    s = Stub()
+    declined = {k: v for k, v in base.items() if not k.startswith("pred_q")}
+    declined.update(outcome="declined", reason="no_upstream_report")
+    PredictionLog("b", "predictions", s, backoff=0).write([declined])
+    assert len(s.puts) == 1, "declined row was refused"
+
+    # but a declined row still needs a reason, or coverage cannot say why
+    s = Stub()
+    try:
+        no_reason = dict(declined)
+        del no_reason["reason"]
+        PredictionLog("b", "predictions", s, backoff=0).write([no_reason])
+        raise AssertionError("should have required a reason")
+    except LogWriteFailed as e:
+        assert "reason" in str(e)
+
+    # an unrecognised outcome is refused rather than silently logged
+    s = Stub()
+    try:
+        PredictionLog("b", "predictions", s, backoff=0).write([{**base, "outcome": "maybe"}])
+        raise AssertionError("should have rejected the unknown outcome")
+    except LogWriteFailed:
+        pass
 
     print("prediction_log self-check passed")
 
