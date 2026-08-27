@@ -69,23 +69,32 @@ Current phase is **serving**: get the system running in AWS with a public URL.
   Try `/health`, `/docs`, `/predict?train=A220&station=THRLS`. Cold start ~3.2s,
   warm ~30ms. Predictions log to `s3://rail-delay-poller-kg/predictions/`.
 
-**Not built:** nightly scorer, three web pages.
+**Also deployed:** generator stack function `rail-delay-api-generator` (D49) — a sampled
+prediction producer, **schedule DISABLED** until after the 30 August cutover — and
+`infra/scorer.yaml` (D50), the nightly scorer, running at 03:15 UTC. Build with
+`scripts\build_scorer.ps1`. Scores land in `s3://rail-delay-poller-kg/scores/date=*/`
+as `summary.json` plus `rows.jsonl.gz`.
+
+**Not built:** the three web pages.
 
 Next actions, in this order:
 
-0. An AWS account exists (done outside this repo). The machine is **not** set up for it:
-   `~/.aws/` is empty, no CLI, no credentials, no `AWS_*` env vars.
-1. Install the tooling: `winget install Amazon.AWSCLI Amazon.SAM-CLI` (neither is
-   present), then `aws configure` and check with `aws sts get-caller-identity`.
-2. Deploy `infra/foundation.yaml` to **us-east-1** and confirm the budget is live in the
-   Billing console. Budgets require their SNS topic in us-east-1, which is why it is a
-   separate stack from the poller.
-3. Confirm the SNS email subscription. Until the link is clicked the topic has no
-   subscriber and every notification is silently dropped.
-4. `scripts\build_lambda.ps1`, then `sam deploy --guided --region eu-west-1
-   --template-file infra/poller.yaml`.
-5. Start the seven-day parallel run and **write the start date into D36**, which has a
-   hard expiry.
+1. **Confirm the scorer stack's SNS email subscription.** The forced-failure test on
+   27 August found the poller's topic had zero subscribers because a subscription had
+   expired after three days unconfirmed. Until the link is clicked every alarm is
+   silently dropped.
+2. **30 August: the cutover.** Run `python scripts\diff_parallel.py` after an
+   `aws s3 sync`, compare against D36's bar, and either the local poller stops or the
+   Lambda does. D36 expires on the date, not on success — there is no third option.
+3. **Immediately after cutover, enable the generator**: redeploy `infra/api.yaml` with
+   `GeneratorSchedule=ENABLED`. This is a stack parameter and not an
+   `aws events enable-rule`, because CloudFormation reverts an out-of-band change on the
+   next deploy.
+4. **Set the scorer's `PollerPrefix` to wherever the poller writes after cutover.** It
+   defaults to `parallel/lambda`. A stale value produces a scoreboard with accuracy but
+   no operator comparison, which reads as a quiet railway rather than as a
+   misconfiguration.
+5. Build the three pages (D41: plain HTML, CSS, vanilla JS).
 
 Open items that will not announce themselves:
 
@@ -94,6 +103,17 @@ Open items that will not announce themselves:
   services. Needs a staleness guard **before** cutover (D36).
 - `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
   networkx). Worth splitting the way `requirements-lambda.txt` already does.
+- **The API's error alarm does not fire on a failed prediction-log write.** `api.py`
+  catches `LogWriteFailed` and returns 503, which Lambda counts as a *successful*
+  invocation, so the `Errors` metric stays at zero. D39 requires log trouble to be
+  visible as API trouble, and it currently is not.
+- **Two decline denominators that must never be shown together.** The offline "~56% of
+  polls unanswerable" is a share of station board polls, which include trains that have
+  not departed. The generator's ~11% is a share of sampled in-service trains. Different
+  populations; side by side they read as an improvement that did not happen (D49).
+- `diff_parallel.py` has not been run to completion since the window-intersection change.
+  It parses; that is not the same as producing correct output. Verify before it is the
+  basis of the cutover decision, not on the day.
 
 ## Who I am, and how to work with me
 

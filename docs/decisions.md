@@ -71,6 +71,9 @@ sat in code comments and nobody looked for the hole.
 - [D41](#d41--plain-html-css-and-vanilla-javascript-for-the-three-pages) Plain HTML, CSS and vanilla JavaScript for the three pages
 - [D42](#d42--predictions-page-loads-per-train-on-demand-no-precomputation-yet) Predictions page loads per train on demand; no precomputation yet
 - [D43](#d43--the-api-s-deployment-shape-fastapi-behind-mangum-function-url-baked-artifact) The API's deployment shape: FastAPI behind Mangum, Function URL, baked artifact
+- [D49](#d49--the-prediction-log-is-filled-by-a-scheduled-sampler-not-by-traffic) The prediction log is filled by a scheduled sampler, not by traffic
+- [D50](#d50--the-scorer-reuses-the-offline-methodology-rather-than-approximating-it) The scorer reuses the offline methodology rather than approximating it
+- [D51](#d51--three-custom-cloudwatch-metrics-for-the-generator-not-eight) Three custom CloudWatch metrics for the generator, not eight
 
 **Cutover and verification** 
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
@@ -1562,3 +1565,165 @@ approach was abandoned entirely for `AutoArrival` (D20, D21): it is a proxy that
 both ways, and no amount of regex care fixes that.
 
 **Date.** 2026-08-25 (recording work done 2026-07-28)
+
+---
+
+## D49 — The prediction log is filled by a scheduled sampler, not by traffic
+
+**Decision.** A separate Lambda takes a uniform random sample of the in-service fleet
+every five minutes, predicts at most one stop per lead band per train, and logs the lot in
+one S3 object per cycle. It ships with its EventBridge rule DISABLED and is enabled after
+the 30 August cutover.
+
+**What forced it.** On 27 August, two days after the API went live, the prediction log held
+exactly one row: the smoke test. The nightly scorer was about to be built against an empty
+table, and would have stayed empty for ever — a portfolio service has no organic traffic.
+The scoreboard's input is demand, and there is no demand.
+
+**Why this is better than organic traffic, not a substitute for it.** Real visitors would
+have typed whatever they happened to care about: Dublin, rush hour, the specific train
+someone was waiting for. That is a biased and unstateable sampling frame. A uniform random
+draw over the fleet is one that can be described in a sentence and checked. The accuracy
+page says these are scheduled sampled predictions rather than implying they are user
+queries — which is honest and is also the stronger claim.
+
+**Alternatives considered.**
+
+- *Full sweep, every in-service train every cycle.* ~22,600 predictions/day but ~4x the
+  current request volume against a free, unsupported API, permanently. Rejected: the extra
+  data buys nothing — the offline comparison drew its conclusion from 9,077 comparisons —
+  and the politeness cost is real and never goes away.
+- *Fold it into the poller after 30 August* (D42's original framing). Rejected for now: it
+  couples prediction to collection, and a separate function can be built and deployed
+  during the parallel run without touching either poller.
+- *Generator as an HTTP client of `/predict`.* Rejected. One HTTP request is one Lambda
+  invocation is one S3 object, so 7,500+ predictions a day would be 225k PUTs a month
+  against ~190 batched. Worse, the serving version would be pinned in one stack and
+  consumed in another. Importing the prediction core directly keeps one code path, one
+  baked artifact and one CloudFormation parameter.
+- *No generator; publish the offline numbers only.* Rejected: the retraining policy's
+  trigger is "the first 30 days of live scored predictions after launch", which without
+  live predictions never acquires a baseline.
+
+**Sampling details, and why each is deliberate.** The draw is over the *sorted* fleet, so
+the randomness comes from the RNG rather than from the feed's own ordering, which we
+neither control nor understand; taking the first N off the board would have pinned the
+scoreboard to whichever routes sort first. It is unseeded and redrawn every cycle, because
+a fixed seed reproduces a similar sample every time, which is the same bias in slower
+motion. `TrainStatus == R` filters to the product's stated scope — a train that has not
+departed is out of scope, not a hard case. Target stations are drawn uniformly within each
+band with **no** preference for the 30 stations the poller watches: preferring them would
+raise the matched-event count for the head-to-head at the cost of drawing that population
+differently from the accuracy population, and two populations is two things to explain. In
+the first measured cycle 25 of 122 rows (20%) landed on polled stations anyway.
+
+**What is deliberately NOT filtered.** Targets are not screened for whether a prediction is
+possible. A train with no upstream report produces a `no_upstream_report` decline, and that
+decline *is* the coverage measurement. Screening them out would delete the denominator and
+turn "answers ~44% of queries" into "answers 100% of the queries we knew we could answer".
+
+**A denominator trap this creates.** The first cycle declined 13 of 122, about 11%. The
+offline figure is ~56% unanswerable. These are not in conflict and must never be shown
+together: 56% is a share of *station board polls*, which include trains that have not
+departed; 11% is a share of *sampled in-service trains*. Different populations. The
+scorer's summary carries a note saying so, because the two numbers side by side would
+otherwise read as a dramatic improvement that did not happen.
+
+**Why DISABLED on arrival.** Doubling request volume against Irish Rail during the last
+three days of the parallel run would confound the diff that decides the cutover — the same
+argument that kept precompute out of the poller (D42) and that added cycle metadata to
+LocalSink rather than changing the control mid-experiment. It is a stack parameter rather
+than an `aws events enable-rule`, because CloudFormation reverts an out-of-band change on
+the next deploy, and a parameter leaves the enabling in CloudTrail.
+
+**Measured.** One cycle, 27 August: fleet 43, sampled 40, 41 requests, 122 predictions,
+20.6 seconds.
+
+**Date.** 2026-08-27
+
+---
+
+## D50 — The scorer reuses the offline methodology rather than approximating it
+
+**Decision.** `src/score.py` reads logged predictions, refetches arrivals, and applies all
+four D46 fairness traps. The lead-time bands moved into `feedtime.py` so the offline
+comparison, the generator and the scorer cannot disagree about them.
+
+**Why not a simpler live metric.** A live number computed differently from the published
+27% is not comparable to it, and an accuracy page showing two incomparable numbers is worse
+than one showing neither — a reader has no way to tell which difference is the model and
+which is the arithmetic. Specifically: trap 3 (the operator is minute-precision, actuals
+are 6-second) hands us up to 30 seconds of free accuracy per event if ignored, so both raw
+and minute-rounded are reported and the rounded one is the headline. Trap 4 (one
+comparison per event and lead band, the last statement made in that band, on *both* sides)
+is not optional either — a stop 20 minutes out stays in the 15-30 band for several cycles,
+so without deduplication every count inflates and every interval narrows.
+
+Trap 1 is satisfied more strongly here than offline, and this is the point of D39: the
+prediction was made live from stops that had actually reported, and written down before the
+outcome existed. Nothing reconstructs a vantage point.
+
+**Outcomes come from `getTrainMovementsXML`, not the archived boards.** Boards carry
+`Exparrival` and `Duein`, which are the operator's prediction, not a confirmed arrival.
+Because `TrainDate` is honoured back to 2007, a night the scorer did not run is recoverable
+by running it later, so the job scans for dates that have predictions and no summary rather
+than assuming last night succeeded. The boards are still read, for the operator baseline,
+because `ExpectedArrival` exists only live and cannot be backfilled.
+
+**Six states, all reported, none dropped.** `scored`, `echo_suspect`, `no_actual_arrival`,
+`not_on_route`, `train_not_found`, `declined`. ~31% of movement records never receive an
+actual time and the flagged lines echo scheduled times, so quietly keeping only the rows
+that scored cleanly would bias the board toward trains that behaved. The failure mode is a
+*better*-looking number, which is exactly why it would never have been questioned.
+`echo_suspect` is reported separately and never blended, and the summary also carries an
+including-echo variant, per D23's "flag and keep, exclusion is an evaluation-time decision,
+report both ways".
+
+**Enforced by credentials, not discipline.** The scorer's role may read predictions and
+write scores; it has no `PutObject` on the prediction prefix, the exact mirror of the API's
+role. Its package also contains no model, and `build_scorer.ps1` asserts the absence, so
+"never regenerate historical predictions" is something the deployment *cannot* do.
+
+**Two traps found while building it, both silent.**
+
+1. Board rows carry their own `Traindate`, which is the service date and differs from the
+   partition they sit in: a train that departs on the 26th and is still running at 00:30
+   appears in the 27th's partition under 26 Aug. Keying on the partition would have lost
+   every late-evening comparison with nothing reporting a loss.
+2. Reconstructing a lead time from the raw wall-clock `scheduled_arrival` turns a 23:50
+   prediction about a 00:20 arrival into a lead of minus 23 hours, which yields no band,
+   matches no operator poll, and drops the row from the head-to-head silently. `api.py`
+   now records `lead_sec` at prediction time, where the schedule is already unwrapped; the
+   scorer keeps a reconstruction with a wrap correction for rows written before that.
+
+**Scoring a date is once-only**, because `unscored_dates` skips anything with a summary.
+So a run made while trains are still running would freeze a page full of
+`no_actual_arrival` and never revisit it. `is_complete()` refuses unless forced. This was
+found by running the scorer against the same day's predictions and seeing 93 of 109 come
+back unarrived.
+
+**Date.** 2026-08-27
+
+---
+
+## D51 — Three custom CloudWatch metrics for the generator, not eight
+
+**Decision.** The generator publishes `PredictionsLogged`, `Declined` and `TrainsFailed`.
+Everything else worth knowing — fleet size, sample size, per-reason decline counts, cycle
+duration — goes into the handler's return value, which lands in CloudWatch Logs.
+
+**Why.** The deployment already used 8 of the 10 free custom metrics. The first draft added
+eight more, which would have crossed into $0.30 per metric per month against a total bill
+of about $0.10 — an 18x increase in the running cost of the project, for telemetry nobody
+alarms on. Logs are free and queryable in Logs Insights; metrics cost and should be
+reserved for things worth alarming on.
+
+Cycle duration is deliberately absent even though it is operationally interesting: Lambda
+publishes `Duration` itself in the `AWS/Lambda` namespace, so a custom copy would be a paid
+duplicate of a free metric.
+
+**Consequence to watch.** This takes the account to 11 custom metrics, one over the free
+allowance, so roughly $0.30/month. CLAUDE.md flags these thresholds as ones that "move
+quietly"; this is the first crossing and it was deliberate.
+
+**Date.** 2026-08-27
