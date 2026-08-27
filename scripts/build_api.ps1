@@ -30,7 +30,7 @@ New-Item -ItemType Directory -Force -Path $build | Out-Null
 
 # --- modules api.py transitively imports
 $modules = @(
-    "api.py", "features.py", "feedtime.py", "prediction_log.py",
+    "api.py", "generate.py", "features.py", "feedtime.py", "prediction_log.py",
     "poll_live.py", "backfill.py", "hostlock.py", "sinks.py"
 )
 foreach ($m in $modules) {
@@ -39,6 +39,20 @@ foreach ($m in $modules) {
     Copy-Item $src $build
 }
 Write-Host "  staged $($modules.Count) modules"
+
+# --- station config, staged BESIDE the modules
+# api.py stamps station_group onto every logged row so the accuracy page can report the
+# documented weak-coverage lines separately instead of blended into the aggregate, and
+# state() refuses to start without it. Same path trap lambda_poll.py documents: under
+# Lambda the code lives at /var/task, so a repo-root-relative lookup resolves to /var.
+New-Item -ItemType Directory -Force -Path (Join-Path $build "config") | Out-Null
+Copy-Item (Join-Path $root "config\poll_stations.toml") (Join-Path $build "config")
+$stations = Join-Path $root "data\live\stations.json"
+if (-not (Test-Path $stations)) {
+    throw "no station list at $stations. Run poll_live.py once locally to fetch it."
+}
+Copy-Item $stations $build
+Write-Host "  staged config and station list"
 
 # --- the pinned artifact, baked rather than fetched. See D33 amendment and api.py.
 Copy-Item -Recurse $source (Join-Path $build "model")
@@ -122,7 +136,8 @@ build, want = pathlib.Path(sys.argv[1]), sys.argv[2]
 manifest = json.loads((build / "model" / "manifest.json").read_text(encoding="utf-8"))
 assert manifest["version"] == want, (
     f"baked {manifest['version']!r} but was asked for {want!r}")
-for rel in ("api.py", "lib/libgomp.so.1", "model/q10.txt", "model/q50.txt", "model/q90.txt"):
+for rel in ("api.py", "generate.py", "config/poll_stations.toml", "stations.json",
+            "lib/libgomp.so.1", "model/q10.txt", "model/q50.txt", "model/q90.txt"):
     assert (build / rel).exists(), f"{rel} missing from package"
 print(f"  baked artifact verified: {manifest['version']}, {len(manifest['features'])} features")
 '@

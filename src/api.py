@@ -52,14 +52,27 @@ from fastapi import FastAPI, Query
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+
+def _staged(packaged: str, checkout: str) -> Path:
+    """The Lambda package stages these beside the modules; a checkout leaves them where
+    they live. Same trap lambda_poll.py documents: a `parent.parent` repo root resolves
+    to /var under Lambda and every lookup fails on the first deploy."""
+    p = HERE / packaged
+    return p if p.exists() else HERE / checkout
+
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
 from feedtime import feed_train_date, hms, unwrap  # noqa: E402
-from poll_live import DUBLIN, USER_AGENT, Failure, fetch, in_dublin  # noqa: E402
+from poll_live import (DUBLIN, USER_AGENT, Failure, fetch, in_dublin,  # noqa: E402
+                       load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
 
 NS = "{http://api.irishrail.ie/realtime/}"
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", HERE / "model"))
+CONFIG = Path(os.environ.get("POLL_CONFIG")
+              or _staged("config/poll_stations.toml", "../config/poll_stations.toml"))
+STATIONS = Path(os.environ.get("POLL_STATIONS")
+                or _staged("stations.json", "../data/live/stations.json"))
 SERVING_VERSION = os.environ.get("SERVING_MODEL_VERSION", "")
 QUANTILES = (0.1, 0.5, 0.9)
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -156,8 +169,16 @@ def state():
         log = PredictionLog(bucket, os.environ.get("PREDICTIONS_PREFIX", "predictions"),
                             _s3()) if bucket else None
 
+        # Raised rather than defaulted to empty: a missing config is a packaging error
+        # that would otherwise surface as an accuracy page silently missing its line
+        # split, weeks later, in data that cannot be rebuilt.
+        known = {s["code"].upper(): s["name"]
+                 for s in json.loads(STATIONS.read_text(encoding="utf-8"))}
+        polled = load_station_config(CONFIG, known)
+
         _state.update(boosters=boosters, vocabs=vocabs, manifest=manifest,
-                      session=session, pacer=Pacer(2.0), log=log)
+                      session=session, pacer=Pacer(2.0), log=log,
+                      polled=polled, groups={s["code"]: s["group"] for s in polled})
     return _state
 
 
@@ -175,43 +196,61 @@ def health():
             "metrics": st["manifest"]["metrics"]}
 
 
-@app.get("/predict")
-def predict(train: str = Query(..., description="Train code, e.g. A220"),
-            station: str = Query(..., description="Location code, e.g. THRLS")):
-    st = state()
+def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=None):
+    """One prediction, or one reasoned decline. Returns the row; logging is the caller's.
+
+    Split out of the HTTP handler so the scheduled generator calls this identical function
+    rather than a copy of it. A second implementation is the D35 failure: two things that
+    must agree, maintained apart, diverge and nothing notices.
+
+    `stops` is accepted pre-fetched because the generator predicts several stations per
+    train and must not refetch the journey once per station. `extra` carries provenance
+    the caller knows and this function cannot — which sampling scheme selected this row.
+    """
     train, station = train.strip().upper(), station.strip().upper()
-    today = datetime.now(DUBLIN).date()
-    now_s = (datetime.now(DUBLIN) - datetime.combine(
-        today, datetime.min.time(), DUBLIN)).total_seconds()
+    if today is None:
+        today = datetime.now(DUBLIN).date()
+    if now_s is None:
+        now_s = (datetime.now(DUBLIN) - datetime.combine(
+            today, datetime.min.time(), DUBLIN)).total_seconds()
 
     base = {"outcome": "declined", "train": train, "station": station,
             "train_date": feed_train_date(today), "train_code": train,
             "station_code": station, "predicted": None,
             "model_version": st["manifest"]["version"],
+            # Groupable route handles. `confidence` says the same thing in prose, which
+            # cannot be grouped by; the accuracy page must report the documented
+            # weak-coverage lines separately rather than blended (CLAUDE.md).
+            "station_group": st["groups"].get(station, ""),
+            "weak_coverage": station in WEAK,
+            "source": "api",
             "predicted_at": in_dublin(datetime.now()).isoformat(timespec="seconds")}
+    if extra:
+        base.update(extra)
 
-    try:
-        stops = journey(st["session"], st["pacer"], train, today)
-    except Failure as f:
-        return _respond({**base, "reason": "upstream_unavailable",
-                         "explanation": f"Could not reach Irish Rail for {train} ({f.kind})."})
+    if stops is None:
+        try:
+            stops = journey(st["session"], st["pacer"], train, today)
+        except Failure as f:
+            return {**base, "reason": "upstream_unavailable",
+                    "explanation": f"Could not reach Irish Rail for {train} ({f.kind})."}
 
     if not stops:
-        return _respond({**base, "reason": "not_in_service",
-                         "explanation": f"{train} is not running today."})
+        return {**base, "reason": "not_in_service",
+                "explanation": f"{train} is not running today."}
 
     ti = next((i for i, s in enumerate(stops) if s["loc"] == station), None)
     if ti is None:
-        return _respond({**base, "reason": "station_not_on_route",
-                         "explanation": f"{train} does not call at {station} today."})
+        return {**base, "reason": "station_not_on_route",
+                "explanation": f"{train} does not call at {station} today."}
 
     target = stops[ti]
     base["scheduled_arrival"] = target["sched_text"] or None
     base["station_name"] = target["name"]
 
     if target["arr"] is not None:
-        return _respond({**base, "reason": "already_arrived",
-                         "explanation": f"{train} has already arrived at {station}."})
+        return {**base, "reason": "already_arrived",
+                "explanation": f"{train} has already arrived at {station}."}
 
     # Only stops that have actually reported by now may inform the prediction. The same
     # cutoff the offline comparison enforces, for the same reason.
@@ -221,9 +260,9 @@ def predict(train: str = Query(..., description="Train code, e.g. A220"),
         if s["arr"] is not None and s["arr"] <= now_s and s["delay"] is not None:
             vi = i
     if vi is None:
-        return _respond({**base, "reason": "no_upstream_report",
-                         "explanation": f"{train} has not reported at any stop yet, so "
-                                        f"there is nothing to predict from."})
+        return {**base, "reason": "no_upstream_report",
+                "explanation": f"{train} has not reported at any stop yet, so "
+                               f"there is nothing to predict from."}
 
     dow = DAY_NAMES[today.weekday()]
     x = featurise(stops, vi, ti, dow, st["vocabs"]).reshape(1, -1)
@@ -232,18 +271,23 @@ def predict(train: str = Query(..., description="Train code, e.g. A220"),
 
     sched = target["sched"]
     weak = station in WEAK or stops[vi]["loc"] in WEAK
-    row = {**base, "outcome": "predicted",
-           "predicted": hhmmss(sched + q50),
-           "interval_80pct": [hhmmss(sched + q10), hhmmss(sched + q90)],
-           "current_delay_min": round(stops[vi]["delay"] / 60, 1),
-           "vantage_location": stops[vi]["loc"],
-           "vantage_delay_sec": stops[vi]["delay"],
-           "horizon_route_stops": target["order"] - stops[vi]["order"],
-           "horizon_sched_sec": sched - stops[vi]["sched"],
-           "pred_q10_sec": q10, "pred_q50_sec": q50, "pred_q90_sec": q90,
-           "confidence": ("weak coverage on this line, treat with caution" if weak
-                          else "good coverage on this line")}
-    return _respond(row)
+    return {**base, "outcome": "predicted",
+            "predicted": hhmmss(sched + q50),
+            "interval_80pct": [hhmmss(sched + q10), hhmmss(sched + q90)],
+            "current_delay_min": round(stops[vi]["delay"] / 60, 1),
+            "vantage_location": stops[vi]["loc"],
+            "vantage_delay_sec": stops[vi]["delay"],
+            "horizon_route_stops": target["order"] - stops[vi]["order"],
+            "horizon_sched_sec": sched - stops[vi]["sched"],
+            "pred_q10_sec": q10, "pred_q50_sec": q50, "pred_q90_sec": q90,
+            "confidence": ("weak coverage on this line, treat with caution" if weak
+                           else "good coverage on this line")}
+
+
+@app.get("/predict")
+def predict(train: str = Query(..., description="Train code, e.g. A220"),
+            station: str = Query(..., description="Location code, e.g. THRLS")):
+    return _respond(predict_row(state(), train, station))
 
 
 def _respond(row):

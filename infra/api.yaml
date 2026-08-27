@@ -32,6 +32,21 @@ Parameters:
   AlarmEmail:
     Type: String
     Description: Address to notify on API errors. Requires email confirmation.
+  GeneratorSchedule:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ENABLED]
+    Description: >-
+      Whether the sampled prediction generator runs. Ships DISABLED and is enabled as the
+      first act after the 30 August cutover: doubling request volume against Irish Rail
+      during the parallel run would confound the diff that decides it. This is a stack
+      parameter rather than an `aws events enable-rule` because CloudFormation would
+      revert an out-of-band change on the next deploy, and a parameter leaves the
+      enabling in CloudTrail.
+  GeneratorSample:
+    Type: Number
+    Default: 40
+    Description: Trains sampled per cycle. Request cost is 1 + this, every five minutes.
 
 Resources:
 
@@ -41,6 +56,12 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${AWS::StackName}-api
       # The prediction log's second copy lands here, timestamped by AWS at ingestion
       # (D39). 30 days is longer than the nightly scorer needs and keeps the cost at zero.
+      RetentionInDays: 30
+
+  GeneratorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-generator
       RetentionInDays: 30
 
   ApiRole:
@@ -57,10 +78,16 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              # Shared by both functions in this stack. They are the same package making
+              # the same write to the same prefix, so splitting the role would produce two
+              # identical policies and the illusion of a boundary. The boundary that
+              # matters is this stack against the poller's, which remains separate.
               - Sid: WriteOwnLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub ${ApiLogGroup.Arn}:*
+                Resource:
+                  - !Sub ${ApiLogGroup.Arn}:*
+                  - !Sub ${GeneratorLogGroup.Arn}:*
               # PutObject on the prediction prefix and nothing else. No GetObject, so the
               # API cannot read back what it wrote; no DeleteObject, so it cannot unwrite
               # it. The scorer gets the mirror image of this (read predictions, write
@@ -103,6 +130,49 @@ Resources:
       # No ReservedConcurrentExecutions: the account limit is 10 and AWS refuses any
       # reservation leaving under 100 unreserved (D37).
 
+  # Same package and same baked model as the API, deployed as a second handler rather
+  # than as its own stack. That is deliberate: the serving version would otherwise be
+  # pinned in one place and consumed in another, and the two could drift into generating
+  # the scoreboard from a different model than the one the site serves.
+  GeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-generator
+      CodeUri: ../build/api
+      Handler: generate.lambda_handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 1024
+      # 1 + GeneratorSample requests paced at 2/second, so ~21s of network at the default
+      # 40, plus a cold start. Four minutes leaves room for the pacer to have widened
+      # after a 429 without the cycle being killed mid-write, and stays under the
+      # 5-minute schedule so an invocation cannot meet its own successor.
+      Timeout: 240
+      Role: !GetAtt ApiRole.Arn
+      Environment:
+        Variables:
+          SERVING_MODEL_VERSION: !Ref ServingModelVersion
+          POLL_BUCKET: !Ref BucketName
+          PREDICTIONS_PREFIX: !Ref PredictionsPrefix
+          MODEL_DIR: /var/task/model
+          GEN_SAMPLE: !Ref GeneratorSample
+          POLL_STAGE: generator
+      EventInvokeConfig:
+        # Asynchronous invocation retries twice by default, which would re-sample and
+        # re-query Irish Rail after a failure. The schedule is the retry: five minutes.
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 60
+      Events:
+        Tick:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            State: !Ref GeneratorSchedule
+            Name: !Sub ${AWS::StackName}-generator-tick
+            Description: One sampled prediction cycle
+            # Quiet hours are enforced inside the function, not here, for the reason
+            # poller.yaml gives: cron is UTC-only and Irish time is not.
+
   AlarmTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -132,7 +202,30 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlarmTopic]
 
+  # Errors, not a liveness check on PredictionsLogged: the function returns early during
+  # Irish quiet hours, so a "produced nothing" alarm would fire every night by design.
+  # The gap that leaves — a generator that runs, succeeds and logs nothing — is caught a
+  # day later by the scorer finding an empty date. Add a liveness alarm here if that ever
+  # proves too slow.
+  GeneratorErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-generator-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref GeneratorFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
 Outputs:
+  GeneratorName:
+    Description: Sampled prediction generator. Its schedule ships DISABLED.
+    Value: !Ref GeneratorFunction
   ApiUrl:
     Description: Public endpoint. Try /health and /docs.
     Value: !GetAtt ApiFunctionUrl.FunctionUrl
