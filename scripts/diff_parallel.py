@@ -121,6 +121,17 @@ def windows(cycles, gap_minutes, trim):
     return out
 
 
+def intersect_windows(a_wins, b_wins):
+    """Overlapping stretches of two window lists. Both pollers up means comparable."""
+    out = []
+    for a0, a1 in a_wins:
+        for b0, b1 in b_wins:
+            lo, hi = max(a0, b0), min(a1, b1)
+            if lo < hi:
+                out.append((lo, hi))
+    return sorted(out)
+
+
 def active_period(day, now):
     """Dublin 05:30 to next 00:30, the window both pollers are meant to be awake."""
     d = datetime.fromisoformat(day)
@@ -204,7 +215,14 @@ def main():
         print(f"\n  ! lambda data is {stale_min:.0f} min behind local. Re-run the s3 sync,")
         print("    otherwise this is a diff against a stale copy.")
 
-    wins = windows(lc, args.gap_minutes, args.trim_cycles)
+    # Windows must be periods where BOTH pollers were up, not just local. Local was
+    # originally the only side with gaps, so local uptime alone defined the window. Once
+    # the Lambda can also be down — a forced-failure test, a throttle, a bad deploy — its
+    # absence would otherwise land in the "local only" column and read as disagreement
+    # rather than as a gap.
+    local_wins = windows(lc, args.gap_minutes, args.trim_cycles)
+    lambda_wins = windows(mc, args.gap_minutes, args.trim_cycles)
+    wins = intersect_windows(local_wins, lambda_wins)
 
     print("\n" + "=" * W)
     print("COVERAGE — the comparison runs only where local was up")
@@ -225,6 +243,13 @@ def main():
     print("  " + "-" * 51)
     total_pct = f"{100 * tot_cov / tot_act:.0f}%" if tot_act else "-"
     print(f"  {'TOTAL':<12}{len(wins):>8}{tot_cov:>11.1f}{tot_act:>10.1f}{total_pct:>10}")
+    lh = sum((b - a).total_seconds() / 3600 for a, b in local_wins)
+    mh = sum((b - a).total_seconds() / 3600 for a, b in lambda_wins)
+    print()
+    print(f"  local up {lh:.1f}h, lambda up {mh:.1f}h, both up {tot_cov:.1f}h")
+    if mh < lh - 0.5:
+        print(f"  ! lambda was down for ~{lh - mh:.1f}h that local covered. Those hours are")
+        print("    excluded rather than counted as disagreement.")
     print("\n  Gaps are laptop downtime, not missing data. Everything below is measured")
     print("  inside the covered hours only.")
 

@@ -871,9 +871,39 @@ ends, whether or not cutover happens.
 **Dates.** Started **2026-08-23**, first two Lambda cycles landing in S3 at 14:03 and
 14:08 UTC. **Hard stop 2026-08-30, no extension.**
 
-**Forced-failure test: 2026-08-27**, mid-window and during active hours. Late enough that
-normal operation is established, early enough that a silent alarm can still be fixed
-before the window closes.
+**Forced-failure test: run 2026-08-26/27. Both alarms verified end to end.**
+
+| | Test A: function-errors | Test B: not-running |
+|---|---|---|
+| Method | POLL_BUCKET set to a nonexistent bucket | EventBridge rule disabled |
+| Broke at | 18:24 UTC 26 Aug | 23:39 UTC 26 Aug |
+| Alarm raised | 18:29:43 UTC | 00:19:09 UTC 27 Aug |
+| Email received | yes | yes |
+| Reverted | 18:31 UTC | 00:14 UTC |
+| Returned to OK | 18:34:43 UTC | 00:20:09 UTC |
+| Recovery confirmed | cycles at 18:43, 18:48, 18:53 | invocation at 00:15 |
+
+**The test found a real defect, which is the point of running it.** The poller's SNS topic
+had **zero subscribers**: the subscription the stack created on 23 August expired because
+an unconfirmed email subscription is discarded after three days and the link was never
+clicked. Every alarm for three days would have shown ALARM in the console and notified
+nobody. Both topics are now confirmed. Check subscriptions after any stack that creates
+one, because nothing else surfaces this.
+
+**Both tests cost no comparison data.** Test A ran while local was collecting, so the
+parallel run lost only the Lambda side for nine minutes. Test B ran entirely inside quiet
+hours (00:30-05:30 Dublin), when neither poller collects, so the 35 minutes were free.
+
+**A design choice paid off here.** The not-running alarm watches `Invocations`, which keep
+ticking through quiet hours because the skip lives in the function rather than in the
+schedule (D29 rationale). Had quiet hours been a cron expression instead, invocations
+would stop nightly and the liveness alarm would have had nothing to watch — or would have
+fired every night.
+
+**Known gap, not tested.** The API's `api-errors` alarm cannot see a failed prediction-log
+write. `api.py` catches `LogWriteFailed` and returns 503, which Lambda counts as a
+successful invocation, so `Errors` stays zero. D39 requires log trouble to be visible as
+API trouble and it currently is not. Needs a metric or a deliberate unhandled raise.
 
 **What "ends" means.** At the stop date exactly one of two things happens:
 
