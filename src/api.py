@@ -62,7 +62,7 @@ def _staged(packaged: str, checkout: str) -> Path:
 
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
-from feedtime import feed_train_date, hms, unwrap  # noqa: E402
+from feedtime import feed_train_date, hms, lead_band, unwrap  # noqa: E402
 from poll_live import (DUBLIN, USER_AGENT, Failure, fetch, in_dublin,  # noqa: E402
                        load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
@@ -247,6 +247,14 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
     target = stops[ti]
     base["scheduled_arrival"] = target["sched_text"] or None
     base["station_name"] = target["name"]
+    # Recorded rather than left for the scorer to reconstruct. `sched` here is unwrapped
+    # across midnight; `scheduled_arrival` is the raw wall clock, so a 23:50 prediction
+    # about a 00:20 arrival reconstructs as a lead of minus 23 hours. Compute it once
+    # where the information is complete. The band is the unit the offline comparison
+    # deduplicates by (D46 trap 4), so it has to mean the same thing on both sides.
+    if target["sched"] is not None:
+        base["lead_sec"] = int(target["sched"] - now_s)
+        base["lead_band"] = lead_band(base["lead_sec"])
 
     if target["arr"] is not None:
         return {**base, "reason": "already_arrived",

@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+# scorer.yaml — the nightly scorer.
+#
+# Its own stack, and specifically its own ROLE, because the permission set is the point.
+# D39 requires that "never regenerate historical predictions" be enforced by credentials
+# rather than by discipline: this role may read the prediction log and write scores, and
+# has no PutObject on the prediction prefix at all. The API's role is the mirror image.
+# Merging them would leave one identity that could both write predictions and read
+# outcomes, which is exactly the combination that makes a leakage claim unverifiable.
+#
+#   powershell scripts\build_scorer.ps1
+#   sam deploy --region eu-west-1 --template-file infra/scorer.yaml \
+#     --parameter-overrides BucketName=rail-delay-poller-kg AlarmEmail=...
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Existing bucket, shared with the poller and API stacks.
+  PredictionsPrefix:
+    Type: String
+    Default: predictions
+    Description: Read only. The scorer must never be able to write here.
+  PollerPrefix:
+    Type: String
+    Default: parallel/lambda
+    Description: >-
+      Where the poller writes its archived station boards, which carry the operator's
+      ExpectedArrival for the head-to-head. Change this at cutover if the poller's prefix
+      changes: a stale value produces a scoreboard with accuracy but no operator
+      comparison, which looks like a quiet railway rather than a misconfiguration.
+  ScoresPrefix:
+    Type: String
+    Default: scores
+  BackfillDays:
+    Type: Number
+    Default: 7
+    Description: >-
+      How far back to look for service dates that have predictions but no summary. The
+      scorer asks what it is missing rather than assuming last night's run succeeded;
+      movements are refetchable by date, so a missed night is recoverable by noticing.
+  AlarmEmail:
+    Type: String
+
+Resources:
+
+  ScorerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-scorer
+      RetentionInDays: 30
+
+  ScorerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: scorer-minimal
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${ScorerLogGroup.Arn}:*
+              # Listing is scoped to the two prefixes actually read. Without the
+              # condition, s3:ListBucket on a bucket ARN lists the whole bucket.
+              - Sid: ListWhatItReads
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub ${PredictionsPrefix}/*
+                      - !Sub ${PollerPrefix}/*
+                      - !Sub ${ScoresPrefix}/*
+              - Sid: ReadPredictionsAndBoards
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PredictionsPrefix}/*
+                  - !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PollerPrefix}/*
+              - Sid: WriteScoresOnly
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${ScoresPrefix}/*
+
+  ScorerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-scorer
+      CodeUri: ../build/scorer
+      Handler: score.lambda_handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      # No model, so no numpy or lightgbm import to pay for at cold start. The work is
+      # network-bound: one movements request per distinct train, paced at 2/second.
+      MemorySize: 512
+      # ~700 distinct trains a day at 2 requests/second is ~6 minutes. 15 is the Lambda
+      # ceiling; the function stops starting requests below its own floor and leaves the
+      # rest for the next run, which the unscored-date scan will pick up.
+      Timeout: 900
+      Role: !GetAtt ScorerRole.Arn
+      Environment:
+        Variables:
+          POLL_BUCKET: !Ref BucketName
+          PREDICTIONS_PREFIX: !Ref PredictionsPrefix
+          POLLER_PREFIX: !Ref PollerPrefix
+          SCORES_PREFIX: !Ref ScoresPrefix
+          SCORE_BACKFILL_DAYS: !Ref BackfillDays
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 60
+      Events:
+        Nightly:
+          Type: Schedule
+          Properties:
+            # 03:15 UTC, inside Irish quiet hours in both GMT and IST, so the previous
+            # service day is finished and the network is not being polled anyway. Cron is
+            # UTC-only; that is tolerable here because unlike the poller nothing about
+            # this job needs to track Irish local time to the hour.
+            Schedule: cron(15 3 * * ? *)
+            Name: !Sub ${AWS::StackName}-nightly
+            Description: Score yesterday, and any earlier date still missing a summary
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${AWS::StackName}-alarms
+
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+      TopicArn: !Ref AlarmTopic
+
+  # A failed run is not urgent — the next night's unscored-date scan retries it — but a
+  # run failing every night would silently freeze the accuracy page at its last good day,
+  # and a stale scoreboard looks exactly like a working one.
+  ScorerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-scorer-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref ScorerFunction }]
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  ScorerName:
+    Value: !Ref ScorerFunction
+  ScoresLocation:
+    Value: !Sub s3://${BucketName}/${ScoresPrefix}/
