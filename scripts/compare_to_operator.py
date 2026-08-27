@@ -87,14 +87,14 @@ DUBLIN = ZoneInfo("Europe/Dublin")
 # served a live request and nothing detected it. See src/features.py and decisions.md D35.
 sys.path.insert(0, str(REPO_ROOT / "src"))
 from features import CATEGORICAL, FEATURES, NUMERIC, featurise  # noqa: E402
+from feedtime import LEAD_BANDS  # noqa: E402
 
 PARAMS = {"objective": "quantile", "alpha": 0.5, "learning_rate": 0.1,
           "num_leaves": 31, "min_data_in_leaf": 20, "verbose": -1,
           "seed": 42, "deterministic": True, "force_row_wise": True}
 NUM_ROUNDS = 100
 
-LEAD_BANDS = [(0, 300, "0-5 min"), (300, 900, "5-15 min"), (900, 1800, "15-30 min"),
-              (1800, 3600, "30-60 min"), (3600, 10 ** 9, "60+ min")]
+
 
 
 def iso_from_traindate(s):

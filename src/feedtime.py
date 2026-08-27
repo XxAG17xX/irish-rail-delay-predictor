@@ -61,3 +61,27 @@ def iso_train_date(s):
 def feed_train_date(d):
     """A date to the format TrainDate wants: '25 Aug 2026'."""
     return f"{d.day:02d} {MONTHS[d.month - 1].capitalize()} {d.year}"
+
+
+# Lead-time bands: how far ahead of a scheduled arrival a prediction was made.
+#
+# Defined here rather than in the script that first needed it, because three callers now
+# depend on them agreeing. compare_to_operator.py keeps one comparison per (event, band)
+# to stop ~18 polls of the same event being counted as 18 independent observations (D46
+# trap 4); generate.py picks at most one target per band per train for the same reason;
+# and the scorer aggregates by band. If the live bands and the offline bands differed,
+# the live number and the published 27% would not be comparable — which is the whole
+# point of the accuracy page.
+LEAD_BANDS = ((0, 300, "0-5 min"), (300, 900, "5-15 min"), (900, 1800, "15-30 min"),
+              (1800, 3600, "30-60 min"), (3600, 10 ** 9, "60+ min"))
+
+
+def lead_band(seconds):
+    """Which band a lead time falls in. None for a lead that is negative or absent —
+    the arrival is in the past, so nothing was being predicted."""
+    if seconds is None or seconds < 0:
+        return None
+    for lo, hi, name in LEAD_BANDS:
+        if lo <= seconds < hi:
+            return name
+    return None
