@@ -11,6 +11,72 @@ Entries D1–D10 were written on 2026-07-25 and cover decisions made up to that 
 few of which were settled slightly earlier in the same week. Dates from D11 on are the
 date the decision was actually made.
 
+## Index
+
+Grouped by area, newest thinking usually last within each group. A gap in a group is
+worth noticing: three entries (D46-D48) were written weeks late because the reasoning
+sat in code comments and nobody looked for the hole.
+
+**Collection and politeness** 
+- [D1](#d1--archive-raw-responses-before-parsing) Archive raw responses before parsing
+- [D2](#d2--archive-the-live-getcurrenttrainsxml-snapshots-too) Archive the live `getCurrentTrainsXML` snapshots too
+- [D3](#d3--save-empty-responses-plus-a-per-day-manifest) Save empty responses, plus a per-day manifest
+- [D5](#d5--date-major-iteration-oldest-first) Date-major iteration, oldest first
+- [D6](#d6--serial-pacer-not-a-token-bucket) Serial pacer, not a token bucket
+- [D7](#d7--adaptive-pacing-aimd-not-a-fixed-rate) Adaptive pacing (AIMD), not a fixed rate
+- [D8](#d8--three-retry-classes-handled-differently) Three retry classes, handled differently
+- [D9](#d9--byte-level-body-guard-before-writing) Byte-level body guard before writing
+- [D11](#d11--fetch-every-code-every-date-do-not-skip-on-the-weekday-set) Fetch every code × every date; do not skip on the weekday set
+- [D12](#d12--monotonic-clock-for-every-interval-and-duration) Monotonic clock for every interval and duration
+- [D13](#d13--full-jitter-on-backoff-not-plain-exponential) Full jitter on backoff, not plain exponential
+- [D14](#d14--failures-go-to-an-append-only-log-not-an-exception) Failures go to an append-only log, not an exception
+- [D15](#d15--train-codes-are-allowlist-sanitised-before-becoming-filenames) Train codes are allowlist-sanitised before becoming filenames
+- [D16](#d16--dates-for-the-api-are-built-from-an-explicit-month-table) Dates for the API are built from an explicit month table
+- [D29](#d29--poll-live-covers-30-stratified-stations-not-all-171) poll_live covers 30 stratified stations, not all 171
+- [D30](#d30--an-exclusive-host-lock-because-a-docstring-is-not-a-control) An exclusive host lock, because a docstring is not a control
+
+**Storage, parsing and correctness** 
+- [D4](#d4--atomic-writes-for-every-file) Atomic writes for every file
+- [D10](#d10--record-day-of-week-per-harvested-code) Record day-of-week per harvested code
+- [D17](#d17--analysis-lives-in-scripts-and-is-strictly-read-only) Analysis lives in `scripts/` and is strictly read-only
+- [D18](#d18--read-the-gzip-isize-trailer-instead-of-decompressing) Read the gzip ISIZE trailer instead of decompressing
+- [D19](#d19--seeded-sampling-and-structural-nulls-excluded-from-comparison) Seeded sampling, and structural nulls excluded from comparison
+- [D22](#d22--times-are-quantised-to-6-seconds-spike-ratios-must-account-for-it) Times are quantised to 6 seconds; spike ratios must account for it
+- [D37](#d37--cfn-lint-validates-shape-not-service-rules-check-quotas-and-units-before-deploying) cfn-lint validates shape, not service rules; check quotas and units before deploying
+- [D40](#d40--no-database-s3-and-parquet-instead) No database. S3 and Parquet instead
+- [D44](#d44--packaging-lightgbm-for-lambda-three-problems-a-normal-pip-install-hides) Packaging lightgbm for Lambda: three problems a normal pip install hides
+
+**Data quality and the echo problem** 
+- [D20](#d20--echo-detection-by-line-name-tried-appeared-to-work-abandoned) Echo detection by line name: tried, appeared to work, abandoned
+- [D21](#d21--autoarrival-is-the-echo-signal) `AutoArrival` is the echo signal
+- [D23](#d23--flag-non-auto-records-do-not-drop-them) Flag non-auto records, do not drop them
+- [D48](#d48--line-keywords-are-matched-on-word-boundaries-not-substrings) Line keywords are matched on word boundaries, not substrings
+
+**Modelling and evaluation** 
+- [D24](#d24--training-examples-at-fixed-horizons-of-1-3-5-and-10-observed-stops) Training examples at fixed horizons of 1, 3, 5 and 10 observed stops
+- [D25](#d25--three-way-temporal-split-the-test-week-opens-once) Three-way temporal split; the test week opens once
+- [D26](#d26--persistence-not-zero-is-the-baseline-to-beat) Persistence, not zero, is the baseline to beat
+- [D27](#d27--quantile-outputs-are-sorted-before-use) Quantile outputs are sorted before use
+- [D28](#d28--interval-coverage-degrades-with-horizon-never-quote-one-number) Interval coverage degrades with horizon; never quote one number
+- [D31](#d31--a-model-artifact-bundles-boosters-vocabularies-and-the-feature-list) A model artifact bundles boosters, vocabularies and the feature list
+- [D32](#d32--version-id-is-a-utc-timestamp-plus-the-git-commit) Version id is a UTC timestamp plus the git commit
+- [D33](#d33--an-explicit-latest-pointer-not-newest-by-name) An explicit LATEST pointer, not newest-by-name
+- [D34](#d34--saving-is-opt-in-via-save) Saving is opt-in via `--save`
+- [D35](#d35--one-feature-definition-in-src-features-py) One feature definition, in `src/features.py`
+- [D45](#d45--shared-logic-moves-to-a-module-the-moment-a-second-caller-appears) Shared logic moves to a module the moment a second caller appears
+- [D46](#d46--how-the-head-to-head-against-the-operator-is-kept-fair) How the head-to-head against the operator is kept fair
+
+**Serving** 
+- [D39](#d39--prediction-log-schema-write-once-storage-and-fail-closed-serving) Prediction log: schema, write-once storage, and fail-closed serving
+- [D41](#d41--plain-html-css-and-vanilla-javascript-for-the-three-pages) Plain HTML, CSS and vanilla JavaScript for the three pages
+- [D42](#d42--predictions-page-loads-per-train-on-demand-no-precomputation-yet) Predictions page loads per train on demand; no precomputation yet
+- [D43](#d43--the-api-s-deployment-shape-fastapi-behind-mangum-function-url-baked-artifact) The API's deployment shape: FastAPI behind Mangum, Function URL, baked artifact
+
+**Cutover and verification** 
+- [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
+- [D38](#d38--two-structural-artefacts-in-the-parallel-run-diff-and-how-to-tell-them-from-real-disagreement) Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement
+- [D47](#d47--a-100-join-rate-is-necessary-and-nearly-meaningless-usability-is-the-number) A 100% join rate is necessary and nearly meaningless; usability is the number
+
 ---
 
 ## D1 — Archive raw responses before parsing
