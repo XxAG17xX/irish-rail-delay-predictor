@@ -64,6 +64,11 @@ Current phase is **serving**: get the system running in AWS with a public URL.
   (`infra/poller.yaml`, eu-west-1). Lambda poller running every 5 minutes.
 - **Parallel run 2026-08-23 to 08-30** (D36, hard expiry). Forced-failure test 08-27.
   Compare with `python scripts\diff_parallel.py` after an `aws s3 sync`.
+  **Interim read, 28 August, 83.0 covered hours: MEETS the bar.** Schema identical,
+  event overlap 99.9% (15,040 both / 3 local-only / 13 lambda-only), volume deviation
+  3.1% mean, 88.6% identical `Exparrival` over 259,643 shared events. This verified the
+  script end to end after the window-intersection change. It is not the cutover call —
+  D36 measures the full seven days, which needs both weekend days.
 - API stack (`infra/api.yaml`, eu-west-1):
   **https://u57p35imryiymiihvvs2wc3r2q0vpgmc.lambda-url.eu-west-1.on.aws**
   Try `/health`, `/docs`, `/predict?train=A220&station=THRLS`. Cold start ~3.2s,
@@ -111,9 +116,13 @@ Open items that will not announce themselves:
   polls unanswerable" is a share of station board polls, which include trains that have
   not departed. The generator's ~11% is a share of sampled in-service trains. Different
   populations; side by side they read as an improvement that did not happen (D49).
-- `diff_parallel.py` has not been run to completion since the window-intersection change.
-  It parses; that is not the same as producing correct output. Verify before it is the
-  basis of the cutover decision, not on the day.
+- A **degraded** cycle counts as local uptime in `diff_parallel.py` (`records > 0 and
+  status != "failed"`), so a partial sweep is compared as if it were a full one. That was
+  harmless for the 28 August DNS outage because an event is polled ~18 times across a
+  90-minute lookahead, so nothing was uniquely visible in the lost two minutes. A longer
+  outage could genuinely lose events, and they would count against the overlap bar. D36
+  allows that — the bar is "every miss explained", not "no misses" — but the explanation
+  has to come from the cycle records, so check `stations_failed` before blaming the Lambda.
 
 ## Who I am, and how to work with me
 
