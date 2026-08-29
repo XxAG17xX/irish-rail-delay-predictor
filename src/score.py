@@ -82,13 +82,17 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from backfill import Pacer, Failure  # noqa: E402
-from feedtime import LEAD_BANDS, hms, iso_train_date, lead_band, unwrap  # noqa: E402
+from feedtime import (LEAD_BANDS, delay_seconds, hms,  # noqa: E402
+                      iso_train_date, journey_consistent, lead_band, unwrap)
 from poll_live import DUBLIN, USER_AGENT, fetch  # noqa: E402
 
 NS = "{http://api.irishrail.ie/realtime/}"
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 TIME_BUDGET_FLOOR_MS = 30_000
+# Below this many scored rows a day is too thin for "zero operator matches" to
+# mean anything, so the alarm stays quiet rather than firing on a quiet Sunday.
+OPERATOR_ALARM_FLOOR = 50
 
 
 def feed_date(iso: str) -> str:
@@ -174,10 +178,14 @@ def load_predictions(client, bucket, prefix, day):
     kept, seen = {}, 0
     for row in read_rows(client, bucket, f"{prefix}/date={day}/"):
         seen += 1
-        band = row.get("lead_band") or lead_band(reconstruct_lead(row))
+        lead = reconstruct_lead(row)
+        band = row.get("lead_band") or lead_band(lead)
         k = (row.get("train_code"), row.get("station_code"), band)
         if k not in kept or row.get("predicted_at", "") > kept[k].get("predicted_at", ""):
-            row["lead_band"] = band
+            # Written back so a score row always carries the lead it was actually judged
+            # on. Copying only `row.get("lead_sec")` left it null on every reconstructed
+            # row, which is the value being explained away in the output.
+            row["lead_band"], row["lead_sec"] = band, lead
             kept[k] = row
     return list(kept.values()), seen
 
@@ -190,9 +198,10 @@ def load_operator(client, bucket, prefix, days):
     the 27th's partition under service date 26 Aug. Keying on the partition instead of the
     field would silently lose every late-evening comparison.
     """
-    out = defaultdict(list)
+    out, comp = defaultdict(list), Counter()
     for day in days:
         for row in read_rows(client, bucket, f"{prefix}/expected/date={day}/"):
+            comp[board_scope(row)] += 1
             code = (row.get("Traincode") or "").strip().upper()
             stn = (row.get("station_code") or "").strip().upper()
             td = (row.get("Traindate") or "").strip()
@@ -207,7 +216,23 @@ def load_operator(client, bucket, prefix, days):
             if poll_s is None:
                 continue
             out[(service, code, stn)].append((poll_s, eta, row.get("station_group", "")))
-    return out
+    return out, comp
+
+
+def board_scope(row):
+    """Is this board entry a train the product can answer about at all?
+
+    The product answers for a train ALREADY IN SERVICE (CLAUDE.md). A station board also
+    lists trains that have not departed, and a visitor cannot tell the difference by
+    looking. `Origintime` against `polled_at` separates them without another request.
+
+    This is what makes the visitor-facing coverage number measurable rather than asserted.
+    On 27 August, 43.1% of 62,575 board rows were trains that had already departed.
+    """
+    o, p = hms(row.get("Origintime")), hms((row.get("polled_at") or "")[11:19])
+    if o is None or p is None:
+        return "unknown"
+    return "departed" if (p - o) % 86400 < 43200 else "not_yet_departed"
 
 
 def fetch_journeys(session, pacer, codes, day, time_left=None):
@@ -255,8 +280,7 @@ def parse_journey(body: bytes):
         for s, v in zip(stops, unwrap([x[field] for x in stops])):
             s[dest] = v
     for s in stops:
-        s["delay"] = (s["arr"] - s["sched"]) if (s["arr"] is not None
-                                                 and s["sched"] is not None) else None
+        s["delay"] = delay_seconds(s["arr"], s["sched"])
     return stops
 
 
@@ -281,6 +305,12 @@ def score_rows(preds, journeys, operator, missing_codes):
             continue
 
         stops = journeys[code]
+        if not journey_consistent(stops):
+            # Reported arrivals move backwards along the route, so at least one time is
+            # wrong and magnitude cannot say which. The whole journey is refused rather
+            # than guessed at. See feedtime.journey_consistent.
+            out.append({**rec, "score_state": "journey_inconsistent"})
+            continue
         target = next((s for s in stops if s["loc"] == stn), None)
         if target is None:
             out.append({**rec, "score_state": "not_on_route"})
@@ -325,7 +355,7 @@ def score_rows(preds, journeys, operator, missing_codes):
     return out
 
 
-def summarise(scored, day, seen, failed):
+def summarise(scored, day, seen, failed, board=None):
     """Aggregates for the accuracy page. Head-to-head only on matched events."""
     states = Counter(r["score_state"] for r in scored)
     declines = Counter(r.get("reason") for r in scored if r["score_state"] == "declined")
@@ -372,6 +402,21 @@ def summarise(scored, day, seen, failed):
                            "interval_coverage_pct": coverage(sel),
                            "head_to_head": head_to_head(sel)}
 
+    warnings = []
+    matched = sum(1 for r in clean if r.get("operator_err_sec") is not None)
+    # A zero here is the exact signature of a stale PollerPrefix, and it wears a
+    # dangerously good disguise: every accuracy figure still populates, only the
+    # comparison is absent, so the page reads as a quiet railway and not a
+    # misconfiguration. Loud in the summary, and fatal in the handler.
+    if clean and matched == 0:
+        warnings.append(
+            f"NO OPERATOR MATCHES: {len(clean)} rows scored and not one found an archived "
+            f"board row in the same lead band. Check the poller prefix the scorer reads "
+            f"is where the poller actually writes.")
+    if states["journey_inconsistent"]:
+        warnings.append(f"{states['journey_inconsistent']} rows on journeys whose reported "
+                        f"arrivals move backwards along the route")
+
     return {
         "service_date": day,
         "scored_at": datetime.now(DUBLIN).isoformat(timespec="seconds"),
@@ -382,15 +427,24 @@ def summarise(scored, day, seen, failed):
         "trains_unfetched": failed,
         # Coverage, always beside accuracy: "27% better" without "answers ~44% of
         # queries" is the misleading version (CLAUDE.md reporting rules).
+        # Two coverage numbers, each with its population named, because they answer
+        # different questions and one of them is the one a visitor actually experiences.
         "coverage": {
-            "answered": answerable,
-            "declined": states["declined"],
-            "answered_pct": (round(100 * answerable / len(scored), 1) if scored else None),
-            "note": "share of SAMPLED IN-SERVICE trains, not of all queries. The ~56% "
-                    "unanswerable figure in the offline comparison is a share of station "
-                    "board polls, which include trains that have not departed. The two "
-                    "denominators are different populations and must not be compared.",
+            # Conditional on the train already running. This is the generator's own
+            # population, and it flatters: every train in it has departed by definition.
+            "in_service": {
+                "population": "trains sampled while in service (TrainStatus R)",
+                "answered": answerable,
+                "declined": states["declined"],
+                "answered_pct": (round(100 * answerable / len(scored), 1)
+                                 if scored else None),
+            },
+            # What a visitor meets. They pick a train off a station board, and a board
+            # lists trains that have not departed, which the product cannot answer for at
+            # all. This is the headline number: it is the honest one.
+            "visitor": visitor_coverage(board, answerable, len(scored)),
         },
+        "warnings": warnings,
         "headline": {
             "accuracy": stats(clean, "model_err_rounded_sec"),
             "accuracy_raw": stats(clean, "model_err_sec"),
@@ -407,6 +461,41 @@ def summarise(scored, day, seen, failed):
             "head_to_head": head_to_head(clean + echo)},
         "by_station_group": by_group,
         "by_lead_band": by_band,
+    }
+
+
+def visitor_coverage(board, answerable, total):
+    """Coverage as a visitor experiences it, not conditional on the train running.
+
+    Two factors, both measured live:
+
+        P(in scope)          share of station board entries whose train has departed
+        P(answered | scope)  the generator's own answer rate
+
+    The product cannot answer for a train that has not left its origin, and a visitor
+    reading a board cannot tell which those are. Reporting only the conditional rate would
+    publish "we answer ~89% of queries" for a service that in practice answers about four
+    in ten, which is the misleading version CLAUDE.md's reporting rules exist to prevent.
+
+    The second factor assumes the sampled in-service trains are representative of the
+    in-service trains on a board. They are drawn uniformly from the fleet, so this is
+    reasonable, but it is an assumption and belongs on the page next to the number.
+    """
+    if not board or not total:
+        return None
+    known = board["departed"] + board["not_yet_departed"]
+    if not known:
+        return None
+    in_scope = board["departed"] / known
+    answered = answerable / total
+    return {
+        "population": "entries on a station board, as a visitor sees them",
+        "board_entries": known,
+        "in_scope_pct": round(100 * in_scope, 1),
+        "answered_given_in_scope_pct": round(100 * answered, 1),
+        "answered_pct": round(100 * in_scope * answered, 1),
+        "assumption": "sampled in-service trains are representative of in-service trains "
+                      "appearing on boards; the sample is uniform over the fleet",
     }
 
 
@@ -439,11 +528,11 @@ def score_day(client, session, pacer, bucket, day, pred_prefix, poller_prefix,
     if not preds:
         return None, []
     nxt = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
-    operator = load_operator(client, bucket, poller_prefix, [day, nxt])
+    operator, board = load_operator(client, bucket, poller_prefix, [day, nxt])
     codes = {r["train_code"] for r in preds if r.get("train_code")}
     journeys, failed = fetch_journeys(session, pacer, codes, day, time_left)
     scored = score_rows(preds, journeys, operator, set(failed))
-    return summarise(scored, day, seen, failed), scored
+    return summarise(scored, day, seen, failed, board), scored
 
 
 def write_scores(client, bucket, prefix, day, summary, scored):
@@ -505,6 +594,8 @@ def report(summary):
     else:
         print("\nno matched events: no archived board row shared a lead band with a "
               "prediction. Expected while few predictions land on the 30 polled stations.")
+    for w in s.get("warnings", []):
+        print("\n  !! " + w)
     if s["trains_unfetched"]:
         print(f"\n{len(s['trains_unfetched'])} trains could not be refetched; "
               f"rerun to pick them up")
@@ -522,6 +613,7 @@ def lambda_handler(event, context):
     session.headers["User-Agent"] = USER_AGENT
     pacer = Pacer(float(os.environ.get("POLL_RATE", "2.0")))
 
+    fatal = []
     days = (event or {}).get("dates") or unscored_dates(
         client, bucket, pred, scores, int(os.environ.get("SCORE_BACKFILL_DAYS", "7")))
     done = []
@@ -536,7 +628,20 @@ def lambda_handler(event, context):
         write_scores(client, bucket, scores, day, summary, scored)
         report(summary)
         done.append({"date": day, "events": summary["events_after_dedup"],
-                     "states": summary["score_states"]})
+                     "states": summary["score_states"],
+                     "warnings": summary["warnings"]})
+        # Raised AFTER the write, so the day's scores are preserved and can be inspected,
+        # but the invocation still fails and trips the Errors alarm. A quiet zero here
+        # would freeze the head-to-head at "no data" indefinitely and look deliberate.
+        # Gated on a real sample so a genuinely thin day does not cry wolf.
+        if (summary["score_states"].get("scored", 0) >= OPERATOR_ALARM_FLOOR
+                and not summary["headline"]["head_to_head"]):
+            fatal.append(day)
+    if fatal:
+        raise RuntimeError(
+            f"no operator matches on {', '.join(fatal)} despite scoring at least "
+            f"{OPERATOR_ALARM_FLOOR} rows. Scores were written; the comparison is missing. "
+            f"Most likely POLLER_PREFIX ({poller}) is not where the poller now writes.")
     return {"status": "ok", "scored_dates": done, "candidates": days}
 
 
@@ -684,11 +789,34 @@ def _self_check():
     assert not is_complete(datetime.now(DUBLIN).date().isoformat()), "today is not done"
     assert is_complete((datetime.now(DUBLIN).date() - timedelta(days=1)).isoformat())
 
-    s = summarise(rows, "2026-08-27", 6, [])
+    # a journey whose reported arrivals go backwards is refused whole, not guessed at
+    broken = {"A1": [stop("AAAA", 1, 36000, 36060), stop("BBBB", 2, 39600, 36000)]}
+    r = score_rows([pred("BBBB", 200, "15-30 min", 1200)], broken, {}, set())[0]
+    assert r["score_state"] == "journey_inconsistent", r["score_state"]
+
+    board = Counter({"departed": 431, "not_yet_departed": 569})
+    s = summarise(rows, "2026-08-27", 6, [], board)
+    v = s["coverage"]["visitor"]
+    assert v["in_scope_pct"] == 43.1, v
+    # the visitor number must be the conditional one scaled down, never the raw rate
+    assert v["answered_pct"] < s["coverage"]["in_service"]["answered_pct"]
+    assert round(v["in_scope_pct"] * v["answered_given_in_scope_pct"] / 100, 1)         == v["answered_pct"]
+
+    # zero operator matches on a scored day must be shouted, not returned as a quiet zero
+    quiet = summarise([r for r in rows if r["station_code"] == "DDDD"], "2026-08-27", 1,
+                      [], board)
+    assert not any("NO OPERATOR MATCHES" in w for w in quiet["warnings"]),         "echo_suspect-only day has no clean rows, so there is nothing to warn about"
+    only = [r for r in rows if r.get("score_state") == "scored"]
+    assert only, "expected a scored row in the fixture"
+    for r in only:
+        r.pop("operator_err_sec", None)
+    assert any("NO OPERATOR MATCHES" in w for w in
+               summarise(only, "2026-08-27", 1, [], board)["warnings"])
+
     assert s["score_states"]["declined"] == 1
     assert s["headline"]["head_to_head"]["matched_events"] == 1
     assert s["headline"]["accuracy"]["n"] == 1
-    assert s["coverage"]["declined"] == 1
+    assert s["coverage"]["in_service"]["declined"] == 1
     print("score.py self-check passed")
 
 

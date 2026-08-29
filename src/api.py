@@ -62,7 +62,8 @@ def _staged(packaged: str, checkout: str) -> Path:
 
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
-from feedtime import feed_train_date, hms, lead_band, unwrap  # noqa: E402
+from feedtime import (delay_seconds, feed_train_date, hms,  # noqa: E402
+                      lead_band, unwrap)
 from poll_live import (DUBLIN, USER_AGENT, Failure, fetch, in_dublin,  # noqa: E402
                        load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
@@ -129,7 +130,11 @@ def journey(session, pacer, train_code, when):
             "name": text(rec, "LocationFullName"),
             "sched_raw": sched, "arr_raw": arr,
             "auto": text(rec, "AutoArrival"),
-            "delay": (arr - sched) if (arr is not None and sched is not None) else None,
+            # Anchored to this stop's own schedule, matching parse_raw and therefore the
+            # delays the model was trained on. Subtracting two independently unwrapped
+            # series instead returns a spurious extra day on journeys whose reported
+            # arrivals go backwards. See feedtime.delay_seconds.
+            "delay": delay_seconds(arr, sched),
             "origin": text(rec, "TrainOrigin"),
             "destination": text(rec, "TrainDestination"),
             "sched_text": text(rec, "ScheduledArrival"),

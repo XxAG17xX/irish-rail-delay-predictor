@@ -85,3 +85,55 @@ def lead_band(seconds):
         if lo <= seconds < hi:
             return name
     return None
+
+
+def delay_seconds(arr, sched):
+    """Actual minus scheduled, anchored to this stop's OWN schedule.
+
+    This is parse_raw.delay_seconds, moved here because the live path had grown a second
+    and worse version of it. api.py and score.py used to unwrap the arrival and schedule
+    series independently across the journey and subtract the results. On a journey whose
+    reported arrivals go backwards -- A728 to Galway on 2026-08-27 reported Woodlawn at
+    01:55 between Ballinasloe at 21:22 and Athenry at 22:43 -- the sequential unwrap sees
+    an apparent midnight crossing, adds a day to everything after it, and returns 89850s
+    (24.96 hours) where this rule returns the correct 3450s.
+
+    That mattered beyond scoring: the model was TRAINED on delays computed this way, so
+    the live API was feeding its dominant feature a quantity computed by a different rule.
+    They agree except on the pathological journeys, which is the worst kind of disagreement
+    because nothing surfaces it.
+
+    AutoArrival does not protect against this. All four bad stops on that journey carry
+    AutoArrival=1.
+    """
+    if arr is None or sched is None:
+        return None
+    d = arr - sched
+    if d > HALF_DAY:
+        d -= FULL_DAY
+    elif d < -HALF_DAY:
+        d += FULL_DAY
+    return d
+
+
+def journey_consistent(stops):
+    """Do the reported arrivals move forwards along the route?
+
+    A stop's anchored arrival is `sched + delay`. In a sound journey that series is
+    non-decreasing in LocationOrder. An inversion means at least one reported time is
+    wrong, and there is no way to tell from magnitude alone WHICH one -- so the caller
+    should treat the whole journey as unscoreable rather than guess.
+
+    Deliberately not a threshold on delay size. "More than N hours late is impossible"
+    would be a number invented to fit one example; monotonicity is a property the data
+    must have for any reason at all.
+    """
+    prev = None
+    for s in sorted(stops, key=lambda x: x["order"]):
+        if s.get("delay") is None or s.get("sched") is None:
+            continue
+        at = s["sched"] + s["delay"]
+        if prev is not None and at < prev:
+            return False
+        prev = at
+    return True
