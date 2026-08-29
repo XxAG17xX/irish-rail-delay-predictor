@@ -84,10 +84,7 @@ as `summary.json` plus `rows.jsonl.gz`.
 
 Next actions, in this order:
 
-1. **Confirm the scorer stack's SNS email subscription.** The forced-failure test on
-   27 August found the poller's topic had zero subscribers because a subscription had
-   expired after three days unconfirmed. Until the link is clicked every alarm is
-   silently dropped.
+1. **Cutover day is 30 August.** See below.
 2. **30 August: the cutover.** Run `python scripts\diff_parallel.py` after an
    `aws s3 sync`, compare against D36's bar, and either the local poller stops or the
    Lambda does. D36 expires on the date, not on success — there is no third option.
@@ -108,6 +105,17 @@ Open items that will not announce themselves:
   services. Needs a staleness guard **before** cutover (D36).
 - `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
   networkx). Worth splitting the way `requirements-lambda.txt` already does.
+- **CloudFormation cannot confirm an email subscription, so it reports success on a dead
+  alarm channel.** This has now happened twice: the poller's topic on 27 August, and the
+  scorer's, whose subscription CFN created at 2026-08-27 20:14 UTC and which AWS reaped
+  unconfirmed **48 hours later** — sooner than the ~3 days AWS documents. Both were
+  resubscribed by hand on 29 August; all three topics currently have one confirmed
+  subscriber and nothing pending. CFN's stack state still points at the reaped ARN, which
+  is harmless on a routine redeploy but **will create a duplicate subscription if
+  `AlarmEmail` ever changes**, because that forces resource replacement. Nothing in the
+  system checks that an alarm has a live subscriber; verify with
+  `aws sns list-subscriptions-by-topic --topic-arn <arn>` rather than assuming a deploy
+  that succeeded gave you working alerting.
 - **The API's error alarm does not fire on a failed prediction-log write.** `api.py`
   catches `LogWriteFailed` and returns 503, which Lambda counts as a *successful*
   invocation, so the `Errors` metric stays at zero. D39 requires log trouble to be
