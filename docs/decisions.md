@@ -74,6 +74,8 @@ sat in code comments and nobody looked for the hole.
 - [D49](#d49--the-prediction-log-is-filled-by-a-scheduled-sampler-not-by-traffic) The prediction log is filled by a scheduled sampler, not by traffic
 - [D50](#d50--the-scorer-reuses-the-offline-methodology-rather-than-approximating-it) The scorer reuses the offline methodology rather than approximating it
 - [D51](#d51--three-custom-cloudwatch-metrics-for-the-generator-not-eight) Three custom CloudWatch metrics for the generator, not eight
+- [D52](#d52--delay-is-anchored-to-the-stops-own-schedule-everywhere) Delay is anchored to the stop's own schedule, everywhere
+- [D53](#d53--two-coverage-numbers-and-the-visitor-facing-one-is-the-headline) Two coverage numbers, and the visitor-facing one is the headline
 
 **Cutover and verification** 
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
@@ -1639,6 +1641,19 @@ the next deploy, and a parameter leaves the enabling in CloudTrail.
 **Measured.** One cycle, 27 August: fleet 43, sampled 40, 41 requests, 122 predictions,
 20.6 seconds.
 
+**Correction, 2026-08-28 — the prediction counts above were wrong by 3.7x.** This entry
+said batching saved "225k PUTs a month against ~190". Both figures conflated requests with
+predictions. At 122 predictions per cycle and ~228 cycles a day the real numbers are
+**~27,800 predictions/day**: ~228 objects/day or **~6,900 PUTs/month batched**, against
+**~834k PUTs/month** and about **$4.17/month** unbatched, on a EUR 5 budget. Batching is
+therefore load-bearing for cost, not merely tidy.
+
+The politeness figure that actually justified sampling was **not** affected, because it
+counts requests rather than predictions: 1 + 40 per cycle, ~9,350/day, roughly 2.3x the
+poller's own volume. That number was right and the sampling decision stands on it. The
+prediction count is higher than stated because one journey fetch answers several horizons,
+which is the point of the design and was simply not carried through the arithmetic.
+
 **Date.** 2026-08-27
 
 ---
@@ -1727,3 +1742,112 @@ allowance, so roughly $0.30/month. CLAUDE.md flags these thresholds as ones that
 quietly"; this is the first crossing and it was deliberate.
 
 **Date.** 2026-08-27
+
+---
+
+## D52 — Delay is anchored to the stop's own schedule, everywhere
+
+**Decision.** `feedtime.delay_seconds` is the one rule: `arrival - scheduled`, folded back
+by a day if the result exceeds ±12 hours. `api.py` and `score.py` now use it. Journeys
+whose anchored arrivals move backwards along the route are refused whole, as
+`journey_inconsistent`, rather than scored.
+
+**The bug it fixes was a train/serve skew, not a scoring artefact.** `parse_raw.py`
+produced the training data using the anchored rule. `api.py` and `score.py` had instead
+grown a second version: unwrap the arrival series and the schedule series independently
+across the journey, then subtract. The two rules agree on every well-behaved journey and
+disagree by a whole day on the pathological ones — so the model was being served
+`current_delay_sec`, its dominant feature, computed by a different rule than it was
+trained on, and nothing surfaced it.
+
+**The case that exposed it.** A728 to Galway, 27 August:
+
+```
+26 BSLOE  sched 76770  arr 76962   (21:22)
+27 WLAWN  sched 77430  arr  6912   (01:55)   <- backwards
+28 ATMON  sched 78030  arr  2844   (00:47)   <- backwards
+29 ATHRY  sched 78360  arr 81810   (22:43)
+34 GALWY  sched 79620  arr 79920   (22:12)   <- earlier than ATHRY, which precedes it
+```
+
+The sequential unwrap sees `6912` after `76962`, correctly infers a midnight crossing by
+its own logic, and adds a day to everything after. Athenry comes out at 89850s — 24.96
+hours late — where the anchored rule gives the correct 3450s.
+
+**`AutoArrival` does not protect against this.** All four bad stops carry `AutoArrival=1`.
+D20–D23 established that label quality follows `AutoArrival` rather than line identity;
+this is a separate failure mode that flag says nothing about, and assuming otherwise is
+how it survived.
+
+**Why the whole journey is refused rather than the bad stop dropped.** From magnitude alone
+there is no way to say which reported time is wrong: Woodlawn at 01:55 and Athenry at 22:43
+are mutually inconsistent, and the schedule cannot arbitrate. Monotonicity is the test
+because it is a property the data must have for any reason at all; a threshold like "more
+than N hours late is impossible" would be a number invented to fit one example.
+
+**The offline archive is unaffected**, which was checked rather than assumed: zero of
+334,984 non-null delays exceed 12 hours, because `parse_raw` already folded them. 0.164%
+exceed one hour. The published 27% is not contaminated. The live path met this immediately
+because it predicts at *any* station on a route, whereas the offline comparison only ever
+looked at the 30 polled stations — the live system has wider station exposure than the
+evaluation that validated it, and will keep meeting data problems the offline work never
+saw.
+
+**Measured effect.** Rescoring 27 August: MAE 1371.2s → 102.9s, median unchanged at 48s,
+9 rows reclassified as `journey_inconsistent`. Two rows out of 81 had been carrying the
+entire error.
+
+**Still outstanding.** `parse_raw.py` keeps its own copy of the rule. It is correct and
+covered by its own checks, and converging it is a follow-up rather than something to do to
+working code days before a cutover — the same call D-feedtime's docstring already records
+for `hms`.
+
+**Date.** 2026-08-28
+
+---
+
+## D53 — Two coverage numbers, and the visitor-facing one is the headline
+
+**Decision.** The accuracy page publishes both, each labelled with its population, and the
+headline is the visitor-facing one:
+
+- **conditional:** of trains sampled while in service, we answered **89.3%**
+- **visitor-facing:** of entries on a station board, we answered **37.8%**
+
+**Why a note was not enough.** D49 recorded that the generator's ~11% decline rate and the
+offline ~56% unanswerable figure have different denominators, and left a note in the
+summary saying so. A note protects whoever reads the JSON. It does not protect a visitor,
+and it does not decide which number goes on the page — which was the actual open question.
+
+**How the visitor number is computed.** Two factors, both measured live from data already
+collected:
+
+```
+P(in scope)          share of board entries whose train has departed   42.3%
+P(answered | scope)  the generator's own answer rate                   89.3%
+                                                                      -----
+visitor-facing coverage                                                37.8%
+```
+
+The first factor comes from the archived station boards, comparing `Origintime` against
+`polled_at` — no extra request, no extra endpoint. Over 125,835 board rows spanning the
+service date and the following morning, 42.3% were trains that had already departed.
+
+**Why this is the honest one.** A visitor picks a train off a station board. The board
+lists trains that have not departed yet, and the visitor cannot tell which those are by
+looking. The product cannot answer for them at all — the features derive from upstream
+reported delays. Publishing "we answer 89% of queries" would be true of a population the
+visitor never selects from. It is the same shape of error CLAUDE.md's reporting rules
+already forbid for accuracy: "27% better" without "answers ~44% of queries".
+
+**The assumption, stated on the page rather than buried.** The second factor is measured on
+sampled in-service trains and applied to in-service trains appearing on boards. The sample
+is uniform over the fleet, so this is reasonable, but it is an inference and not a direct
+measurement, and the summary carries it as a field rather than a footnote.
+
+**What this retires.** The offline "~56% of polls unanswerable" stops being quoted as a
+coverage headline. It measured a different population in a different period, and side by
+side with the generator's rate it reads as an improvement that never happened. It stays in
+the record as history, not as a published figure.
+
+**Date.** 2026-08-28

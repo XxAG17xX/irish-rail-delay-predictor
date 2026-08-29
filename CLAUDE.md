@@ -112,10 +112,11 @@ Open items that will not announce themselves:
   catches `LogWriteFailed` and returns 503, which Lambda counts as a *successful*
   invocation, so the `Errors` metric stays at zero. D39 requires log trouble to be
   visible as API trouble, and it currently is not.
-- **Two decline denominators that must never be shown together.** The offline "~56% of
-  polls unanswerable" is a share of station board polls, which include trains that have
-  not departed. The generator's ~11% is a share of sampled in-service trains. Different
-  populations; side by side they read as an improvement that did not happen (D49).
+- **Coverage is published as two numbers, headline visitor-facing** (D53): 89.3%
+  conditional on the train being in service, **37.8%** as a visitor meets it on a station
+  board (42.3% of board entries are trains that have not departed). The offline "~56% of
+  polls unanswerable" is retired as a published figure — different population, different
+  period, and beside the generator's rate it reads as an improvement that never happened.
 - A **degraded** cycle counts as local uptime in `diff_parallel.py` (`records > 0 and
   status != "failed"`), so a partial sweep is compared as if it were a full one. That was
   harmless for the 28 August DNS outage because an event is polled ~18 times across a

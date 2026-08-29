@@ -387,7 +387,12 @@ def summarise(scored, day, seen, failed, board=None):
 
     clean = [r for r in scored if r["score_state"] == "scored"]
     echo = [r for r in scored if r["score_state"] == "echo_suspect"]
-    answerable = states["scored"] + states["echo_suspect"] + states["no_actual_arrival"]
+    # Coverage asks whether the model ANSWERED, not whether the answer could later be
+    # scored. A row we predicted and then could not grade -- no actual arrival, an
+    # inconsistent journey -- was still an answer the visitor received. Counting only
+    # gradeable rows would understate coverage by exactly the rows the railway failed
+    # to report, which has nothing to do with what we can answer.
+    answerable = len(scored) - states["declined"]
 
     by_group, by_band = {}, {}
     for g in sorted({r.get("station_group") or "(unpolled)" for r in clean}):
