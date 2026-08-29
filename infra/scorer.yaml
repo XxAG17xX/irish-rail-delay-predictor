@@ -122,11 +122,12 @@ Resources:
         Nightly:
           Type: Schedule
           Properties:
-            # 03:15 UTC, inside Irish quiet hours in both GMT and IST, so the previous
-            # service day is finished and the network is not being polled anyway. Cron is
-            # UTC-only; that is tolerable here because unlike the poller nothing about
-            # this job needs to track Irish local time to the hour.
-            Schedule: cron(15 3 * * ? *)
+            # 06:15 UTC, which must stay LATER than score.SETTLE allows. is_complete()
+            # requires 06:00 Irish time before a service date may be scored, and cron is
+            # UTC-only: 06:15 UTC is 07:15 Irish in summer and 06:15 in winter, so it
+            # clears the gate in both. An earlier slot -- 03:15 was the first choice --
+            # means every night finds nothing settled yet and scores a day late.
+            Schedule: cron(15 6 * * ? *)
             Name: !Sub ${AWS::StackName}-nightly
             Description: Score yesterday, and any earlier date still missing a summary
 

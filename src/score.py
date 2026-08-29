@@ -630,7 +630,7 @@ def lambda_handler(event, context):
     session.headers["User-Agent"] = USER_AGENT
     pacer = Pacer(float(os.environ.get("POLL_RATE", "2.0")))
 
-    fatal = []
+    fatal, skipped = [], []
     days = (event or {}).get("dates") or unscored_dates(
         client, bucket, pred, scores, int(os.environ.get("SCORE_BACKFILL_DAYS", "7")))
     done = []
@@ -638,6 +638,13 @@ def lambda_handler(event, context):
         left = context.get_remaining_time_in_millis if context else None
         if left is not None and left() < TIME_BUDGET_FLOOR_MS * 2:
             break
+        # Skipped, not raised. A scheduled run gets its dates from a scan of the last
+        # week, so a date that has not settled yet is an ordinary thing to encounter and
+        # not an error -- the next run picks it up. Raising here would turn the normal
+        # case into a nightly alarm, which is how alarms get ignored.
+        if not is_complete(day):
+            skipped.append(day)
+            continue
         summary, scored = score_day(client, session, pacer, bucket, day, pred, poller,
                                     time_left=left, force=bool((event or {}).get("force")))
         if summary is None:
@@ -659,7 +666,8 @@ def lambda_handler(event, context):
             f"no operator matches on {', '.join(fatal)} despite scoring at least "
             f"{OPERATOR_ALARM_FLOOR} rows. Scores were written; the comparison is missing. "
             f"Most likely POLLER_PREFIX ({poller}) is not where the poller now writes.")
-    return {"status": "ok", "scored_dates": done, "candidates": days}
+    return {"status": "ok", "scored_dates": done, "candidates": days,
+            "skipped_not_settled": skipped}
 
 
 def main():
