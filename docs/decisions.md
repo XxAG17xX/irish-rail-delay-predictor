@@ -5,7 +5,14 @@ why it lost, and when. The point is to be able to defend every choice later with
 re-deriving the reasoning.
 
 Append new entries at the bottom. Do not edit an old entry to reflect a changed mind —
-add a new entry that supersedes it, and note the supersession in both.
+add a new entry that supersedes it, and note the supersession in both. Correcting a wrong
+*number* is different and is done in place, with a dated correction note (see D49).
+
+**Every entry opens with a one-line "Why this matters" that a non-specialist would follow,
+before any technical detail.** The reason is in CLAUDE.md: the person who has to defend
+this project in an interview is the constraint on it, not the code. An entry that only
+makes sense to a reader who already understands it has failed at the one job it has.
+D49-D53 carry these; earlier entries do not yet, and retrofitting them is a pending pass.
 
 Entries D1–D10 were written on 2026-07-25 and cover decisions made up to that point, a
 few of which were settled slightly earlier in the same week. Dates from D11 on are the
@@ -1572,6 +1579,9 @@ both ways, and no amount of regex care fixes that.
 
 ## D49 — The prediction log is filled by a scheduled sampler, not by traffic
 
+**Why this matters:** an accuracy page needs predictions to grade, and nobody was
+visiting the site to make any, so the system had to generate its own work.
+
 **Decision.** A separate Lambda takes a uniform random sample of the in-service fleet
 every five minutes, predicts at most one stop per lead band per train, and logs the lot in
 one S3 object per cycle. It ships with its EventBridge rule DISABLED and is enabled after
@@ -1660,6 +1670,9 @@ which is the point of the design and was simply not carried through the arithmet
 
 ## D50 — The scorer reuses the offline methodology rather than approximating it
 
+**Why this matters:** if the live score and the headline 27% are worked out differently,
+putting them on the same page tells a reader nothing about whether anything improved.
+
 **Decision.** `src/score.py` reads logged predictions, refetches arrivals, and applies all
 four D46 fairness traps. The lead-time bands moved into `feedtime.py` so the offline
 comparison, the generator and the scorer cannot disagree about them.
@@ -1723,6 +1736,9 @@ back unarrived.
 
 ## D51 — Three custom CloudWatch metrics for the generator, not eight
 
+**Why this matters:** AWS gives away ten of these and charges for the eleventh, so an
+unthinking eight would have multiplied the project's running cost by eighteen.
+
 **Decision.** The generator publishes `PredictionsLogged`, `Declined` and `TrainsFailed`.
 Everything else worth knowing — fleet size, sample size, per-reason decline counts, cycle
 duration — goes into the handler's return value, which lands in CloudWatch Logs.
@@ -1746,6 +1762,24 @@ quietly"; this is the first crossing and it was deliberate.
 ---
 
 ## D52 — Delay is anchored to the stop's own schedule, everywhere
+
+**Why this matters:** the model was taught to measure lateness one way and then asked to
+work in a system that measured it a different way, and on most trains the two agree so
+nothing looked wrong.
+
+**In plain terms.** "How late is this train" sounds like one question with one answer. It
+is not. If a train is scheduled at 23:50 and arrives at 00:05, is that fifteen minutes
+late or twenty-three hours and forty-five minutes early? You need a rule. The code that
+built the training data used one rule; the code running live had drifted into a second
+rule. They give the same answer for almost every train, and a wildly different answer for
+a handful — which is the worst possible way for two rules to disagree, because the
+disagreement is invisible until you look at exactly the right row.
+
+**How it was caught.** The first scored day reported an average error of **1371 seconds**
+(22.8 minutes) with a **median of 48 seconds**. A mean twenty-eight times the median is
+not a bad model; it is a few absurd rows. Two of 81 held the entire error. If only the
+mean had been published — the obvious single number to show — it would have looked like a
+broken model, and the real cause would have been hunted in the wrong place entirely.
 
 **Decision.** `feedtime.delay_seconds` is the one rule: `arrival - scheduled`, folded back
 by a day if the result exceeds ±12 hours. `api.py` and `score.py` now use it. Journeys
@@ -1793,9 +1827,15 @@ looked at the 30 polled stations — the live system has wider station exposure 
 evaluation that validated it, and will keep meeting data problems the offline work never
 saw.
 
-**Measured effect.** Rescoring 27 August: MAE 1371.2s → 102.9s, median unchanged at 48s,
-9 rows reclassified as `journey_inconsistent`. Two rows out of 81 had been carrying the
-entire error.
+**Measured effect.** Rescoring 27 August: MAE **1371.2s → 102.9s**, a 13x improvement in
+the reported number with **no change to the model at all**. The median stayed at 48s
+throughout, because the median never saw the bad rows — which is the whole point of having
+looked at both. 9 rows were reclassified as `journey_inconsistent`. Two rows out of 81 had
+been carrying the entire error.
+
+The head-to-head for that day also flipped, from 6.4% ahead of the operator to **8.6%
+behind**, on 13 matched events. Both numbers are too small a sample to mean anything; the
+honest one is the second.
 
 **Still outstanding.** `parse_raw.py` keeps its own copy of the rule. It is correct and
 covered by its own checks, and converging it is a follow-up rather than something to do to
@@ -1807,6 +1847,9 @@ for `hms`.
 ---
 
 ## D53 — Two coverage numbers, and the visitor-facing one is the headline
+
+**Why this matters:** "we answer 89% of questions" is true of a population no real
+visitor ever picks from; the number they actually experience is 37.8%.
 
 **Decision.** The accuracy page publishes both, each labelled with its population, and the
 headline is the visitor-facing one:

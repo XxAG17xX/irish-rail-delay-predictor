@@ -131,8 +131,24 @@ Final-year MAI student (Computer & Electronic Engineering, Trinity College Dubli
 Comfortable with ML theory, algorithms, probability, C, Python. **New to practical dev
 tooling** — first project involving venv, git, Docker, or a cloud deploy.
 
+**I am the constraint on this project, not the code.** If something is architecturally
+elegant and I cannot explain it, it is worse than a simpler thing I can. The deliverable is
+not a system that works; it is a system that works *and* that I can defend in an interview.
+Optimise for the second — when they conflict, the simpler explicable option wins, and if
+you build the clever one anyway you have made the project worse. Say so when you think a
+trade-off is live rather than deciding it quietly.
+
+**Lead with the plain-language version, then the technical one.** A good part of the output
+here currently goes over my head, which makes it useless to me no matter how correct it is.
+Every decision-log entry opens with a one-line "Why this matters" a non-specialist would
+follow. Prose explanations state the idea in ordinary words first and the precise version
+second. This is the same failure the training/serving skew was — reasoning that only helps
+a reader who already understands it (D52) — pointed at a different reader.
+
 - Explain setup and tooling concretely, exact commands, Windows / PowerShell.
-- Do NOT dumb down ML, statistics, or systems design.
+- Do NOT dumb down ML, statistics, or systems design. Plain-language *first* is not
+  plain-language *only*: the precise version still follows, because I have to defend the
+  real thing, not a simplified story about it.
 - **Do not silently make design decisions.** Schema, features, model choice, evaluation
   design are mine. Lay out options and trade-offs; let me choose. Boilerplate I would
   otherwise Google, just write.

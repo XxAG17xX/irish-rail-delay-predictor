@@ -93,6 +93,11 @@ TIME_BUDGET_FLOOR_MS = 30_000
 # Below this many scored rows a day is too thin for "zero operator matches" to
 # mean anything, so the alarm stays quiet rather than firing on a quiet Sunday.
 OPERATOR_ALARM_FLOOR = 50
+# How long after midnight a service date is treated as finished. Covers a late
+# train still running past midnight, and clears quiet hours (00:30-05:30) so the
+# feed has stopped changing. The nightly schedule fires at 03:15 UTC, which is
+# 04:15 Irish summer time, so this is what actually gates it -- not the cron.
+SETTLE = timedelta(hours=6)
 
 
 def feed_date(iso: str) -> str:
@@ -513,14 +518,21 @@ def coverage(rows):
 # ----------------------------------------------------------------- driving
 
 def is_complete(day: str) -> bool:
-    """Has the service day finished?
+    """Plainly: is this service day over AND has the railway had time to report on it?
 
-    A date is scored once: `unscored_dates` skips anything that already has a summary, so
-    a run made while trains are still running would write a page full of
-    `no_actual_arrival` and never revisit it. The freeze is silent and the number it
-    freezes looks plausible, which is the bad combination.
+    A date is scored once -- `unscored_dates` skips anything that already has a summary --
+    so a premature run writes a page full of `no_actual_arrival` and never revisits it.
+    The freeze is silent and the frozen number looks plausible, which is the bad
+    combination.
+
+    The first version tested only `day < today`, which makes a date complete at 00:00:01,
+    when a train that left at 23:50 has not arrived yet. That was too weak for the one job
+    this function has. Six hours past midnight also clears Irish quiet hours (00:30-05:30),
+    so the network is idle and yesterday's arrivals have all been filed.
     """
-    return date.fromisoformat(day) < datetime.now(DUBLIN).date()
+    end_of_day = datetime.combine(date.fromisoformat(day) + timedelta(days=1),
+                                  datetime.min.time(), DUBLIN)
+    return datetime.now(DUBLIN) >= end_of_day + SETTLE
 
 
 def score_day(client, session, pacer, bucket, day, pred_prefix, poller_prefix,
@@ -791,8 +803,12 @@ def _self_check():
                 "predicted_at": "2026-08-27T23:50:00+01:00", "train_date": "27 Aug 2026"}
     assert reconstruct_lead(midnight) == 1800, reconstruct_lead(midnight)
 
-    assert not is_complete(datetime.now(DUBLIN).date().isoformat()), "today is not done"
-    assert is_complete((datetime.now(DUBLIN).date() - timedelta(days=1)).isoformat())
+    # Deliberately not asserting on yesterday: whether yesterday has settled depends on
+    # the clock, so an assertion about it would pass all afternoon and fail at 03:00.
+    today = datetime.now(DUBLIN).date()
+    assert not is_complete(today.isoformat()), "today is never finished"
+    assert not is_complete((today + timedelta(days=1)).isoformat()), "tomorrow even less so"
+    assert is_complete((today - timedelta(days=2)).isoformat()), "two days ago has settled"
 
     # a journey whose reported arrivals go backwards is refused whole, not guessed at
     broken = {"A1": [stop("AAAA", 1, 36000, 36060), stop("BBBB", 2, 39600, 36000)]}
