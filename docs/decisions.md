@@ -88,6 +88,7 @@ sat in code comments and nobody looked for the hole.
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
 - [D38](#d38--two-structural-artefacts-in-the-parallel-run-diff-and-how-to-tell-them-from-real-disagreement) Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement
 - [D47](#d47--a-100-join-rate-is-necessary-and-nearly-meaningless-usability-is-the-number) A 100% join rate is necessary and nearly meaningless; usability is the number
+- [D54](#d54--cutover-the-lambda-poller-is-the-only-poller) Cutover: the Lambda poller is the only poller
 
 ---
 
@@ -1894,3 +1895,64 @@ side with the generator's rate it reads as an improvement that never happened. I
 the record as history, not as a published figure.
 
 **Date.** 2026-08-28
+
+---
+
+## D54 — Cutover: the Lambda poller is the only poller
+
+**Why this matters:** the laptop is out of the loop now — the thing that collects the data
+runs in AWS, and if it stops, nothing on the site is right.
+
+**In plain terms.** For eight days two copies of the same collector ran side by side: one on
+the laptop, one in AWS. The point was to prove the AWS one saw the same railway as the
+laptop one before trusting it alone. It did, so the laptop one is switched off. There is now
+one collector and no fallback.
+
+**Decision.** The parallel run (D36) is over and the bar was met. The local poller was
+stopped after 00:30 on 31 August, during quiet hours and outside the measurement window, so
+the control data for 23–30 August is complete. The Lambda poller continues and is now the
+sole source.
+
+**The measurement**, over 132.9 covered hours across all eight days including both weekend
+days:
+
+| Bar (D36) | Measured |
+|---|---|
+| schema identical, no tolerance | **identical**, 25 fields |
+| ≥99.5% event overlap, every miss explained | **99.9%** — 21,183 both, 5 local-only, 6 lambda-only |
+| per-station-per-hour volume within a few percent | **2.8%** mean deviation |
+| `Exparrival` agrees on paired cycles | **89.6%** identical over 372,688 shared events |
+
+**Every miss explained, which was the half of the bar that needed work.** All eleven have
+one signature: seen in **exactly one cycle**, visible for **0 minutes**, with the other
+poller's nearest cycle 0.1–2.5 minutes away. These are events that appeared on a board and
+were gone before the next sweep, so whichever poller sampled inside the window caught them.
+
+It is symmetric, which is what rules out a systematic defect: `A203 CORK` is lambda-only on
+the 25th, 26th, 27th and 28th and **local-only on the 29th**; `P200 PTRTN` the same. All at
+04:38–04:41 UTC — 05:38 Irish, minutes after quiet hours end at 05:30. They are brief
+early-morning board entries and the winner is whichever poller's first cycle of the day
+lands inside their visibility. This is D38's phase-offset artefact, now with a measured
+median offset of 105 seconds.
+
+**The forced-failure test cost zero events**, which was checked rather than assumed. Test A
+killed the Lambda 18:24–18:43 UTC on 26 August (19 minutes) and Test B 23:39–00:15 (36
+minutes). The local-only misses fall on 23 Aug 23:21, 24 Aug 11:26 and 29 Aug 04:39 —
+none inside either window. 55 minutes of deliberate downtime lost nothing, because an event
+is polled about 18 times across a 90-minute lookahead. The 28 August DNS outage, which
+failed 15 of 30 stations in one cycle, likewise appears nowhere in the miss list.
+
+**What was NOT renamed, and why.** The Lambda still writes to `parallel/lambda`. The name is
+now historical and slightly wrong, and it was left alone deliberately: renaming an S3 prefix
+mid-flight splits the archive across two locations, so scoring any date spanning the change
+would have to read both. The scorer's `PollerPrefix` therefore needed no change — it already
+pointed where the poller writes. Worth stating explicitly because "set the prefix after
+cutover" was a planned action that turned out to be a no-op, and a future reader finding a
+prefix called `parallel` on a system with no parallel run deserves the explanation.
+
+**What is now single-homed.** There is no second collector. The poller's own alarms —
+not-running, function-errors, partial-cycle, throttled-by-operator, invocation-dropped — are
+the whole safety net, and their SNS topic is confirmed. `harvest_codes.py --from-snapshots`
+reads the local archive and is now reading a frozen directory; see the note in CLAUDE.md.
+
+**Date.** 2026-08-31

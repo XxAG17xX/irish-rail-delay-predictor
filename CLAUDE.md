@@ -84,25 +84,37 @@ as `summary.json` plus `rows.jsonl.gz`.
 
 Next actions, in this order:
 
-1. **Cutover day is 30 August.** See below.
-2. **30 August: the cutover.** Run `python scripts\diff_parallel.py` after an
-   `aws s3 sync`, compare against D36's bar, and either the local poller stops or the
-   Lambda does. D36 expires on the date, not on success — there is no third option.
-3. **Immediately after cutover, enable the generator**: redeploy `infra/api.yaml` with
-   `GeneratorSchedule=ENABLED`. This is a stack parameter and not an
-   `aws events enable-rule`, because CloudFormation reverts an out-of-band change on the
-   next deploy.
-4. **Set the scorer's `PollerPrefix` to wherever the poller writes after cutover.** It
-   defaults to `parallel/lambda`. A stale value produces a scoreboard with accuracy but
-   no operator comparison, which reads as a quiet railway rather than as a
-   misconfiguration.
-5. Build the three pages (D41: plain HTML, CSS, vanilla JS).
+1. **Build the three pages** (D41: plain HTML, CSS, vanilla JS). This is the only
+   remaining deliverable. The accuracy page needs several days of scored output before it
+   shows anything meaningful, so it is gated on the scorer accumulating days.
+2. Fix `harvest_codes.py --from-snapshots`, which has been silently reading a directory
+   frozen since 28 July. See the open item below.
+
+**Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
+hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6
+lambda-only), volume deviation 2.8%, 89.6% identical `Exparrival` over 372,688 shared
+events. All eleven misses were single-cycle events visible for zero minutes, symmetric
+between the two pollers, and none fell in the forced-failure test windows. The local poller
+is stopped; the Lambda is the only collector and there is no fallback. The generator's
+schedule is **ENABLED** and firing every five minutes.
+
+The Lambda still writes to `parallel/lambda` and that name is now historical. Renaming it
+would split the archive across two prefixes, so scoring any date spanning the change would
+have to read both. The scorer's `PollerPrefix` therefore needed no change.
 
 Open items that will not announce themselves:
 
-- `harvest_codes.py --from-snapshots` reads a local directory. Once the local poller
-  stops it reports "0 new codes", which is indistinguishable from a network with no new
-  services. Needs a staleness guard **before** cutover (D36).
+- **`harvest_codes.py --from-snapshots` has been reading the wrong directory since
+  28 July.** Its default `--snapshot-dir` is `data/raw/current/` — harvest_codes' own
+  live-mode archive, last written 2026-07-28 — while its docstring says it folds codes out
+  of poll_live's archive, which is `data/raw/live/current/` (2,088 files, through
+  30 August). Measured: the default yields **0** codes absent from `codes.json`; the
+  correct directory yields **39**. So the "0 new codes" silent failure has already been
+  happening for a month, for a reason unrelated to the cutover. Both directories are now
+  frozen anyway, since the local poller has stopped, so the path fix alone is not enough —
+  it still needs the staleness guard that fails loudly when the newest snapshot is old.
+  Nothing in the live path consumes `codes.json`: it feeds the completed backfill and
+  `validate_join.py`. harvest_codes' **live** mode is unaffected and still works.
 - `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
   networkx). Worth splitting the way `requirements-lambda.txt` already does.
 - **CloudFormation cannot confirm an email subscription, so it reports success on a dead
