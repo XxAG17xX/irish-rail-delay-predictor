@@ -1,0 +1,686 @@
+[
+  {
+    "code": "ADAMF",
+    "name": "Adamstown"
+  },
+  {
+    "code": "ADAMS",
+    "name": "Adamstown"
+  },
+  {
+    "code": "ADMTN",
+    "name": "Adamstown"
+  },
+  {
+    "code": "ARHAN",
+    "name": "Ardrahan"
+  },
+  {
+    "code": "ARKLW",
+    "name": "Arklow"
+  },
+  {
+    "code": "ASHTN",
+    "name": "Ashtown"
+  },
+  {
+    "code": "ATHRY",
+    "name": "Athenry"
+  },
+  {
+    "code": "ATHY",
+    "name": "Athy"
+  },
+  {
+    "code": "ATLNE",
+    "name": "Athlone"
+  },
+  {
+    "code": "ATMON",
+    "name": "Attymon"
+  },
+  {
+    "code": "BALNA",
+    "name": "Ballina"
+  },
+  {
+    "code": "BBRDG",
+    "name": "Broombridge"
+  },
+  {
+    "code": "BBRGN",
+    "name": "Balbriggan"
+  },
+  {
+    "code": "BBRHY",
+    "name": "Ballybrophy"
+  },
+  {
+    "code": "BCLAN",
+    "name": "Ballycullane"
+  },
+  {
+    "code": "BFSTC",
+    "name": "Belfast"
+  },
+  {
+    "code": "BHILL",
+    "name": "Birdhill"
+  },
+  {
+    "code": "BMOTE",
+    "name": "Ballymote"
+  },
+  {
+    "code": "BOYLE",
+    "name": "Boyle"
+  },
+  {
+    "code": "BRAY",
+    "name": "Bray"
+  },
+  {
+    "code": "BRGTN",
+    "name": "Bridgetown"
+  },
+  {
+    "code": "BROCK",
+    "name": "Blackrock"
+  },
+  {
+    "code": "BSLOE",
+    "name": "Ballinasloe"
+  },
+  {
+    "code": "BTEER",
+    "name": "Banteer"
+  },
+  {
+    "code": "BTSTN",
+    "name": "Booterstown"
+  },
+  {
+    "code": "BYHNS",
+    "name": "Ballyhaunis"
+  },
+  {
+    "code": "BYSDE",
+    "name": "Bayside"
+  },
+  {
+    "code": "CAHIR",
+    "name": "Cahir"
+  },
+  {
+    "code": "CCONL",
+    "name": "Castleconnell"
+  },
+  {
+    "code": "CENTJ",
+    "name": "CENTRAL JUNCTION"
+  },
+  {
+    "code": "CGLOE",
+    "name": "Carrigaloe"
+  },
+  {
+    "code": "CGTWL",
+    "name": "Carrigtwohill"
+  },
+  {
+    "code": "CHORC",
+    "name": "Park West and Cherry Orchard"
+  },
+  {
+    "code": "CITYJ",
+    "name": "CITY JUNCTION"
+  },
+  {
+    "code": "CJRDN",
+    "name": "Cloughjordan"
+  },
+  {
+    "code": "CKOSH",
+    "name": "Carrick on Shannon"
+  },
+  {
+    "code": "CKOSR",
+    "name": "Carrick on Suir"
+  },
+  {
+    "code": "CLARA",
+    "name": "Clara"
+  },
+  {
+    "code": "CLBAR",
+    "name": "Castlebar"
+  },
+  {
+    "code": "CLDKN",
+    "name": "Clondalkin"
+  },
+  {
+    "code": "CLMEL",
+    "name": "Clonmel"
+  },
+  {
+    "code": "CLMRS",
+    "name": "Claremorris"
+  },
+  {
+    "code": "CLONF",
+    "name": "Clondalkin"
+  },
+  {
+    "code": "CLONS",
+    "name": "Clondalkin"
+  },
+  {
+    "code": "CLSLA",
+    "name": "Clonsilla"
+  },
+  {
+    "code": "CMINE",
+    "name": "Coolmine"
+  },
+  {
+    "code": "CNLLY",
+    "name": "Dublin Connolly"
+  },
+  {
+    "code": "CNOCK",
+    "name": "Castleknock"
+  },
+  {
+    "code": "COBH",
+    "name": "Cobh"
+  },
+  {
+    "code": "COLNY",
+    "name": "Collooney"
+  },
+  {
+    "code": "CORK",
+    "name": "Cork"
+  },
+  {
+    "code": "CPILE",
+    "name": "Campile"
+  },
+  {
+    "code": "CRGHW",
+    "name": "Craughwell"
+  },
+  {
+    "code": "CRLOW",
+    "name": "Carlow"
+  },
+  {
+    "code": "CSREA",
+    "name": "Castlerea"
+  },
+  {
+    "code": "CTARF",
+    "name": "Clontarf Road"
+  },
+  {
+    "code": "CURAH",
+    "name": "Curragh"
+  },
+  {
+    "code": "CVILL",
+    "name": "Charleville"
+  },
+  {
+    "code": "DBATE",
+    "name": "Donabate"
+  },
+  {
+    "code": "DBYNE",
+    "name": "Dunboyne"
+  },
+  {
+    "code": "DCDRA",
+    "name": "Drumcondra"
+  },
+  {
+    "code": "DCKLS",
+    "name": "Docklands"
+  },
+  {
+    "code": "DDALK",
+    "name": "Dundalk"
+  },
+  {
+    "code": "DGHDA",
+    "name": "Drogheda"
+  },
+  {
+    "code": "DLERY",
+    "name": "Dun Laoghaire"
+  },
+  {
+    "code": "DLKEY",
+    "name": "Dalkey"
+  },
+  {
+    "code": "DRMOD",
+    "name": "Dromod"
+  },
+  {
+    "code": "DUNMR",
+    "name": "DUNMURRAY"
+  },
+  {
+    "code": "ECRTY",
+    "name": "Enniscorthy"
+  },
+  {
+    "code": "ENFLD",
+    "name": "Enfield"
+  },
+  {
+    "code": "ENNIS",
+    "name": "Ennis"
+  },
+  {
+    "code": "ETOWN",
+    "name": "Edgeworthstown"
+  },
+  {
+    "code": "FFORE",
+    "name": "Farranfore"
+  },
+  {
+    "code": "FOTA",
+    "name": "Fota"
+  },
+  {
+    "code": "FXFRD",
+    "name": "Foxford"
+  },
+  {
+    "code": "GALWY",
+    "name": "Galway"
+  },
+  {
+    "code": "GCDK",
+    "name": "Grand Canal Dock"
+  },
+  {
+    "code": "GHANE",
+    "name": "Glounthaune"
+  },
+  {
+    "code": "GLGRY",
+    "name": "Glenageary"
+  },
+  {
+    "code": "GOREY",
+    "name": "Gorey"
+  },
+  {
+    "code": "GORT",
+    "name": "Gort"
+  },
+  {
+    "code": "GRGRD",
+    "name": "Clongriffin"
+  },
+  {
+    "code": "GSTNS",
+    "name": "Greystones"
+  },
+  {
+    "code": "GSTON",
+    "name": "Gormanston"
+  },
+  {
+    "code": "HAFLD",
+    "name": "Hansfield"
+  },
+  {
+    "code": "HAZEF",
+    "name": "Hazelhatch"
+  },
+  {
+    "code": "HAZES",
+    "name": "Hazelhatch"
+  },
+  {
+    "code": "HOWTH",
+    "name": "Howth"
+  },
+  {
+    "code": "HSTON",
+    "name": "Dublin Heuston"
+  },
+  {
+    "code": "HTOWN",
+    "name": "Harmonstown"
+  },
+  {
+    "code": "HWTHJ",
+    "name": "Howth Junction"
+  },
+  {
+    "code": "HZLCH",
+    "name": "Hazelhatch"
+  },
+  {
+    "code": "KBRCK",
+    "name": "Kilbarrack"
+  },
+  {
+    "code": "KCOCK",
+    "name": "Kilcock"
+  },
+  {
+    "code": "KCOOL",
+    "name": "Kilcoole"
+  },
+  {
+    "code": "KDARE",
+    "name": "Kildare"
+  },
+  {
+    "code": "KILNY",
+    "name": "Killiney"
+  },
+  {
+    "code": "KISHF",
+    "name": "Kishoge"
+  },
+  {
+    "code": "KISHO",
+    "name": "Kishoge"
+  },
+  {
+    "code": "KISHS",
+    "name": "Kishoge"
+  },
+  {
+    "code": "KKNNY",
+    "name": "Kilkenny"
+  },
+  {
+    "code": "KLRNY",
+    "name": "Killarney"
+  },
+  {
+    "code": "KLSTR",
+    "name": "Killester"
+  },
+  {
+    "code": "LBURN",
+    "name": "Lisburn"
+  },
+  {
+    "code": "LDWNE",
+    "name": "Lansdowne Road"
+  },
+  {
+    "code": "LFORD",
+    "name": "Longford"
+  },
+  {
+    "code": "LMRCK",
+    "name": "Limerick"
+  },
+  {
+    "code": "LMRKJ",
+    "name": "Limerick Junction"
+  },
+  {
+    "code": "LSLND",
+    "name": "LittleIsland"
+  },
+  {
+    "code": "LTOWN",
+    "name": "Laytown"
+  },
+  {
+    "code": "LURGN",
+    "name": "Lurgan"
+  },
+  {
+    "code": "LXCON",
+    "name": "Leixlip (Confey)"
+  },
+  {
+    "code": "LXLSA",
+    "name": "Leixlip (Louisa Bridge)"
+  },
+  {
+    "code": "M3WAY",
+    "name": "M3 Parkway"
+  },
+  {
+    "code": "MDLTN",
+    "name": "Midleton"
+  },
+  {
+    "code": "MHIDE",
+    "name": "Malahide"
+  },
+  {
+    "code": "MLGAR",
+    "name": "Mullingar"
+  },
+  {
+    "code": "MLLOW",
+    "name": "Mallow"
+  },
+  {
+    "code": "MLSRT",
+    "name": "Millstreet"
+  },
+  {
+    "code": "MNEBG",
+    "name": "Muine Bheag"
+  },
+  {
+    "code": "MNLAJ",
+    "name": "Manulla Junction"
+  },
+  {
+    "code": "MOIRA",
+    "name": "MOIRA"
+  },
+  {
+    "code": "MONVN",
+    "name": "Monasterevin"
+  },
+  {
+    "code": "MYNTH",
+    "name": "Maynooth"
+  },
+  {
+    "code": "NBRGE",
+    "name": "Newbridge"
+  },
+  {
+    "code": "NEWRY",
+    "name": "Newry"
+  },
+  {
+    "code": "NNAGH",
+    "name": "Nenagh"
+  },
+  {
+    "code": "ORNMR",
+    "name": "Oranmore"
+  },
+  {
+    "code": "PDOWN",
+    "name": "Portadown"
+  },
+  {
+    "code": "PELTN",
+    "name": "Pelletstown"
+  },
+  {
+    "code": "PERSE",
+    "name": "Dublin Pearse"
+  },
+  {
+    "code": "PHNPK",
+    "name": "Navan Road Parkway"
+  },
+  {
+    "code": "PMNCK",
+    "name": "Portmarnock"
+  },
+  {
+    "code": "PTLSE",
+    "name": "Portlaoise"
+  },
+  {
+    "code": "PTRTN",
+    "name": "Portarlington"
+  },
+  {
+    "code": "PWESF",
+    "name": "Park West and Cherry Orchard"
+  },
+  {
+    "code": "PWESS",
+    "name": "PARK WEST"
+  },
+  {
+    "code": "RAHNY",
+    "name": "Raheny"
+  },
+  {
+    "code": "RBROK",
+    "name": "Rushbrooke"
+  },
+  {
+    "code": "RCREA",
+    "name": "Roscrea"
+  },
+  {
+    "code": "RDRUM",
+    "name": "Rathdrum"
+  },
+  {
+    "code": "RLEPT",
+    "name": "Rosslare Europort"
+  },
+  {
+    "code": "RLSTD",
+    "name": "Rosslare Strand"
+  },
+  {
+    "code": "RLUSK",
+    "name": "Rush and Lusk"
+  },
+  {
+    "code": "RMORE",
+    "name": "Rathmore"
+  },
+  {
+    "code": "RSCMN",
+    "name": "Roscommon"
+  },
+  {
+    "code": "SALNS",
+    "name": "Sallins"
+  },
+  {
+    "code": "SCOVE",
+    "name": "Sandycove"
+  },
+  {
+    "code": "SEAPT",
+    "name": "Seapoint"
+  },
+  {
+    "code": "SHILL",
+    "name": "Salthill and Monkstown"
+  },
+  {
+    "code": "SIDNY",
+    "name": "Sydney Parade"
+  },
+  {
+    "code": "SKILL",
+    "name": "Shankill"
+  },
+  {
+    "code": "SKRES",
+    "name": "Skerries"
+  },
+  {
+    "code": "SLIGO",
+    "name": "Sligo"
+  },
+  {
+    "code": "SMONT",
+    "name": "Sandymount"
+  },
+  {
+    "code": "SUTTN",
+    "name": "Sutton"
+  },
+  {
+    "code": "SXMBR",
+    "name": "Sixmilebridge"
+  },
+  {
+    "code": "TARA",
+    "name": "Tara Street"
+  },
+  {
+    "code": "THRLS",
+    "name": "Thurles"
+  },
+  {
+    "code": "THTWN",
+    "name": "Thomastown"
+  },
+  {
+    "code": "TIPRY",
+    "name": "Tipperary"
+  },
+  {
+    "code": "TMORE",
+    "name": "Tullamore"
+  },
+  {
+    "code": "TPMOR",
+    "name": "Templemore"
+  },
+  {
+    "code": "TRLEE",
+    "name": "Tralee"
+  },
+  {
+    "code": "WBDGE",
+    "name": "Wellingtonbridge"
+  },
+  {
+    "code": "WBROK",
+    "name": "Woodbrook"
+  },
+  {
+    "code": "WFORD",
+    "name": "Waterford"
+  },
+  {
+    "code": "WLAWN",
+    "name": "Woodlawn"
+  },
+  {
+    "code": "WLOW",
+    "name": "Wicklow"
+  },
+  {
+    "code": "WPORT",
+    "name": "Westport"
+  },
+  {
+    "code": "WXFRD",
+    "name": "Wexford"
+  }
+]

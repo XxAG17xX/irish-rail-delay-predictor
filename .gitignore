@@ -1,14 +1,36 @@
 .venv/
 __pycache__/
-data/
 .env
 .CLAUDE.md
 build/
 src/model/
 
-# data/ is bulk and stays out, with one deliberate exception. codes.json is not bulk: it
-# is a 228 KB derived index of every train code ever observed, built by a harvest that
-# cannot be repeated for the past, and both backfill.py and validate_join.py read it.
-# Until 2026-08-31 it existed only on one laptop. Versioning it also timestamps when the
-# set changed, so a figure computed against an earlier set stays attributable.
+# data/ splits in two, and the split is the rule rather than a list of exceptions.
+#
+#   RAW COLLECTED DATA is never committed. Raw XML, parsed Parquet, live poll output,
+#   snapshots. It is large, it is reproducible by re-fetching, and it is not the repo's job.
+#
+#   SMALL DERIVED ARTIFACTS REQUIRED TO BUILD OR REPRODUCE are committed. Without them a
+#   fresh clone cannot produce a deployable package, which was true until 2026-08-31 and
+#   was found by cloning and running the build rather than by reading this file.
+#
+# Everything under data/ is ignored by default; each exception below is deliberate and
+# says what breaks without it. Note `data/*` rather than `data/`: git does not descend
+# into an excluded directory, so a bare `data/` would make every negation below silently
+# inert -- which it was, and the one file that got in did so via `git add -f`.
+data/*
+
+# 228 KB. Every train code ever observed, from a harvest that cannot be repeated for the
+# past. Read by backfill.py and validate_join.py.
 !data/codes.json
+
+# 12 KB. The station list. build_lambda.ps1 and build_api.ps1 both throw without it.
+!data/live/
+data/live/*
+!data/live/stations.json
+
+# ~1.1 MB per version. The model that build_api.ps1 bakes into the Lambda package, so a
+# clone cannot build a deployable API without it. Committing every version also means the
+# exact artifact behind any published figure is recoverable, which the accuracy page's
+# claims depend on. Retraining is not scheduled (see CLAUDE.md), so this grows rarely.
+!data/models/

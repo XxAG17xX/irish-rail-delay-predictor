@@ -251,7 +251,8 @@ Parse-and-discard loses data permanently.
 
 Parsed records → Parquet for analysis, Postgres for serving.
 
-`data/` is gitignored and never committed.
+Raw data under `data/` is gitignored and never committed; the small derived
+artifacts needed to build are the documented exception. See Conventions.
 
 ## Feature design — the load-bearing rule
 
@@ -397,7 +398,16 @@ React to "v2"; that line was removed in the July merge and the gap went unnotice
 
 ## Conventions
 
-- `.gitignore`: `.venv/`, `__pycache__/`, `.env`, `data/`
+- **`.gitignore` splits `data/` in two, and the split is a rule not a list of exceptions.**
+  *Raw collected data is never committed* — raw XML, parsed Parquet, live poll output,
+  snapshots. It is large and reproducible by re-fetching. *Small derived artifacts required
+  to build or reproduce ARE committed* — currently `data/codes.json` (228 KB),
+  `data/live/stations.json` (12 KB) and `data/models/` (~1.1 MB per version). The test of
+  the rule is not reading it: **clone the repo to a temp directory and run both build
+  scripts.** Until 2026-08-31 that failed, and nobody knew. Note `data/*` rather than
+  `data/` in the file: git does not descend into an excluded directory, so a bare `data/`
+  makes every negation silently inert.
+- Other ignores: `.venv/`, `__pycache__/`, `.env`, `build/`, `src/model/`
 - `.gitattributes`: `* text=auto eol=lf`
 - Secrets in `.env`, never committed
 - Commit small and often — the history is itself evidence of the work

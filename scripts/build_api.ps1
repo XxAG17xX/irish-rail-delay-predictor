@@ -22,7 +22,19 @@ $python = Join-Path $root ".venv\Scripts\python.exe"
 $source = Join-Path $root "data\models\$Version"
 
 if (-not (Test-Path $source)) {
-    throw "no artifact at $source. Available: $((Get-ChildItem (Join-Path $root 'data\models') -Directory).Name -join ', ')"
+    # The "helpful" version of this line used to call Get-ChildItem on data\models inside
+    # the throw string. On a fresh clone that directory does not exist, so the diagnostic
+    # itself threw PathNotFound and the operator got a Get-ChildItem stack trace instead of
+    # the sentence explaining what was wrong. An error path that only works when things are
+    # nearly fine is not an error path. Found by cloning the repo and running this.
+    $modelsDir = Join-Path $root "data\models"
+    if (Test-Path $modelsDir) {
+        $have = (Get-ChildItem $modelsDir -Directory -ErrorAction SilentlyContinue).Name
+        $detail = if ($have) { "Available: $($have -join ', ')" } else { "$modelsDir is empty." }
+    } else {
+        $detail = "$modelsDir does not exist. Model artifacts are committed (see .gitignore); if this is a fresh clone, check the clone completed."
+    }
+    throw "no artifact at $source. $detail"
 }
 
 if (Test-Path $build) { Remove-Item -Recurse -Force $build }
