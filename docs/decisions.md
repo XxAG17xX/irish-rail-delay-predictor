@@ -89,6 +89,7 @@ sat in code comments and nobody looked for the hole.
 - [D38](#d38--two-structural-artefacts-in-the-parallel-run-diff-and-how-to-tell-them-from-real-disagreement) Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement
 - [D47](#d47--a-100-join-rate-is-necessary-and-nearly-meaningless-usability-is-the-number) A 100% join rate is necessary and nearly meaningless; usability is the number
 - [D54](#d54--cutover-the-lambda-poller-is-the-only-poller) Cutover: the Lambda poller is the only poller
+- [D55](#d55--harvest_codes-gets-a-staleness-guard-not-a-port-to-s3) harvest_codes gets a staleness guard, not a port to S3
 
 ---
 
@@ -1954,5 +1955,76 @@ prefix called `parallel` on a system with no parallel run deserves the explanati
 not-running, function-errors, partial-cycle, throttled-by-operator, invocation-dropped — are
 the whole safety net, and their SNS topic is confirmed. `harvest_codes.py --from-snapshots`
 reads the local archive and is now reading a frozen directory; see the note in CLAUDE.md.
+
+**Date.** 2026-08-31
+
+---
+
+## D55 — harvest_codes gets a staleness guard, not a port to S3
+
+**Why this matters:** a script that reads a folder nothing writes to any more will keep
+saying "nothing new" forever, and that is word-for-word what a healthy quiet network looks
+like.
+
+**In plain terms.** One script's job is to notice new train codes appearing on the network.
+It did that by reading a folder of saved responses. Since the cutover nothing writes to that
+folder, so from now on the honest answer is "I cannot tell you" and the answer it actually
+gave was "no new trains". Those are very different statements and the output could not tell
+them apart. It now refuses instead.
+
+**Decision.**
+
+1. `--from-snapshots` takes a default: `data/raw/live/current`, the poller's archive. It
+   previously required the path be typed from memory, and there are two plausible archives.
+2. A staleness guard. If the newest snapshot is older than 24 hours the script prints what
+   it found and the date, and exits 3 without merging. `--allow-stale` overrides it for a
+   deliberate one-off merge of a frozen archive.
+3. The age is read from the FILENAME's UTC stamp, never the file's mtime. An `aws s3 sync`,
+   a copy between drives or a restore from backup all rewrite mtimes, and the question is
+   when the data was captured, not when the bytes last moved.
+4. **No port to S3.** The Lambda archives `current.xml` inside each cycle's tarball and
+   reading those is real work, deliberately not done.
+
+**A correction to what was reported first.** This was originally diagnosed as a wrong
+default: that `--from-snapshots` fell back to `--snapshot-dir`, whose default points at this
+script's own archive, frozen since 28 July, and had therefore been silently reporting "0 new
+codes" for a month. That was wrong. `--from-snapshots` takes its own path argument and never
+consults `--snapshot-dir`; the two are independent, and the help text already named the
+right directory. There was no wrong default — there was a *missing* one, and no guard.
+Acting on the original diagnosis would have changed where live harvesting writes, which has
+nothing to do with the bug. Recorded because the wrong version was convincing and briefly
+believed.
+
+**Why no S3 port**, which is the part worth defending:
+
+- **Nothing in the live path reads `codes.json`.** The generator gets its trains from
+  `getCurrentTrainsXML` directly and the poller works from station boards. The file feeds
+  `backfill.py` and `validate_join.py`, and nothing else.
+- **The backfill is complete and is not repeating** (CLAUDE.md: "Done once, not repeated").
+  28,706 files across 1,087 codes and 34 dates already exist.
+- **The capability is not lost.** harvest_codes' live mode polls `getCurrentTrainsXML`
+  itself and never depended on any local archive. If a future backfill is needed — thesis
+  work, or retraining on a longer window — running it live for a day still produces exactly
+  what it always did.
+
+So the S3 port is work for a job that may never run again, and the alternative is not
+"lose the ability" but "spend a day polling if the day ever comes". If a backfill is
+actually scheduled, port it then, when the requirement is real rather than anticipated.
+
+**The 56 codes.** Merging the poller's archive added 56 codes, taking `codes.json` from
+1,087 to 1,143. An earlier estimate of 39 came from sampling the last 400 snapshots rather
+than all 2,088.
+
+**`data/codes.json` is now tracked in git, against the `data/` rule.** The reason for
+merging was that these codes existed only in a frozen archive on one laptop — but `data/` is
+gitignored, so merging alone did not fix that. A `!data/codes.json` negation makes the
+exception explicit. It is defensible because the file is not bulk: 228 KB, a derived index
+of every code ever observed, built by a harvest that cannot be repeated for the past.
+Versioning it also timestamps when the set changed, so figures computed against the earlier
+1,087 stay attributable.
+
+**Related, not fixed.** `data/live/stations.json` is also gitignored and both
+`build_lambda.ps1` and `build_api.ps1` throw without it, so a fresh clone cannot build a
+deployable package. Same shape of problem, left alone for now.
 
 **Date.** 2026-08-31

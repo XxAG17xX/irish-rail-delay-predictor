@@ -50,6 +50,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_STATE = REPO_ROOT / "data" / "codes.json"
 DEFAULT_SNAPSHOT_DIR = REPO_ROOT / "data" / "raw" / "current"
 
+# Where poll_live archived its getCurrentTrainsXML responses. A DIFFERENT directory from
+# DEFAULT_SNAPSHOT_DIR above, which is where this script's own live mode writes. Two
+# producers, two archives, and --from-snapshots wants the poller's one because it ran far
+# longer. It used to require the path be typed correctly from memory; getting it wrong
+# yields "0 new codes", which reads as a network with no new services.
+DEFAULT_LIVE_SNAPSHOTS = REPO_ROOT / "data" / "raw" / "live" / "current"
+
+# Past this, a snapshot archive is treated as dead rather than quiet. Both local archives
+# froze when the local poller stopped at the 2026-08-31 cutover (D54), so every run from
+# now on trips this until snapshots come from somewhere live again.
+MAX_SNAPSHOT_AGE_HOURS = 24
+
 TIMEOUT = 20
 POLL_RETRIES = 3           # attempts within a single poll before giving up on it
 POLL_RETRY_BACKOFF = 5     # seconds, multiplied by attempt number
@@ -167,6 +179,34 @@ def archive_snapshot(snapshot_dir: Path, body: bytes, now: datetime) -> None:
     os.replace(tmp, dest)
 
 
+def newest_snapshot(directory: Path):
+    """UTC stamp of the most recent snapshot in `directory`, or None if there are none.
+
+    Read from the FILENAME, not the file's mtime. An `aws s3 sync`, a copy between drives
+    or a restore from backup all rewrite mtimes, and the whole point of this check is to
+    know when the data was captured rather than when the bytes last moved.
+    """
+    newest = None
+    for path in directory.glob("*.xml.gz"):
+        try:
+            stamp = datetime.strptime(path.name.split(".")[0], "%Y%m%dT%H%M%SZ")
+        except ValueError:
+            continue
+        stamp = stamp.replace(tzinfo=timezone.utc)
+        if newest is None or stamp > newest:
+            newest = stamp
+    return newest
+
+
+def snapshot_age_hours(directory: Path, now: datetime = None):
+    """Hours since the newest snapshot was captured. None if the directory holds none."""
+    newest = newest_snapshot(directory)
+    if newest is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return (now - newest).total_seconds() / 3600
+
+
 def merge_from_snapshots(state: dict, directory: Path) -> tuple[int, int, int]:
     """Fold codes out of already-archived getCurrentTrainsXML snapshots.
 
@@ -224,19 +264,51 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="single poll, then exit")
     ap.add_argument("--force-lock", action="store_true",
                     help="take the API lock even if another collector holds it")
-    ap.add_argument("--from-snapshots", type=Path, default=None,
-                    help="merge codes from archived getCurrentTrainsXML snapshots "
-                         "(e.g. data/raw/live/current) instead of polling. No network, "
-                         "so no API lock is taken.")
+    ap.add_argument("--from-snapshots", type=Path, nargs="?",
+                    const=DEFAULT_LIVE_SNAPSHOTS, default=None,
+                    help=f"merge codes from archived getCurrentTrainsXML snapshots "
+                         f"instead of polling, defaulting to {DEFAULT_LIVE_SNAPSHOTS} "
+                         f"(the poller's archive, not this script's). No network, so no "
+                         f"API lock is taken.")
+    ap.add_argument("--max-snapshot-age-hours", type=float,
+                    default=MAX_SNAPSHOT_AGE_HOURS,
+                    help=f"refuse an archive whose newest snapshot is older than this "
+                         f"(default: {MAX_SNAPSHOT_AGE_HOURS})")
+    ap.add_argument("--allow-stale", action="store_true",
+                    help="merge from an archive that has stopped growing anyway. For a "
+                         "deliberate one-off backfill of a frozen archive.")
     args = ap.parse_args()
 
     if args.from_snapshots:
         if not args.from_snapshots.exists():
             print(f"no snapshot directory at {args.from_snapshots}")
             return 2
+
+        # The guard, and the reason this script needed one. A frozen archive yields "0 new
+        # codes", which is exactly what a healthy network with no new services yields. The
+        # two are indistinguishable from the output, so the failure is silent and the
+        # script keeps reporting success over a dead directory for as long as anyone runs
+        # it. Checking the age turns "nothing new" into "nothing since <date>".
+        age = snapshot_age_hours(args.from_snapshots)
+        if age is None:
+            print(f"no readable snapshots in {args.from_snapshots} — nothing to merge")
+            return 2
+        newest = newest_snapshot(args.from_snapshots)
+        if age > args.max_snapshot_age_hours and not args.allow_stale:
+            print(f"STALE ARCHIVE — refusing to merge.\n"
+                  f"  {args.from_snapshots}\n"
+                  f"  newest snapshot {newest:%Y-%m-%d %H:%M}Z, {age:.1f} hours old "
+                  f"(limit {args.max_snapshot_age_hours:.0f}h)\n"
+                  f"  Nothing is writing here. Merging would report '0 new codes', which\n"
+                  f"  is indistinguishable from a network with no new services.\n"
+                  f"  Pass --allow-stale for a deliberate one-off merge of a dead archive.")
+            return 3
+
         state = load_state(args.state)
         before = len(state["codes"])
         print(f"harvest_codes — merging from {args.from_snapshots}")
+        print(f"  newest snapshot {newest:%Y-%m-%d %H:%M}Z, {age:.1f} hours old"
+              f"{'  (STALE, allowed explicitly)' if age > args.max_snapshot_age_hours else ''}")
         print(f"  {before} codes already known")
         read, failed, new = merge_from_snapshots(state, args.from_snapshots)
         state["_meta"]["updated"] = datetime.now().isoformat(timespec="seconds")

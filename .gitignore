@@ -5,3 +5,10 @@ data/
 .CLAUDE.md
 build/
 src/model/
+
+# data/ is bulk and stays out, with one deliberate exception. codes.json is not bulk: it
+# is a 228 KB derived index of every train code ever observed, built by a harvest that
+# cannot be repeated for the past, and both backfill.py and validate_join.py read it.
+# Until 2026-08-31 it existed only on one laptop. Versioning it also timestamps when the
+# set changed, so a figure computed against an earlier set stays attributable.
+!data/codes.json

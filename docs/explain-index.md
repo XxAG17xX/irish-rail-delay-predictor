@@ -169,6 +169,45 @@ Where an answer lives in the decision log, the entry is named. Read it *after* t
 
 ---
 
+## N. The theme — five failures with one shape
+
+**This is the spine of the how-it-works page, not another section of it.**
+
+Five separate failures in this project share a shape. None raised an exception. None
+appeared in a log as an error. Every one produced output that looked exactly like a
+correct, unremarkable result, and every one was caught the same way: by taking a number
+and asking what it *should* have been.
+
+| # | What it looked like | What it was |
+|---|---|---|
+| 1 | Flagged lines reporting arrival times | Scheduled times echoed back as actuals (D20-D23) |
+| 2 | 420 successful fetches, HTTP 200 | An ISP captive portal returning 1,369 identical bytes |
+| 3 | `CREATE_COMPLETE` on an alarm topic | A subscription nobody confirmed, reaped 48h later |
+| 4 | A model with a 22-minute average error | Two ways of computing "late" disagreeing by a day (D52) |
+| 5 | `0 new codes` from the harvest | A folder nothing had written to since July (D55) |
+
+- ★★★ What do these five have in common, and why is that more interesting than any one of them?
+- ★★★ Why is a silent wrong answer more dangerous than a crash?
+- ★★★ In each case, what was the number you compared against, and where did the expectation come from?
+- ★★★ Which of the five would still happen today, and what specifically stops the others?
+- ★★ Why did none of these produce an error, given that the code has error handling throughout?
+- ★★ Three of the five were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
+- ★★ In case 4, what would have happened if only the headline number had been published?
+- ★★ In case 3, the deploy reported success. What is the general lesson about trusting a tool's own report that it worked?
+- ★★ Two of the five were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★ For each, what is the cheapest check that would have caught it on day one?
+- ★ Case 1 was "confirmed" by a first analysis before being overturned. What made the first analysis convincing?
+- ★ Case 5 was misdiagnosed before it was diagnosed. What was the wrong explanation, and why was it plausible?
+- ★ Which of these would a test suite have caught, and which would it not?
+- ★ What is the difference between a system that works and a system you can tell is working?
+- ★ If you had to add exactly one automated check to this project tomorrow, which would it be and why?
+
+The uncomfortable version of the question, which is the one worth being ready for:
+
+- ★★★ How many failures of this shape are still in the project, undetected, right now?
+
+---
+
 ## Gaps to close before the page is written
 
 Things nobody can currently answer, including me:

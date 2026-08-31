@@ -104,17 +104,16 @@ have to read both. The scorer's `PollerPrefix` therefore needed no change.
 
 Open items that will not announce themselves:
 
-- **`harvest_codes.py --from-snapshots` has been reading the wrong directory since
-  28 July.** Its default `--snapshot-dir` is `data/raw/current/` — harvest_codes' own
-  live-mode archive, last written 2026-07-28 — while its docstring says it folds codes out
-  of poll_live's archive, which is `data/raw/live/current/` (2,088 files, through
-  30 August). Measured: the default yields **0** codes absent from `codes.json`; the
-  correct directory yields **39**. So the "0 new codes" silent failure has already been
-  happening for a month, for a reason unrelated to the cutover. Both directories are now
-  frozen anyway, since the local poller has stopped, so the path fix alone is not enough —
-  it still needs the staleness guard that fails loudly when the newest snapshot is old.
-  Nothing in the live path consumes `codes.json`: it feeds the completed backfill and
-  `validate_join.py`. harvest_codes' **live** mode is unaffected and still works.
+- `harvest_codes.py --from-snapshots` now defaults to the poller's archive and refuses an
+  archive whose newest snapshot is over 24h old, exiting 3 (D55). Both local archives are
+  frozen since the cutover, so every future run trips the guard until snapshots come from
+  somewhere live — which is the point: "0 new codes" from a dead folder is
+  indistinguishable from a network with no new services. Not ported to S3 on purpose;
+  nothing in the live path reads `codes.json` and live mode still works.
+- **`data/live/stations.json` is gitignored and both build scripts throw without it**, so a
+  fresh clone cannot build a deployable Lambda package. `data/codes.json` had the same
+  problem and now has a `!data/codes.json` exception in `.gitignore`; stations.json does
+  not, yet.
 - `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
   networkx). Worth splitting the way `requirements-lambda.txt` already does.
 - **CloudFormation cannot confirm an email subscription, so it reports success on a dead
