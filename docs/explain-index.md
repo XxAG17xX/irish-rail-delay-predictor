@@ -169,14 +169,21 @@ Where an answer lives in the decision log, the entry is named. Read it *after* t
 
 ---
 
-## N. The theme — five failures with one shape
+## N. The theme — six failures with one shape
 
 **This is the spine of the how-it-works page, not another section of it.**
 
-Five separate failures in this project share a shape. None raised an exception. None
+Six separate failures in this project share a shape. None raised an exception. None
 appeared in a log as an error. Every one produced output that looked exactly like a
 correct, unremarkable result, and every one was caught the same way: by taking a number
 and asking what it *should* have been.
+
+The sixth happened while the first five were being written up, which is the most useful
+thing about it. A sample of 400 files out of 2,088 was reported as if it were a count of
+all of them — no caveat, no "at least", just "39". Nothing was wrong with the measurement;
+what was wrong was the sentence describing it. The same person cataloguing this failure
+mode committed it in the same document, two days later, and did not notice until the full
+merge returned 56.
 
 | # | What it looked like | What it was |
 |---|---|---|
@@ -185,21 +192,28 @@ and asking what it *should* have been.
 | 3 | `CREATE_COMPLETE` on an alarm topic | A subscription nobody confirmed, reaped 48h later |
 | 4 | A model with a 22-minute average error | Two ways of computing "late" disagreeing by a day (D52) |
 | 5 | `0 new codes` from the harvest | A folder nothing had written to since July (D55) |
+| 6 | "39 codes are missing" | Measured on 400 of 2,088 files and reported as complete. It was 56 (D55) |
 
-- ★★★ What do these five have in common, and why is that more interesting than any one of them?
+- ★★★ What do these six have in common, and why is that more interesting than any one of them?
 - ★★★ Why is a silent wrong answer more dangerous than a crash?
 - ★★★ In each case, what was the number you compared against, and where did the expectation come from?
-- ★★★ Which of the five would still happen today, and what specifically stops the others?
+- ★★★ Which of the six would still happen today, and what specifically stops the others?
 - ★★ Why did none of these produce an error, given that the code has error handling throughout?
-- ★★ Three of the five were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
+- ★★ Three of the six were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
 - ★★ In case 4, what would have happened if only the headline number had been published?
 - ★★ In case 3, the deploy reported success. What is the general lesson about trusting a tool's own report that it worked?
-- ★★ Two of the five were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★★ Number 6 was committed while writing up the other five. What does that tell you about how much protection knowing the failure mode gives you?
+- ★★ Three of the six were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the six were which?
+- ★★ When you report a number from a sample, what has to travel with it?
 - ★★ For each, what is the cheapest check that would have caught it on day one?
 - ★ Case 1 was "confirmed" by a first analysis before being overturned. What made the first analysis convincing?
-- ★ Case 5 was misdiagnosed before it was diagnosed. What was the wrong explanation, and why was it plausible?
+- ★ Case 5 was misdiagnosed before it was diagnosed, and case 6 is that misdiagnosis's sibling. What was the wrong explanation, and why was it plausible?
 - ★ Which of these would a test suite have caught, and which would it not?
 - ★ What is the difference between a system that works and a system you can tell is working?
+- ★★ A fresh clone could not build a deployable package, and reading `.gitignore` said
+  otherwise. What is the general form of that lesson, and what is the equivalent check
+  for a claim rather than a build?
 - ★ If you had to add exactly one automated check to this project tomorrow, which would it be and why?
 
 The uncomfortable version of the question, which is the one worth being ready for:
