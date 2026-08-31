@@ -169,11 +169,11 @@ Where an answer lives in the decision log, the entry is named. Read it *after* t
 
 ---
 
-## N. The theme — six failures with one shape
+## N. The theme — seven failures with one shape
 
 **This is the spine of the how-it-works page, not another section of it.**
 
-Six separate failures in this project share a shape. None raised an exception. None
+Seven separate failures in this project share a shape. None raised an exception. None
 appeared in a log as an error. Every one produced output that looked exactly like a
 correct, unremarkable result, and every one was caught the same way: by taking a number
 and asking what it *should* have been.
@@ -185,6 +185,15 @@ what was wrong was the sentence describing it. The same person cataloguing this 
 mode committed it in the same document, two days later, and did not notice until the full
 merge returned 56.
 
+The seventh is the sharpest. A `!data/codes.json` negation was added under a bare `data/`
+and reported as the fix. It was inert — git does not descend into an excluded directory, so
+the line could never be reached. The file was in the repo, but only because `git add -f`
+had forced it there separately. **Both of us looked at the repo, saw the file, and
+concluded the rule worked.** The evidence was real and it was evidence for a different
+claim. It was caught by asking for a test that would have failed if the rule were inert —
+and that test, run a day later on a *different* rule, showed that one was sound. Checking
+is worth doing even when the answer comes back fine; especially then.
+
 | # | What it looked like | What it was |
 |---|---|---|
 | 1 | Flagged lines reporting arrival times | Scheduled times echoed back as actuals (D20-D23) |
@@ -193,18 +202,21 @@ merge returned 56.
 | 4 | A model with a 22-minute average error | Two ways of computing "late" disagreeing by a day (D52) |
 | 5 | `0 new codes` from the harvest | A folder nothing had written to since July (D55) |
 | 6 | "39 codes are missing" | Measured on 400 of 2,088 files and reported as complete. It was 56 (D55) |
+| 7 | A `.gitignore` fix, with the file visibly in the repo | The rule was inert. `git add -f` had put the file there; the rule did nothing (D55) |
 
-- ★★★ What do these six have in common, and why is that more interesting than any one of them?
+- ★★★ What do these seven have in common, and why is that more interesting than any one of them?
 - ★★★ Why is a silent wrong answer more dangerous than a crash?
 - ★★★ In each case, what was the number you compared against, and where did the expectation come from?
-- ★★★ Which of the six would still happen today, and what specifically stops the others?
+- ★★★ Which of the seven would still happen today, and what specifically stops the others?
 - ★★ Why did none of these produce an error, given that the code has error handling throughout?
-- ★★ Three of the six were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
+- ★★ Three of the seven were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
 - ★★ In case 4, what would have happened if only the headline number had been published?
 - ★★ In case 3, the deploy reported success. What is the general lesson about trusting a tool's own report that it worked?
+- ★★★ In number 7, what was the observation, what was the conclusion, and why did the gap between them survive two people looking at it?
+- ★★★ How do you tell "this fix worked" from "this fix is inert and something else is holding it up"?
 - ★★★ Number 6 was committed while writing up the other five. What does that tell you about how much protection knowing the failure mode gives you?
-- ★★ Three of the six were introduced by *me*, after the system was working. What does that say about when to be most careful?
-- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the six were which?
+- ★★ Four of the seven were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the seven were which?
 - ★★ When you report a number from a sample, what has to travel with it?
 - ★★ For each, what is the cheapest check that would have caught it on day one?
 - ★ Case 1 was "confirmed" by a first analysis before being overturned. What made the first analysis convincing?

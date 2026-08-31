@@ -2023,8 +2023,20 @@ of every code ever observed, built by a harvest that cannot be repeated for the 
 Versioning it also timestamps when the set changed, so figures computed against the earlier
 1,087 stay attributable.
 
-**Related, not fixed.** `data/live/stations.json` is also gitignored and both
-`build_lambda.ps1` and `build_api.ps1` throw without it, so a fresh clone cannot build a
-deployable package. Same shape of problem, left alone for now.
+**Amended 2026-08-31.** The `!data/codes.json` negation above was **inert**. Git does not
+descend into an excluded directory, so under a bare `data/` that line could never be
+reached; the file was in the repo only because `git add -f` had forced it there. Both the
+fix and its verification were accepted because the file was visibly present — real
+evidence for a different claim. `.gitignore` now uses `data/*`, which excludes only direct
+children and so leaves negation reachable, and the rule covers `data/live/stations.json`
+and `data/models/` as well. See the Conventions section of CLAUDE.md.
+
+Verified rather than reasoned, because the same doubt applies to the replacement: a dummy
+file at `data/models/<new-version>/model.txt` and at `<new-version>/sub/nested.txt` both
+appear as untracked, so a future retrain will not silently produce an artifact outside the
+repo while the API is pinned to it. `data/live/*`, `data/raw/*` and `data/parsed/*` stay
+ignored. The whole thing was then confirmed end to end by cloning to a temp directory and
+running all three build scripts, which is the only test that means anything here — reading
+the file had already satisfied two readers that it was correct.
 
 **Date.** 2026-08-31
