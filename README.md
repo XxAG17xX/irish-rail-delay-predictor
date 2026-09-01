@@ -16,37 +16,92 @@ no registration, no rate limit documented and no support offered.
 
 ## Status
 
-Ingestion works. Nothing is modelled yet.
+**Running unattended on AWS.** Collection, model and serving are done and deployed. The
+three web pages are the remaining work.
 
 - [x] API feasibility probes, field reference, known data-quality issues
 - [x] Historical availability established — `TrainDate` is honoured back to at least 2007
-- [x] `harvest_codes.py` — discovers which train codes exist
-- [x] `backfill.py` — downloads raw journey history, resumable and throttled
-- [x] `inspect_raw.py` — read-only survey of the archive
-- [ ] Parser: raw XML → Parquet
-- [ ] Label-quality check per line
-- [ ] Baseline, then a LightGBM quantile model
-- [ ] FastAPI service and deploy
+- [x] `harvest_codes.py` / `backfill.py` — resumable, throttled collection
+- [x] `parse_raw.py` — raw XML → Parquet
+- [x] Label quality resolved — it follows `AutoArrival`, not the line list
+- [x] `build_examples.py`, `baseline.py`, `train_quantile.py` — LightGBM quantile model
+- [x] Head-to-head against the operator's own live estimates
+- [x] FastAPI service on Lambda, prediction logging, nightly scorer
+- [x] Cutover to the Lambda poller after a seven-day parallel run
+- [ ] Three web pages: predictions, accuracy, how it works
 
-Current archive: 30 dates × 36 train codes. The code list is thin — it came from a single
-late-evening poll, against an expected ~600 codes for a full service day.
+**Dataset.** 28,706 gzipped responses, 1,087 train codes, 34 dates (25 Jun – 2 Aug 2026),
+504,810 stop-level records. Collected once, not repeated — re-fetchable by date if needed.
+
+**Model.** LightGBM quantile regression at the 10th, 50th and 90th percentiles. Twelve
+features, all computable at prediction time. Trained 27 Jun – 12 Jul, validated 13–19 Jul.
+The test week (20–26 Jul) has never been opened and stays closed until the end — every
+number quoted anywhere is validation or live, never test.
+
+**Against the operator.** 80.1s MAE against `ExpectedArrival` at 109.7s — a 27%
+improvement over 9,077 matched comparisons covering 2,654 distinct events. Replicated on
+live data on 2026-08-31: 92.3s against 124.5s, **25.9%** over 1,079 matched events, from
+predictions logged before the outcomes existed.
+
+**Honest limits, kept next to the number.**
+
+- It answers only for a train that has already reported at an upstream stop. Measured
+  live: **91.8%** of sampled in-service trains, but **38.0%** of what a visitor meets on a
+  station board, because a board also lists trains that have not departed.
+- The 80% interval measured **79.0%** live overall, but degrades with horizon — 78.1% at
+  0–5 minutes down to **74.5%** beyond an hour. Never quote one coverage number.
+- On documented weak-coverage lines the median is worse than the operator's. Reported as
+  a loss, not omitted.
+
+## Architecture
+
+```
+EventBridge ──> poller Lambda ──> S3   raw station boards + operator ETAs, every 5 min
+EventBridge ──> generator ─────> S3   sampled predictions, so the scoreboard has input
+                    │
+                 api.py (FastAPI + Mangum, Lambda Function URL)
+                    │
+                    └────────────> S3   prediction log, written BEFORE the outcome exists
+EventBridge ──> scorer Lambda ──> S3   nightly: joins yesterday's predictions to arrivals
+```
+
+Four Lambdas, two buckets, three CloudFormation stacks, eight CloudWatch alarms. No
+database — see [decisions.md](docs/decisions.md) D40. No EC2, no RDS, no VPC, no queues.
+
+The API is live behind a Lambda Function URL. The URL is not published here yet: every
+`/predict` call makes an upstream request to Irish Rail, and there is no throttle in front
+of it.
 
 ## Layout
 
 ```
-src/         pipeline — writes data
+src/
   harvest_codes.py   poll getCurrentTrainsXML, accumulate train codes
   backfill.py        download raw getTrainMovementsXML per (date, code)
-scripts/     one-off probes and surveys — read-only
-  probe_irishrail.py           original feasibility check
-  probe2_nulls_and_history.py  null semantics and historical availability
-  inspect_raw.py               survey what is actually on disk
-docs/
-  data-dictionary.md   field reference, provenance-tagged, and the label-quality risks
-  decisions.md         design decision log — what was chosen, what was rejected, why
-  feature-ideas.md     candidate model inputs
-data/        gitignored, never committed
+  parse_raw.py       raw XML -> Parquet, partitioned by date
+  build_examples.py  training examples at fixed horizons
+  baseline.py        persistence and zero baselines
+  train_quantile.py  LightGBM quantile model, versioned artifacts
+  features.py        THE feature definition, imported by training and serving alike
+  feedtime.py        feed time/date parsing, delay rule, lead-time bands
+  poll_live.py       the poll cycle, shared by the local poller and the Lambda
+  sinks.py           where a cycle's output goes: local disk, S3, or memory
+  lambda_poll.py     one poll cycle as a Lambda invocation
+  api.py             the prediction service
+  generate.py        scheduled sampled predictions, so the scorer has input
+  score.py           nightly scorer: predictions joined to realised arrivals
+  prediction_log.py  fail-closed prediction logging
+  hostlock.py        one collector per host
+scripts/     read-only probes, surveys and the build scripts
+infra/       CloudFormation/SAM templates
+docs/        data dictionary, decision log, label quality, explain index
+data/        raw collected data is gitignored; small build artifacts are committed
 ```
+
+`data/` splits in two and the split is a rule, not a list of exceptions. Raw XML, Parquet
+and poll output are never committed. The artifacts a build needs — `codes.json`,
+`live/stations.json`, `models/` — are. The test of the rule is not reading it: clone to a
+temp directory and run the build scripts.
 
 ## Setup
 
@@ -62,56 +117,65 @@ evaluates its schedule in `Europe/Dublin`.
 
 ## Running
 
-Harvest train codes. Run this across a full service day (~05:30 to after midnight), on a
-weekday and again on a weekend — the timetables differ.
+Collection. Harvest across a full service day (~05:30 to after midnight), on a weekday and
+again on a weekend — the timetables differ.
 
 ```powershell
 python src\harvest_codes.py
-```
-
-Download raw history for a date range. Safe to interrupt; rerun the same command to
-resume.
-
-```powershell
 python src\backfill.py --start 2026-06-25 --end 2026-07-24 --dry-run
 python src\backfill.py --start 2026-06-25 --end 2026-07-24
 ```
 
-Survey what landed.
-
-```powershell
-python scripts\inspect_raw.py
-python scripts\coverage_by_location.py
-```
-
-Parse the raw archive into Parquet, partitioned by date. Idempotent — already-written
-partitions are skipped.
+Parse, build examples, baseline, train. All idempotent; `--save` persists an artifact.
 
 ```powershell
 python src\parse_raw.py
-```
-
-Build training examples, then the baselines a model must beat, then the model.
-
-```powershell
 python src\build_examples.py
 python src\baseline.py
-python src\train_quantile.py
+python src\train_quantile.py --save
 ```
 
-Capture the operator's live `ExpectedArrival` — the benchmark, which cannot be
-backfilled. A missed poll is lost permanently. Polls the 30 stratified stations in
-[config/poll_stations.toml](config/poll_stations.toml); `--all-stations` for all 171.
+Evaluate against the operator, and check the join before trusting it.
 
 ```powershell
-python src\poll_live.py
+python scripts\validate_join.py
+python scripts\compare_to_operator.py
 ```
 
-The three collectors take an exclusive lock and refuse to run concurrently — the
-2 req/s budget is per host, not per script, so running two would silently double it.
+Serve locally, or score a past day.
 
-The collectors will not run at the same time — `src/hostlock.py` enforces it, because the
-2 requests/second budget is per host rather than per script.
+```powershell
+uvicorn api:app --app-dir src
+python src\score.py --date 2026-08-31 --dry-run
+```
+
+The collectors take an exclusive lock (`src/hostlock.py`) and refuse to run concurrently:
+the 2 req/s budget is per host, not per script, so running two would silently double it.
+
+## Deploying
+
+Each stack builds its own package, then deploys with SAM. The API's version argument is
+required and is not defaulted — the artifact baked into the package must be the version
+the stack names.
+
+```powershell
+powershell scripts\build_lambda.ps1
+sam deploy --region eu-west-1 --template-file infra/poller.yaml
+
+powershell scripts\build_api.ps1 -Version 20260813T221035Z-0c444e3
+sam deploy --region eu-west-1 --template-file infra/api.yaml
+
+powershell scripts\build_scorer.ps1
+sam deploy --region eu-west-1 --template-file infra/scorer.yaml
+```
+
+A CloudFormation stack that creates an email SNS subscription reports success before
+anyone confirms it, and AWS discards an unconfirmed subscription. Check afterwards rather
+than assuming:
+
+```powershell
+aws sns list-subscriptions-by-topic --topic-arn <arn> --region eu-west-1
+```
 
 ## Techniques
 
@@ -235,7 +299,24 @@ committing to a multi-hour job with the wrong arguments.
 
 ## Documentation
 
+The decision log is the primary record; code comments point at it rather than repeating it.
+
 - [CLAUDE.md](CLAUDE.md) — project scope, working agreement, what is deliberately out of scope
-- [docs/data-dictionary.md](docs/data-dictionary.md) — every field, provenance-tagged, plus the label-quality risks that shape the whole project
-- [docs/decisions.md](docs/decisions.md) — decision log
-- [docs/feature-ideas.md](docs/feature-ideas.md) — candidate model inputs
+- [docs/decisions.md](docs/decisions.md) — 55 entries: what was chosen, what was rejected, why
+- [docs/data-dictionary.md](docs/data-dictionary.md) — every field, provenance-tagged `[DOC]` / `[VERIFIED]` / `[INFERRED]` / `[UNKNOWN]`
+- [docs/label-quality.md](docs/label-quality.md) — the echo problem, written to be read cold
+- [docs/feature-ideas.md](docs/feature-ideas.md) — candidate model inputs and the rule that admits them
+- [docs/explain-index.md](docs/explain-index.md) — questions this project should be able to answer, no answers given
+
+### One theme worth reading for
+
+Seven failures in this project shared a shape: none raised an error, and every one
+produced output that looked like a correct result. Arrival times identical to the
+schedule. 420 successful fetches that were a captive portal. An alarm topic with no
+subscribers. A model with a 22-minute average error and a 48-second median. A harvester
+reporting "0 new codes" from a folder nothing had written to. A count taken from 400 of
+2,088 files and reported as complete. A `.gitignore` fix that was inert while the file sat
+visibly in the repo.
+
+Each was caught the same way: taking a number and asking what it should have been.
+Section N of [explain-index.md](docs/explain-index.md) collects them.
