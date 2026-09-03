@@ -84,6 +84,8 @@ sat in code comments and nobody looked for the hole.
 - [D51](#d51--three-custom-cloudwatch-metrics-for-the-generator-not-eight) Three custom CloudWatch metrics for the generator, not eight
 - [D52](#d52--delay-is-anchored-to-the-stops-own-schedule-everywhere) Delay is anchored to the stop's own schedule, everywhere
 - [D53](#d53--two-coverage-numbers-and-the-visitor-facing-one-is-the-headline) Two coverage numbers, and the visitor-facing one is the headline
+- [D57](#d57--the-retrain-on-consistent-journeys-what-it-fixed-what-it-revealed-and-a-gate-that-cannot-pass) The retrain on consistent journeys: what it fixed, what it revealed, and a gate that cannot pass
+- [D58](#d58--the-generator-refuses-out-of-envelope-questions-from-1725-utc-on-3-september) The generator refuses out-of-envelope questions, from 17:25 UTC on 3 September
 
 **Cutover and verification** 
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
@@ -2166,5 +2168,167 @@ more than a few hours ahead is refused rather than logged; `journey_consistent` 
 prediction time, so a phantom vantage declines instead of predicting; and vantage
 `AutoArrival` on every logged row. All three change what the generator logs, which is the
 live population mid-measurement — so they are proposed here rather than applied quietly.
+
+**Date.** 2026-09-03
+
+---
+
+## D57 — The retrain on consistent journeys: what it fixed, what it revealed, and a gate that cannot pass
+
+**Why this matters:** the model no longer tells people at Athenry that their train is
+forty minutes late; and it turns out no version of it has ever been able to see a
+severe delay coming.
+
+**In plain terms.** The model was retrained with the wrong-train arrivals (D56) removed
+from what it learns from. At the four Galway-line stations its answers went from absurd to
+sensible. Everywhere else it is the same model to within noise. And when asked "does it
+now handle genuinely severe delays better?", the honest answer is that it never handled
+them at all — the old model only looked as if it did, because its garbage-wide intervals
+happened to swallow the garbage labels.
+
+**Status.** Challenger trained and saved as `20260903T173007Z-5ebf03f`. **Not promoted.**
+The gate as written in CLAUDE.md failed on one group by an amount inside its own noise,
+and promotion is the model owner's decision, not the retrain's.
+
+**The two verifications asked for before retraining.**
+
+*Is the criterion concentrated on the Galway line?* No. Over train+validation, 583 of
+16,776 journeys (3.48%) fail `journey_consistent`, and only 32% of those touch a
+Galway-line station. The station where the inversion is first detected: ATMON 101,
+MLLOW 61, CNLLY 53, GL368 41, BRAY 37, HWTHJ 29, GALWY 28. Routes: Heuston–Galway 167,
+Tralee–Cork 61, then DART and Maynooth-line services. But it is not catching *something
+else* — it is catching the same defect at lower density. A131 (Belfast–Connolly) on
+27 June: Clontarf Road "arrived" at 23:49:18, twenty-seven minutes after the train
+terminated at Connolly at 23:22:18. An arrival filed against the wrong train, at a Dublin
+station on no warning list. The Galway line is where the defect is dense enough to move a
+station's median; elsewhere it is a tail. So the criterion is targeted at the defect
+class, not at a geography, which is the better property.
+
+*Is it computable from labels alone?* Yes, and checkably so. `feedtime.py` has no imports
+at all. `journey_consistent` reads three fields per stop — `order`, `sched`, `delay` —
+all straight from the feed, and asks whether `sched + delay` is non-decreasing in route
+order. No model, no prediction, no residual. It encodes a physical fact: one train cannot
+reach a later stop before an earlier one. That is what makes this label cleaning rather
+than removing hard cases — a hard case is a true label the model gets wrong; these are
+labels that cannot be true.
+
+**The rebuild.** Applied in `build_examples.py` before any example is cut, so train,
+validation and test are filtered identically and the criterion never sees a model output.
+744 journeys dropped: train 425, validation 158, test 161. Examples: train 474,996 (was
+500,243), validation 221,943 (was 230,966), test 221,365 (was 230,397). **The test week
+was filtered and remains unopened.** `--keep-inconsistent` reproduces the previous set.
+
+**Both validation figures, as required.**
+
+| population | champion MAE | coverage | n |
+|---|---|---|---|
+| all journeys (previous example set) | **76.1s** | 80.2% | 226,370 |
+| consistent journeys only (96.1% of rows) | **60.6s** | 80.3% | 217,653 |
+
+The champion is the same artifact in both rows; only the evaluation set changed. About
+fifteen seconds of the published validation MAE was contamination. The head-to-head
+against the operator is unaffected: it runs over the 30 polled stations, none of which is
+on the Galway line, and the polled-30 MAE is 65.8s before the filter and 65.7s after.
+
+**Champion versus challenger, identical cleaned validation, `AutoArrival=1` both ends,
+n=217,653.**
+
+| subset | n | MAE ch → cl | median ch → cl | coverage ch → cl |
+|---|---|---|---|---|
+| overall | 217,653 | 60.6 → **59.7** | 29.0 → 29.0 | 80.3 → 80.2 |
+| polled 30 | 55,323 | 65.7 → 65.8 | 33.2 → 33.0 | 80.5 → 80.3 |
+| everywhere else | 162,330 | 58.9 → 57.6 | 27.7 → 27.8 | 80.2 → 80.1 |
+| **4 Galway stations** | 324 | **1,055.6 → 413.1** | **483.2 → 97.0** | 76.9 → 65.1 |
+| weak_coverage | 424 | 111.3 → 112.1 | 68.4 → 69.3 | 86.3 → 84.9 |
+
+Interval width at the Galway stations: **6,795s → 394s**. That is the fix, visible. The
+coverage there *falls*, and that is correct: the 324 surviving Galway validation labels
+still include garbage that happened to be monotonic, and the champion "covered" it with
+two-hour intervals. The challenger's honest interval does not cover a wrong label.
+
+**The gate, literally applied.** MAE passes. `weak_coverage` fails on both median (+0.8s)
+and coverage (−1.4 points). n=424. A bootstrap 95% interval on the difference: median
+−5.4s to +8.7s, coverage −3.8 to +0.9 points. Both contain zero. The gate as written has no
+tolerance and no minimum group size, so a 424-row group will fail it on noise for any
+retrain, including a retrain of the identical model with a different seed.
+
+**Proposed amendment to the gate, not yet adopted:** compare with a bootstrap interval
+rather than a point, and require a minimum of ~1,000 rows before a group can veto. A
+group below that is reported, not enforced.
+
+**Severe delays — the answer to "does it improve too?"** It does not, and the reason is
+the finding.
+
+| actual delay | rows | champion cov | challenger cov | note |
+|---|---|---|---|---|
+| > 60 min, all | 76 | 27.6% | 2.6% | |
+| > 60 min, Galway only | 23 | 91.3% | 8.7% | garbage labels, garbage-wide intervals |
+| **> 60 min, excluding Galway** | **53** | **0.0%** | **0.0%** | real severe delays |
+
+The champion's apparent competence on severe delays was 23 Galway rows. On the 53 real
+ones neither model covers a single case, and the medians are ~3,500s apart from the truth
+for both. Training labels over an hour: 1,032 before the filter, 191 after; at Galway 839
+→ 12; everywhere else 193 → 179. The cleaning removed a fiction and left 179 real examples
+of severe lateness in 475,000 — nowhere near enough to learn from.
+
+**The Sligo test.** D925, D930 and A914 on 2 September, re-run with both models at the
+exact vantages the generator used, sixteen predictions. Champion MAE 4,564s, challenger
+4,557s, interval hits **0 of 16** for each. At every vantage the train was two to seven
+minutes late; it then lost 75–89 minutes between Mullingar and Edgeworthstown. The
+features — delay so far, stops remaining, time of day, route — carry no information about
+a disruption that has not started. This is a limitation of the approach, not of either
+model, and it goes on the page as such: **the intervals are calibrated for ordinary
+lateness and do not cover disruptions.**
+
+**What this does to the theme.** The 27.6% severe-delay coverage was the ninth silent
+failure: a number that looked like a modest capability and was garbage matching garbage.
+It was not caught by any check; it was caught by asking, after the cleaning, why the
+number had *fallen*.
+
+**Process notes worth keeping.** Two retrains were discarded before the one above. The
+first ran against the old examples because the rebuild had crashed on an import-order
+error and `| tail` masked the non-zero exit; the second carried a `-dirty` suffix because a
+`printf` restore of `LATEST` did not byte-match the committed file. D32's dirty flag did
+its job both times — an artifact from an unclean tree announced itself in its own name —
+and both were deleted before anything read them.
+
+**Date.** 2026-09-03
+
+---
+
+## D58 — The generator refuses out-of-envelope questions, from 17:25 UTC on 3 September
+
+**Why this matters:** the service was answering "seventy minutes late" for a train the
+feed said had arrived somewhere it could not have been yet; now it says it cannot answer.
+
+**Decision.** Three changes to what the generator — and the API behind it — will predict
+from. Live from **2026-09-03 17:25:05 UTC** (deploy complete); first cycle under the new
+rules at 17:29:37 UTC. The scoreboard has a discontinuity at that instant and
+`decline_reasons` gains two values from it.
+
+1. **A lead ceiling of four hours** (`feedtime.MAX_LEAD_SEC`), declined as
+   `lead_out_of_range`. The longest scheduled journey on the network is Heuston–Tralee at
+   3.89 hours; the 95th percentile of journey spans is 2.66. A lead past four hours cannot
+   belong to a real journey in progress, whatever the feed says. Read off the timetable,
+   not chosen. The generator had predicted 16–17 hours ahead for A731 on the strength of a
+   fleet-feed entry reading "(-1013 mins late) Arrived Athlone" at dawn.
+2. **`journey_consistent` at prediction time**, declined as `journey_inconsistent`. The
+   scorer already applied it; applying it where the prediction is made prevents the wrong
+   answer instead of refusing to grade it. Declining with a stated reason is the
+   established pattern (D39), not a new one.
+3. **Vantage `AutoArrival` logged** on every predicted row. Offline evaluation requires the
+   flag at both ends; live scoring could only check the target because the vantage flag
+   was never written down. Changes no output.
+
+**What the ceiling does and does not catch.** Of 37 phantom-vantage rows on 2 September,
+18 had leads beyond four hours and are caught. 19 — A461, A517, A519, with vantage delays
+of +1.7h, −3.3h and −2.2h at plausible leads — are not. A single-stop phantom with a
+believable lead passes both checks. A vantage-delay envelope would catch it and is not
+added, because that would be a threshold on delay size, which D52 deliberately avoided.
+Left as a known gap; the rows are visible in scoring as large over-predictions.
+
+**Verified on the first cycle:** 122 rows, 104 predicted, every one carrying
+`vantage_auto`, 18 declined `no_upstream_report`. `/health` 200. Generator errors alarm
+OK.
 
 **Date.** 2026-09-03

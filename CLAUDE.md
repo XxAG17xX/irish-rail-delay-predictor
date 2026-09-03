@@ -82,6 +82,20 @@ as `summary.json` plus `rows.jsonl.gz`.
 
 **Not built:** the three web pages.
 
+**A challenger model exists and is not promoted** (D57): `20260903T173007Z-5ebf03f`,
+trained on journeys that pass `journey_consistent`. Champion versus challenger on identical
+cleaned validation: MAE 60.6s → 59.7s; at the four Galway stations 1,056s → 413s. The gate
+in the retraining policy fails literally on `weak_coverage` (n=424, +0.8s median, −1.4pp
+coverage) with both differences inside a bootstrap 95% interval that contains zero. The
+gate needs a tolerance and a minimum group size before it can be applied; that amendment
+is proposed in D57 and not yet adopted. Promotion is a deploy of `infra/api.yaml` with
+`ServingModelVersion` changed, after `scriptsuild_api.ps1 -Version <challenger>`.
+
+**Published limitation, from D57:** the intervals do not cover disruptions. On real delays
+over an hour (53 validation rows excluding the Galway stations; 16 Sligo-line predictions
+on 2 Sep) both models cover **0%**. The champion's apparent 27.6% was Galway garbage. State
+this on the accuracy page beside the coverage figure.
+
 Next actions, in this order:
 
 1. **Build the three pages** (D41: plain HTML, CSS, vanilla JS). This is the only
@@ -131,6 +145,11 @@ Open items that will not announce themselves:
   catches `LogWriteFailed` and returns 503, which Lambda counts as a *successful*
   invocation, so the `Errors` metric stays at zero. D39 requires log trouble to be
   visible as API trouble, and it currently is not.
+- **The generator's rules changed at 2026-09-03 17:25 UTC** (D58): leads beyond four hours
+  and inconsistent journeys are declined, and `vantage_auto` is logged. Scores before and
+  after that instant are not directly comparable; `decline_reasons` gains
+  `lead_out_of_range` and `journey_inconsistent` from it. 19 of 37 phantom-vantage rows on
+  2 Sep would still pass both checks (plausible lead, single-stop vantage).
 - **Coverage is published as two numbers, headline visitor-facing** (D53): 89.3%
   conditional on the train being in service, **37.8%** as a visitor meets it on a station
   board (42.3% of board entries are trains that have not departed). The offline "~56% of
