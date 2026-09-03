@@ -142,6 +142,9 @@ def save_artifact(models_dir: Path, boosters: dict, vocabs: dict,
                   train_splits, train_rows: int, metrics: dict) -> str:
     """Write a versioned artifact atomically and repoint LATEST at it."""
     version = make_version()
+    # Read git state before the tmp dir exists: data/models/ is tracked (D55), so an
+    # untracked tmp dir would make the manifest say dirty while the version says clean.
+    sha, dirty = git_info()
     dest = models_dir / version
     tmp = models_dir / f".{version}.tmp"
     if tmp.exists():
@@ -154,7 +157,6 @@ def save_artifact(models_dir: Path, boosters: dict, vocabs: dict,
         booster.save_model(str(tmp / name))
         files[name] = sha256_file(tmp / name)
 
-    sha, dirty = git_info()
     manifest = {
         "version": version,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
