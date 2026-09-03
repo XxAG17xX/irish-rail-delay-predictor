@@ -57,6 +57,7 @@ sat in code comments and nobody looked for the hole.
 - [D20](#d20--echo-detection-by-line-name-tried-appeared-to-work-abandoned) Echo detection by line name: tried, appeared to work, abandoned
 - [D21](#d21--autoarrival-is-the-echo-signal) `AutoArrival` is the echo signal
 - [D23](#d23--flag-non-auto-records-do-not-drop-them) Flag non-auto records, do not drop them
+- [D56](#d56--a-third-class-of-bad-label-machine-captured-arrivals-attributed-to-the-wrong-train) A third class of bad label: machine-captured arrivals attributed to the wrong train
 - [D48](#d48--line-keywords-are-matched-on-word-boundaries-not-substrings) Line keywords are matched on word boundaries, not substrings
 
 **Modelling and evaluation** 
@@ -2040,3 +2041,130 @@ running all three build scripts, which is the only test that means anything here
 the file had already satisfied two readers that it was correct.
 
 **Date.** 2026-08-31
+
+---
+
+## D56 — A third class of bad label: machine-captured arrivals attributed to the wrong train
+
+**Why this matters:** four stations on the Galway line taught the model that trains arrive
+there three-quarters of an hour late as a matter of course, and it believed them.
+
+**In plain terms.** The echo problem (D20–D23) is the timetable reflected back as if it
+were an observation. This is different: a *real* observation, captured by the signalling
+system, filed against the *wrong* train. At Athenry on 7 July, A700 and A740 — two
+different trains — both "arrived" at 10:33. A710, scheduled 13:29, "arrived" at 18:19.
+A718, scheduled 17:43, "arrived" at 05:54 the next morning. Every eastbound train that day
+got no arrival at all. `AutoArrival=1` on every one of them, because the time *was*
+machine-captured — for some train. The flag that resolves the echo problem says nothing
+about this one.
+
+**Status: finding recorded, decision pending.** The retrain this implies is a model change
+and belongs to the retraining policy in CLAUDE.md, not to a scoring investigation.
+
+**How it surfaced.** Three days of live scoring (31 Aug, 1–2 Sep) with the generator
+running. Overall MAE moved 84.4s → 102.0s on 2 September while the median stayed at 48s
+all three days — the D52 signature, so the ten largest errors were pulled rather than
+explained away. They split into two kinds:
+
+1. **Real.** Three Sligo-line trains (D925, D930, A914) stepping from about five minutes
+   late at Mullingar to 75–89 minutes late at Edgeworthstown, holding that delay to the
+   end of the journey, `AutoArrival=1` throughout. A disruption, not a data defect. Nine of
+   the ten largest errors.
+2. **Contaminated.** Sixteen rows where the model predicted 35–45 minutes late at Athenry
+   from a *normal* vantage delay of 90–534 seconds, with q90s up to 3.3 hours. The model
+   itself, not its input.
+
+**The training labels at the four stations**, 27 Jun – 12 Jul, `AutoArrival=1` only:
+
+| station | n | median delay | q90 | max |
+|---|---|---|---|---|
+| ATHRY | 152 | **2,610s** | 9,960s | 32,730s |
+| GL368 | 121 | **3,936s** | 16,356s | 40,890s |
+| WLAWN | 164 | 810s | 9,768s | 35,424s |
+| ATMON | 163 | 162s | 8,988s | 18,474s |
+
+Only 48 of Athenry's 152 records (32%) are within half an hour of schedule; among those the
+median is 60s. These four stations hold **222 of the 295** training records more than an
+hour late, and **81% of all training examples** with a label beyond an hour. The offline
+evaluator puts `target_location` at 18.35% of gain, second only to current delay — which is
+exactly the mechanism by which a per-station garbage offset gets learned.
+
+**`journey_consistent` (D52) removes it.** Applied to the training window it rejects 425
+of 11,485 journeys (3.70%). After the filter: ATHRY n=44, median **60s**, q90 444s. GL368
+median 378s. The distributions become sane. It is aggressive — Athenry loses 71% of its
+records — but 0.45% of training examples target these stations, and a model with little
+data at a station is honest where a model with wrong data is not.
+
+**What this does to the published numbers.** Removing inconsistent journeys from validation
+(158 of 5,291 journeys, 8,717 rows, 3.85%) moves offline MAE **76.1s → 60.6s** with
+coverage unchanged at 80.3%. So about fifteen seconds of the published validation MAE is
+contamination. The head-to-head is **not** affected: it runs over the 30 polled stations,
+none of which are the four above, and the polled-30 MAE is 65.8s before the filter and
+65.7s after.
+
+**A second, smaller defect found in the same rows: the feed is mutable within a day.** At
+05:34 on 2 September Irish Rail's fleet feed listed A731 — the 20:50 Galway to Heuston —
+as `TrainStatus=R` with the message *"(-1013 mins late) Arrived Athlone next stop Clara"*,
+and the movements record showed Athlone `Arrival 05:07:24`. The generator predicted from
+that vantage: a 7.1-hour delay, propagated as ~70 minutes late at every downstream stop,
+for the next hour and a half. By the time the scorer refetched, Athlone read 22:01 (+30s).
+The arrival had been overwritten. Thirteen scored rows on 2 September carry a vantage delay
+over an hour; none on 1 September. `journey_consistent` cannot catch this at scoring time
+because the journey has been corrected by then — it would have to run at *prediction*
+time, on what the generator actually sees.
+
+**Also found: the generator has no ceiling on lead time.** Those A731 predictions were made
+16–17 hours ahead of the scheduled arrival, well outside anything the model was trained on
+(1–10 observed stops). `lead_band` labelled them "60+ min" and nothing refused them.
+
+**What the two mechanisms explain, and what they do not.** On 2 September, excluding the
+four stations and the phantom-vantage rows moves MAE 102.0s → 97.9s — about four seconds of
+a seventeen-second jump. Excluding all 51 rows over thirty minutes moves it to 87.3s
+against 1 September's 83.4s. The jump is the tail; most of the tail is real.
+
+**Interval coverage, which prompted the look.** Live coverage was 77.3% and 75.5% on the
+two full days against a nominal 80%. The hypothesis was that quantiles were calibrated on a
+well-covered population and live evaluation spans everything. **Not supported**: polled 30
+stations 76.1% / 75.3%, everywhere else 77.8% / 75.5%, and offline the same split is
+80.4% / 80.2%. The structure is by corridor, not by polled-ness:
+
+| group | offline val | live 1 Sep | live 2 Sep |
+|---|---|---|---|
+| dart | 80.7% | 81.2% | 78.5% |
+| dublin_hubs | 80.6% | 79.2% | 81.7% |
+| commuter_maynooth | 82.3% | 79.3% | 79.6% |
+| **commuter_kildare** | 79.3% | **68.8%** | **64.0%** |
+| **intercity_cork_corridor** | 79.1% | **63.1%** | **66.7%** |
+
+The model was calibrated at 79% on the Cork corridor and the Kildare line in July, and is
+covering 63–69% there now. Those two groups share track (D29). That is a change in the
+railway between July and September, not in the model's training population, and two days
+is not enough to say what. Misses are skewed upward — 12.9% / 14.3% above q90 against 9.8%
+/ 10.2% below, where offline was balanced at 9.6 / 10.2 — so trains are running later than
+the interval's top more often than they did in July.
+
+**One population difference that cannot be checked from the logs.** Offline evaluation
+requires `AutoArrival=1` at the vantage *and* the target. Live scoring requires it only at
+the target; the generator's vantage selection does not look at the flag, and vantage
+`AutoArrival` is not logged. Worth logging.
+
+**Options, for the retraining decision.**
+
+- *Retrain with `journey_consistent` applied to the training examples.* The clean fix.
+  Costs 3.7% of journeys, mostly on the Galway line. Goes through the champion/challenger
+  gate like any other model. The trigger is not the documented one — rolling MAE has not
+  risen for a week — it is a label-quality finding, which is a different and stronger
+  reason.
+- *Leave the model; exclude the four stations from what is published.* Cheaper, honest
+  about the numbers, dishonest about the service: the API still serves 40-minute-late
+  predictions at Athenry to anyone who asks.
+- *Both, in that order.* Exclusion is a one-line evaluation-time decision that can be made
+  today; the retrain takes a validation week.
+
+**Generator changes proposed alongside, not yet made.** A lead ceiling, so a prediction
+more than a few hours ahead is refused rather than logged; `journey_consistent` at
+prediction time, so a phantom vantage declines instead of predicting; and vantage
+`AutoArrival` on every logged row. All three change what the generator logs, which is the
+live population mid-measurement — so they are proposed here rather than applied quietly.
+
+**Date.** 2026-09-03

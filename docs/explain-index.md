@@ -238,7 +238,8 @@ The uncomfortable version of the question, which is the one worth being ready fo
 
 Things nobody can currently answer, including me:
 
-- The live head-to-head number, on a sample large enough to mean anything. Right now it is 13 matched events from one cycle, and it says the model *loses*.
-- Whether interval coverage holds up live at the 80% it claims. First reading is 67%, on 73 rows.
+- ~~The live head-to-head number, on a sample large enough to mean anything.~~ Three full days: 25.9%, 29.1%, 28.8% over 1,079 / 2,885 / 3,245 matched events. The 13-event day that said the model loses was noise.
+- Whether interval coverage holds up live at the 80% it claims. Three days: 79.0%, 77.3%, 75.5%. Not a population artefact — the Cork corridor and Kildare line were calibrated at 79% in July and are covering 63–69% now. Two days; not a trend. (D56)
+- Why the Galway line's arrival records belong to other trains, and whether the model should be retrained without them. (D56)
 - Whether the weak-coverage lines behave differently live than they did offline.
 - What the model does on a day with real disruption, which has not happened yet during the observed window.
