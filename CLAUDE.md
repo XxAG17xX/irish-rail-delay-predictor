@@ -70,13 +70,15 @@ Current phase is **serving**: get the system running in AWS with a public URL.
   script end to end after the window-intersection change. It is not the cutover call —
   D36 measures the full seven days, which needs both weekend days.
 - API stack (`infra/api.yaml`, eu-west-1):
-  **https://u57p35imryiymiihvvs2wc3r2q0vpgmc.lambda-url.eu-west-1.on.aws**
+  The Function URL is the stack's `ApiUrl` output. It is deliberately not written here:
+  this file is public and nothing throttles `/predict`. Fetch it with
+  `aws cloudformation describe-stacks --stack-name rail-delay-api --region eu-west-1 --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text`.
   Try `/health`, `/docs`, `/predict?train=A220&station=THRLS`. Cold start ~3.2s,
   warm ~30ms. Predictions log to `s3://rail-delay-poller-kg/predictions/`.
 
 **Also deployed:** generator stack function `rail-delay-api-generator` (D49) — a sampled
 prediction producer, **schedule DISABLED** until after the 30 August cutover — and
-`infra/scorer.yaml` (D50), the nightly scorer, running at 03:15 UTC. Build with
+`infra/scorer.yaml` (D50), the nightly scorer, running at 06:15 UTC. Build with
 `scripts\build_scorer.ps1`. Scores land in `s3://rail-delay-poller-kg/scores/date=*/`
 as `summary.json` plus `rows.jsonl.gz`.
 
@@ -88,8 +90,10 @@ identical cleaned validation: MAE 60.6s → 59.7s; at the four Galway stations 1
 413s and interval width 6,795s → 394s. The gate was amended with a failing candidate in
 hand and D57 says so: "not worse" is now a paired-bootstrap interval, and a group can veto
 only at n ≥ 1,100 (the size to detect a 5-point coverage drop at 80% power — derived from
-power, not from the 424-row group that failed). Both validation figures are published:
-76.1s across all journeys, 60.6s across the consistent 96.1%. The previous champion
+power, not from the 424-row group that failed). Both validation figures are published, and
+both belong to the previous champion: 76.1s across all journeys, 60.6s across the
+consistent 96.1%. The serving model scores 59.7s on that same consistent set and has not
+been evaluated on the all-journeys set. The previous champion
 `20260813T221035Z-0c444e3` stays on disk; rollback is a deploy with the parameter changed
 back.
 
@@ -126,10 +130,6 @@ Open items that will not announce themselves:
   somewhere live — which is the point: "0 new codes" from a dead folder is
   indistinguishable from a network with no new services. Not ported to S3 on purpose;
   nothing in the live path reads `codes.json` and live mode still works.
-- **`data/live/stations.json` is gitignored and both build scripts throw without it**, so a
-  fresh clone cannot build a deployable Lambda package. `data/codes.json` had the same
-  problem and now has a `!data/codes.json` exception in `.gitignore`; stations.json does
-  not, yet.
 - `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
   networkx). Worth splitting the way `requirements-lambda.txt` already does.
 - **CloudFormation cannot confirm an email subscription, so it reports success on a dead
@@ -169,6 +169,12 @@ Open items that will not announce themselves:
   outage could genuinely lose events, and they would count against the overlap bar. D36
   allows that — the bar is "every miss explained", not "no misses" — but the explanation
   has to come from the cycle records, so check `stations_failed` before blaming the Lambda.
+- **`api.predict_row` asks for the journey under today's Dublin date.** A train that
+  departed yesterday and is still running between 00:00 and 00:30 is fetched under the
+  wrong `TrainDate`, so it declines as `not_in_service` or `no_upstream_report` instead of
+  predicting. Quiet hours start at 00:30, so the window is half an hour a night. The
+  scorer already reads two partitions for this reason (D50); the API and generator do
+  not. Found 2026-09-03 by reading the code, not yet observed in scores.
 
 ## Who I am, and how to work with me
 
@@ -407,8 +413,10 @@ a journey. Seasonality and holiday effects are third-order polish.
 - **Never provision** a NAT Gateway (~€33/mo), an Application Load Balancer (~€18/mo), or
   a 24/7 RDS instance. Reason: these bill hourly regardless of traffic and will exhaust
   the credits for no benefit at this scale.
-- GitHub Actions authenticates to AWS via OIDC. No long-lived access keys in the repo or
-  in Actions secrets.
+- Deploys are manual `sam deploy` runs from the laptop, using the `rail-delay-deploy` IAM
+  user's keys held in the local AWS CLI config. GitHub Actions with OIDC was the plan once
+  the templates were known-good; there is no workflow yet. No long-lived access keys in
+  the repo.
 - A budget alarm must exist before anything is deployed.
 - **The API package needs three things a normal `pip install` will not give you**, all
   found the hard way and all encoded in `scripts/build_api.ps1`: two `--platform` tags

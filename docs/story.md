@@ -177,7 +177,7 @@ Two questions. Better than what, and how do you know you're not fooling yourself
 that proves nothing — the timetable isn't a good predictor and nobody thinks it is. The
 honest baseline is **persistence**: assume the train stays exactly as late as it is now.
 That's already a decent predictor, and it's what a sensible person would guess. The model
-beats it by about 22% on average error.
+beats it by about 31% on average error.
 
 The real target is Irish Rail's own expected arrival — the number on the station board.
 Beating that means beating the operator with their own data. On matched events (same

@@ -95,8 +95,8 @@ TIME_BUDGET_FLOOR_MS = 30_000
 OPERATOR_ALARM_FLOOR = 50
 # How long after midnight a service date is treated as finished. Covers a late
 # train still running past midnight, and clears quiet hours (00:30-05:30) so the
-# feed has stopped changing. The nightly schedule fires at 03:15 UTC, which is
-# 04:15 Irish summer time, so this is what actually gates it -- not the cron.
+# feed has stopped changing. The nightly schedule fires at 06:15 UTC, 07:15 Irish summer
+# time, which is after this floor; 03:15 was the first choice and found nothing settled.
 SETTLE = timedelta(hours=6)
 
 

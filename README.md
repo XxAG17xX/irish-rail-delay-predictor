@@ -37,8 +37,9 @@ three web pages are the remaining work.
 features, all computable at prediction time. Trained 27 Jun – 12 Jul, validated 13–19 Jul,
 on journeys whose reported arrivals are internally consistent — 3.7% of journeys are
 excluded because at least one of their arrivals belongs to a different train (D56, D57).
-Validation MAE is published both ways: 76.1s across all journeys, 60.6s across the
-consistent 96.1%.
+Validation MAE for the serving model: 59.7s on the consistent 96.1% of rows. The previous
+model scored 76.1s across all journeys and 60.6s on the consistent subset, so about
+fifteen seconds of the earlier published figure was label contamination, not model error.
 The test week (20–26 Jul) has never been opened and stays closed until the end — every
 number quoted anywhere is validation or live, never test.
 
@@ -54,8 +55,9 @@ predictions logged before the outcomes existed.
   station board, because a board also lists trains that have not departed.
 - The 80% interval measured **79.0%** live overall, but degrades with horizon — 78.1% at
   0–5 minutes down to **74.5%** beyond an hour. Never quote one coverage number.
-- On documented weak-coverage lines the median is worse than the operator's. Reported as
-  a loss, not omitted.
+- On documented weak-coverage lines the model loses more head-to-head comparisons than it
+  wins: 55% of 104 lost, with the medians within three seconds of each other (replayed
+  2026-09-03). Reported as a loss, not omitted.
 - **The intervals do not cover disruptions.** On real delays over an hour — 53 validation
   rows, and 16 predictions at the Sligo trains that lost 75–89 minutes in one stretch on
   2 Sep — coverage is **0%**, for this model and the one before it. Every one of those
@@ -75,12 +77,13 @@ EventBridge ──> generator ─────> S3   sampled predictions, so the 
 EventBridge ──> scorer Lambda ──> S3   nightly: joins yesterday's predictions to arrivals
 ```
 
-Four Lambdas, two buckets, three CloudFormation stacks, eight CloudWatch alarms. No
+Four Lambdas, two buckets, four CloudFormation stacks, eight CloudWatch alarms. No
 database — see [decisions.md](docs/decisions.md) D40. No EC2, no RDS, no VPC, no queues.
 
-The API is live behind a Lambda Function URL. The URL is not published here yet: every
+The API is live behind a Lambda Function URL. The URL is deliberately not advertised: every
 `/predict` call makes an upstream request to Irish Rail, and there is no throttle in front
-of it.
+of it. It did sit in `CLAUDE.md` from 25 August to 3 September, so it is in the git history
+and should be treated as public.
 
 ## Layout
 
