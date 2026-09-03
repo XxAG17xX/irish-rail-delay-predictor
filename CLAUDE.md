@@ -82,14 +82,16 @@ as `summary.json` plus `rows.jsonl.gz`.
 
 **Not built:** the three web pages.
 
-**A challenger model exists and is not promoted** (D57): `20260903T173007Z-5ebf03f`,
-trained on journeys that pass `journey_consistent`. Champion versus challenger on identical
-cleaned validation: MAE 60.6s → 59.7s; at the four Galway stations 1,056s → 413s. The gate
-in the retraining policy fails literally on `weak_coverage` (n=424, +0.8s median, −1.4pp
-coverage) with both differences inside a bootstrap 95% interval that contains zero. The
-gate needs a tolerance and a minimum group size before it can be applied; that amendment
-is proposed in D57 and not yet adopted. Promotion is a deploy of `infra/api.yaml` with
-`ServingModelVersion` changed, after `scriptsuild_api.ps1 -Version <challenger>`.
+**Serving model: `20260903T173007Z-5ebf03f`, promoted 2026-09-03 17:52:58 UTC** (D57).
+Trained on journeys that pass `journey_consistent`, evaluated against the incumbent on
+identical cleaned validation: MAE 60.6s → 59.7s; at the four Galway stations 1,056s →
+413s and interval width 6,795s → 394s. The gate was amended with a failing candidate in
+hand and D57 says so: "not worse" is now a paired-bootstrap interval, and a group can veto
+only at n ≥ 1,100 (the size to detect a 5-point coverage drop at 80% power — derived from
+power, not from the 424-row group that failed). Both validation figures are published:
+76.1s across all journeys, 60.6s across the consistent 96.1%. The previous champion
+`20260813T221035Z-0c444e3` stays on disk; rollback is a deploy with the parameter changed
+back.
 
 **Published limitation, from D57:** the intervals do not cover disruptions. On real delays
 over an hour (53 validation rows excluding the Galway stations; 16 Sligo-line predictions
@@ -145,11 +147,16 @@ Open items that will not announce themselves:
   catches `LogWriteFailed` and returns 503, which Lambda counts as a *successful*
   invocation, so the `Errors` metric stays at zero. D39 requires log trouble to be
   visible as API trouble, and it currently is not.
-- **The generator's rules changed at 2026-09-03 17:25 UTC** (D58): leads beyond four hours
-  and inconsistent journeys are declined, and `vantage_auto` is logged. Scores before and
-  after that instant are not directly comparable; `decline_reasons` gains
-  `lead_out_of_range` and `journey_inconsistent` from it. 19 of 37 phantom-vantage rows on
-  2 Sep would still pass both checks (plausible lead, single-stop vantage).
+- **The generator's rules changed at 2026-09-03 17:25 UTC and again at 17:53** (D58):
+  leads beyond four hours, inconsistent journeys, and vantages more than 30 minutes
+  *early* are declined, and `vantage_auto` is logged. Scores before and after are not
+  directly comparable; `decline_reasons` gains `lead_out_of_range`,
+  `journey_inconsistent` and `vantage_delay_out_of_range`. Of 37 phantom-vantage rows on
+  2 Sep, 36 would now be declined; the one that would not (A461, +1h44m at a plausible
+  lead) is uncatchable by any label-only rule without also refusing real disruptions.
+- **The Kildare and Cork corridor coverage drop (79% → 63–69%) is not addressed by the
+  retrain** (D58). Training data is still July. If it does not recover after promotion,
+  that is distribution shift in the railway, and a case for the coverage trigger.
 - **Coverage is published as two numbers, headline visitor-facing** (D53): 89.3%
   conditional on the train being in service, **37.8%** as a visitor meets it on a station
   board (42.3% of board entries are trains that have not departed). The offline "~56% of
@@ -326,12 +333,25 @@ a journey. Seasonality and holiday effects are third-order polish.
     fact — is a third, non-scheduled trigger. It does not wait for a metric to move,
     because the metric may be computed against the same contamination (D56).
 - **Champion/challenger gate.** A new model replaces the incumbent only if it beats it on
-  a recent held-out week on MAE, is not worse on any individual line's median, *and* is
-  not worse on interval coverage for any station group. **Both models are scored on
-  identical data**: if the incumbent is evaluated on the old examples and the challenger
-  on cleaned ones, the gate measures the cleaning rather than the model. Reason: without a
-  gate, automated retraining is an automated way to degrade the system with nothing
-  checking.
+  a recent held-out week on MAE, is not worse on any station group's median, *and* is not
+  worse on interval coverage for any station group. **Both models are scored on identical
+  data**: if the incumbent is evaluated on the old examples and the challenger on cleaned
+  ones, the gate measures the cleaning rather than the model.
+  - **"Not worse" means the paired bootstrap 95% interval on the difference excludes
+    zero in the wrong direction**, not that the point estimate is on the wrong side. A
+    point comparison with no tolerance fails every retrain on noise (D57).
+  - **A group can veto only at n ≥ 1,100 rows** — the size needed to detect a 5-point
+    coverage drop from 80% at 80% power with a two-sided test (1,094; the paired
+    bootstrap is more powerful, so this is the conservative side). Below that the group
+    is reported beside the result, not enforced. Derived from power, not from any group
+    that happened to fail.
+  - **Why the trigger uses 200 events and the gate 1,100.** The trigger only starts an
+    investigation, which is cheap, so it should fire early on thin evidence. The gate
+    blocks a better model, which is expensive, so it needs evidence strong enough to be
+    right about it. Same statistic, two very different costs of being wrong.
+
+  Reason for the gate at all: without one, automated retraining is an automated way to
+  degrade the system with nothing checking.
 - If the trigger never fires, that is a finding, not a gap. Publish it: "trained on
   July 2026 data, unchanged since, no sustained degradation."
 

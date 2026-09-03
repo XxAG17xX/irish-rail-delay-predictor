@@ -34,7 +34,11 @@ three web pages are the remaining work.
 504,810 stop-level records. Collected once, not repeated — re-fetchable by date if needed.
 
 **Model.** LightGBM quantile regression at the 10th, 50th and 90th percentiles. Twelve
-features, all computable at prediction time. Trained 27 Jun – 12 Jul, validated 13–19 Jul.
+features, all computable at prediction time. Trained 27 Jun – 12 Jul, validated 13–19 Jul,
+on journeys whose reported arrivals are internally consistent — 3.7% of journeys are
+excluded because at least one of their arrivals belongs to a different train (D56, D57).
+Validation MAE is published both ways: 76.1s across all journeys, 60.6s across the
+consistent 96.1%.
 The test week (20–26 Jul) has never been opened and stays closed until the end — every
 number quoted anywhere is validation or live, never test.
 
@@ -52,6 +56,12 @@ predictions logged before the outcomes existed.
   0–5 minutes down to **74.5%** beyond an hour. Never quote one coverage number.
 - On documented weak-coverage lines the median is worse than the operator's. Reported as
   a loss, not omitted.
+- **The intervals do not cover disruptions.** On real delays over an hour — 53 validation
+  rows, and 16 predictions at the Sligo trains that lost 75–89 minutes in one stretch on
+  2 Sep — coverage is **0%**, for this model and the one before it. Every one of those
+  trains was 2–7 minutes late at the moment of asking. No delay-so-far feature can see a
+  disruption that has not started. The previous model's apparent 27.6% on such delays was
+  wrong-train labels covered by intervals learned from the same labels (D57).
 
 ## Architecture
 

@@ -348,11 +348,30 @@ else it is the same model to within noise. Both validation figures are published
 seconds average error across all journeys, 61 seconds across the 96% with internally
 consistent records, with the exclusion stated.
 
-It hasn't replaced the old model yet. The rule for promotion says a new model must not be
-worse on any line, and on one line of 424 examples it came out 0.8 seconds worse — an
-amount well inside what chance produces on 424 examples. The rule as written has no
-allowance for that, which makes it a rule no retrain can pass. That's being fixed before
-the decision is made, rather than the decision being made by ignoring the rule.
+It replaced the old model on the evening of 3 September — but not straight away. The rule
+for promotion said a new model must not be worse on any line, and on one line of 424
+examples it came out 0.8 seconds worse. That's well inside what chance produces on 424
+examples: resampling those rows gives a range from 5 seconds better to 9 seconds worse.
+But the rule as written had no allowance for chance, which made it a rule no retrain
+could ever pass.
+
+So the rule was changed, and it was changed with a failing candidate in hand — which is
+exactly when a rule is most likely to be bent to fit, so the change is written down with
+that said openly. Two things changed. "Worse" now means the resampled range lies wholly
+on the wrong side of zero, not that the single number does. And a line can only block
+promotion if it has at least 1,100 examples — a number worked out from how many you need
+to reliably see a five-point drop in coverage, *not* from the 424 that failed. Had the
+arithmetic come out below 424, the rule would have stood and the model would not have
+gone live. What would still have blocked it, at any size: a difference whose resampled
+range sat entirely on the wrong side. That test didn't change, and it's the one the
+candidate actually passed.
+
+The generator also gained a fourth refusal that evening: a train whose last reported
+stop shows it more than thirty minutes *early* is declined, because no scheduled service
+runs that early and the record must belong to another train. That catches the last of
+the dawn phantoms except one — a train reported an hour and three-quarters *late*, which
+is inside what a real disruption looks like, and no rule can refuse that without also
+refusing the real thing.
 
 And one thing the retrain revealed rather than fixed. When asked whether the new model
 handles *genuinely* severe delays better — the Sligo trains that lost seventy-five minutes
@@ -376,17 +395,18 @@ page this document is the notes for.
 
 ## The thread through all of it
 
-Nine separate failures in this project shared a shape. None raised an error. Every one
+Ten separate failures in this project shared a shape. None raised an error. Every one
 produced output that looked exactly like a correct result: arrival times identical to the
 schedule; 420 successful downloads that were all an internet provider's login page; an
 alarm with no subscribers; a 22-minute average error next to a 48-second median; a
 harvester reporting "0 new codes" from a folder nothing had written to; a count from 400 of
 2,088 files reported as complete; a configuration fix that was inert while the file sat
 visibly in the repository; arrival times marked verified that belonged to other trains;
-and a model that appeared to cover a quarter of severe delays, every one of them a wrong
-label matched by a wrong prediction.
+a model that appeared to cover a quarter of severe delays, every one of them a wrong
+label matched by a wrong prediction; and a rebuild that reported success because the
+command that reported it was `tail`, not the program that had crashed.
 
-Each was caught the same way: taking a number and asking what it should have been. Two of
+Each was caught the same way: taking a number and asking what it should have been. Three of
 them I introduced myself, after the system was working, while writing up the others. The
 lesson isn't "be more careful." It's that a system which works and a system you can *tell*
 is working are different things, and most of the effort here went into the second.

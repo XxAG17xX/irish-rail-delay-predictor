@@ -94,10 +94,33 @@ Where an answer lives in the decision log, the entry is named. Read it *after* t
 - ★★ Your prediction is second-precision, the operator's is minute-precision. Why does that matter and what did you do? (D46)
 - ★★ A single event gets polled about eighteen times. Why can you not treat those as eighteen results? (D46)
 - ★★ What is the "vantage stop", and why must it be chosen by the clock rather than by position in the journey? (D46)
+- ★★★ The intervals cover 0% of real delays over an hour. Why, why is that a limit of the *approach* rather than the model, and why did the old model appear to cover 27.6% of them? (D57)
 - ★★ Where does the model *lose*, and why is that on the page rather than in a footnote?
 - ★★ Why must coverage always be published next to accuracy?
 - ★ What is a persistence baseline and why is it the honest floor to compare against? (D26)
 - ★ What would you need to see before you believed the model had genuinely got worse?
+
+### The worked example for the question above — the Sligo line, 2 September
+
+Three trains: D925, D930, A914. At every point where the service was asked — sixteen
+predictions across the three — the train was between two and seven minutes late. Each
+then lost 75 to 89 minutes in the stretch between Mullingar and Edgeworthstown and held
+that delay to the end of the journey. `AutoArrival=1` throughout; a real disruption.
+
+Both models, re-run at exactly those vantages: median prediction 30 seconds to 8 minutes
+late, upper bound never above 23 minutes. Sixteen misses out of sixteen, for each. The
+features are delay so far, stops and minutes remaining, time of day, day of week, route.
+A disruption that has not started yet leaves no trace in any of them. No model built on
+these inputs can see it coming; a wider interval would only mean lying about ordinary
+days to hedge against rare ones.
+
+The old model looked as if it covered 27.6% of hour-plus delays. Every one of those was
+a Galway row: a label that belonged to a different train, inside an interval two hours
+wide that had been learned from the same wrong labels. On the 53 real severe delays in
+validation, it covered none. Neither does the new one. The cleaning removed a fiction.
+
+What goes on the page: *the intervals are calibrated for ordinary lateness. They do not
+cover disruptions, and no delay-so-far model can.*
 
 ## H. Serving
 
@@ -169,11 +192,11 @@ Where an answer lives in the decision log, the entry is named. Read it *after* t
 
 ---
 
-## N. The theme — nine failures with one shape
+## N. The theme — ten failures with one shape
 
 **This is the spine of the how-it-works page, not another section of it.**
 
-Nine separate failures in this project share a shape. None raised an exception. None
+Ten separate failures in this project share a shape. None raised an exception. None
 appeared in a log as an error. Every one produced output that looked exactly like a
 correct, unremarkable result, and every one was caught the same way: by taking a number
 and asking what it *should* have been.
@@ -184,6 +207,14 @@ all of them — no caveat, no "at least", just "39". Nothing was wrong with the 
 what was wrong was the sentence describing it. The same person cataloguing this failure
 mode committed it in the same document, two days later, and did not notice until the full
 merge returned 56.
+
+The tenth is the plainest, and it happened during the fix for the eighth and ninth. A
+rebuild of the training examples crashed on its first real line. The command that ran it
+ended with `| tail`, and a pipeline's exit code is its last command's, so the harness
+reported "completed (exit code 0)" and two model evaluations were launched against data
+that had not been rebuilt. Nothing in the output was false: the rebuild *had* printed a
+traceback, and `tail` *had* exited cleanly. The reader had asked the wrong process whether
+it succeeded.
 
 The ninth was found by the fix for the eighth. Cleaning the labels made severe-delay
 coverage *fall*, from 27.6% to 2.6%, and the reflex is to call that a regression. Asking
@@ -223,23 +254,25 @@ is worth doing even when the answer comes back fine; especially then.
 | 7 | A `.gitignore` fix, with the file visibly in the repo | The rule was inert. `git add -f` had put the file there; the rule did nothing (D55) |
 | 8 | Arrival times with `AutoArrival=1`, on stations not on any warning list | The times were real and machine-captured — for a different train. The model absorbed them as 18% of its gain (D56) |
 | 9 | A model covering 27.6% of hour-plus delays | Every covered row was a Galway garbage label swallowed by a garbage-wide interval. On real severe delays: 0%, both models (D57) |
+| 10 | A rebuild that "completed (exit code 0)" | It had crashed on line 58. The exit code was `tail`'s, not Python's. Two model evaluations then ran against stale data (D57) |
 
-- ★★★ What do these nine have in common, and why is that more interesting than any one of them?
+- ★★★ What do these ten have in common, and why is that more interesting than any one of them?
 - ★★★ Why is a silent wrong answer more dangerous than a crash?
 - ★★★ In each case, what was the number you compared against, and where did the expectation come from?
-- ★★★ Which of the nine would still happen today, and what specifically stops the others?
+- ★★★ Which of the ten would still happen today, and what specifically stops the others?
 - ★★ Why did none of these produce an error, given that the code has error handling throughout?
-- ★★ Four of the nine were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
+- ★★ Four of the ten were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
 - ★★ In case 4, what would have happened if only the headline number had been published?
 - ★★ In case 3, the deploy reported success. What is the general lesson about trusting a tool's own report that it worked?
+- ★★ Number 10 reported success truthfully. What was the question that should have been asked instead, and of whom?
 - ★★★ Number 9 looked like a regression caused by the fix for number 8. How do you tell a regression from a fiction being removed?
 - ★★★ Number 8 passed every check the project had. What would a check that catches it look like, and why does it have to be a physical constraint rather than a threshold?
 - ★★★ In number 8, why was the vendor's list necessary but not sufficient?
 - ★★★ In number 7, what was the observation, what was the conclusion, and why did the gap between them survive two people looking at it?
 - ★★★ How do you tell "this fix worked" from "this fix is inert and something else is holding it up"?
 - ★★★ Number 6 was committed while writing up the other five. What does that tell you about how much protection knowing the failure mode gives you?
-- ★★ Four of the nine were introduced by *me*, after the system was working. What does that say about when to be most careful?
-- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the nine were which?
+- ★★ Five of the ten were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the ten were which?
 - ★★ When you report a number from a sample, what has to travel with it?
 - ★★ For each, what is the cheapest check that would have caught it on day one?
 - ★ Case 1 was "confirmed" by a first analysis before being overturned. What made the first analysis convincing?

@@ -62,8 +62,8 @@ def _staged(packaged: str, checkout: str) -> Path:
 
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
-from feedtime import (MAX_LEAD_SEC, delay_seconds, feed_train_date, hms,  # noqa: E402
-                      journey_consistent, lead_band, unwrap)
+from feedtime import (MAX_LEAD_SEC, MIN_VANTAGE_DELAY_SEC, delay_seconds,  # noqa: E402
+                      feed_train_date, hms, journey_consistent, lead_band, unwrap)
 from poll_live import (DUBLIN, USER_AGENT, Failure, fetch, in_dublin,  # noqa: E402
                        load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
@@ -291,6 +291,15 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
         return {**base, "reason": "no_upstream_report",
                 "explanation": f"{train} has not reported at any stop yet, so "
                                f"there is nothing to predict from."}
+
+    # A single wrong-train arrival at the vantage passes journey_consistent, because one
+    # point cannot be out of order. Hours early is impossible on its own (D58).
+    if stops[vi]["delay"] < MIN_VANTAGE_DELAY_SEC:
+        return {**base, "reason": "vantage_delay_out_of_range",
+                "vantage_location": stops[vi]["loc"], "vantage_delay_sec": stops[vi]["delay"],
+                "explanation": f"{train}'s last reported stop shows it "
+                               f"{-stops[vi]['delay'] // 60} minutes early, which no "
+                               f"scheduled service is; that arrival belongs to another train."}
 
     dow = DAY_NAMES[today.weekday()]
     x = featurise(stops, vi, ti, dow, st["vocabs"]).reshape(1, -1)

@@ -83,6 +83,14 @@ LEAD_BANDS = ((0, 300, "0-5 min"), (300, 900, "5-15 min"), (900, 1800, "15-30 mi
 # listed as running at dawn (D56). Derived from the timetable, not chosen.
 MAX_LEAD_SEC = 4 * 3600
 
+# A scheduled passenger service does not arrive half an hour early. In the cleaned training
+# examples the 99.9th percentile of early arrival is 12 minutes; every record beyond 30
+# minutes early is an arrival filed against the wrong train that happened to be monotonic
+# and so passed journey_consistent (D58). This is a bound on the EARLY side only: on the
+# late side there is no physical limit, real disruptions reach an hour and a half, and a
+# threshold there would refuse real cases -- the trap D52 names. Effective 2026-09-03.
+MIN_VANTAGE_DELAY_SEC = -30 * 60
+
 
 def lead_band(seconds):
     """Which band a lead time falls in. None for a lead that is negative or absent —

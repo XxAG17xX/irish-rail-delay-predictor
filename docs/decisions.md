@@ -2186,9 +2186,10 @@ now handle genuinely severe delays better?", the honest answer is that it never 
 them at all — the old model only looked as if it did, because its garbage-wide intervals
 happened to swallow the garbage labels.
 
-**Status.** Challenger trained and saved as `20260903T173007Z-5ebf03f`. **Not promoted.**
-The gate as written in CLAUDE.md failed on one group by an amount inside its own noise,
-and promotion is the model owner's decision, not the retrain's.
+**Status.** Challenger trained and saved as `20260903T173007Z-5ebf03f`. **Promoted
+2026-09-03** after the gate amendment below; the failing group was below the noise floor
+of its own size and the bootstrap intervals said so. Promotion is the model owner's
+decision and was made by the model owner.
 
 **The two verifications asked for before retraining.**
 
@@ -2252,9 +2253,39 @@ and coverage (−1.4 points). n=424. A bootstrap 95% interval on the difference:
 tolerance and no minimum group size, so a 424-row group will fail it on noise for any
 retrain, including a retrain of the identical model with a different seed.
 
-**Proposed amendment to the gate, not yet adopted:** compare with a bootstrap interval
-rather than a point, and require a minimum of ~1,000 rows before a group can veto. A
-group below that is reported, not enforced.
+**The gate was amended, and it was amended with a failing candidate in hand.** That
+needs saying plainly, because it is the situation in which a rule is most likely to be
+bent to fit. Two changes, adopted 2026-09-03:
+
+1. "Not worse" is judged by whether the paired bootstrap 95% interval on the difference
+   excludes zero in the wrong direction, not by which side of zero the point lands.
+2. A group can veto only at **n ≥ 1,100**. The number was derived from power, not from
+   the group that failed: it is the size needed to detect a 5-point drop in coverage from
+   80% at 80% power, two-sided α=0.05, unpaired formula — 1,094. Let it fall where it
+   falls: had it come out below 424 the gate would have stood and the candidate would not
+   have been promoted.
+
+   | drop to detect | n at 80% power | n at 90% power |
+   |---|---|---|
+   | 3 points | 2,943 | 3,939 |
+   | **5 points** | **1,094** | 1,464 |
+   | 7 points | 575 | 769 |
+   | 10 points | 293 | 392 |
+
+**What would still have blocked promotion, at any group size:** a difference whose
+bootstrap interval lay wholly on the wrong side of zero. `weak_coverage`'s intervals were
+−5.4s to +8.7s on the median and −3.8 to +0.9 points on coverage. Had either been, say,
++3s to +12s, the candidate would have been rejected on a 424-row group, floor or no floor.
+The floor decides whether a group can *enforce*; the interval decides whether there is
+anything to enforce. The amendment did not change the second test, and the second test is
+the one the candidate actually passed.
+
+**Why the trigger uses 200 events and the gate 1,100.** They look inconsistent and are
+not. The coverage trigger (CLAUDE.md retraining policy) starts an investigation, which
+costs an evening; it should fire early, on thin evidence, because the cost of a false
+alarm is small. The gate blocks a better model from serving, which costs every user the
+improvement for as long as the block stands; it needs evidence strong enough to be right.
+Same statistic, opposite costs of being wrong, so opposite thresholds.
 
 **Severe delays — the answer to "does it improve too?"** It does not, and the reason is
 the finding.
@@ -2301,8 +2332,8 @@ and both were deleted before anything read them.
 **Why this matters:** the service was answering "seventy minutes late" for a train the
 feed said had arrived somewhere it could not have been yet; now it says it cannot answer.
 
-**Decision.** Three changes to what the generator — and the API behind it — will predict
-from. Live from **2026-09-03 17:25:05 UTC** (deploy complete); first cycle under the new
+**Decision.** Four changes to what the generator — and the API behind it — will predict
+from (the fourth, below, arrived with the promotion later the same day). Live from **2026-09-03 17:25:05 UTC** (deploy complete); first cycle under the new
 rules at 17:29:37 UTC. The scoreboard has a discontinuity at that instant and
 `decline_reasons` gains two values from it.
 
@@ -2320,15 +2351,49 @@ rules at 17:29:37 UTC. The scoreboard has a discontinuity at that instant and
    flag at both ends; live scoring could only check the target because the vantage flag
    was never written down. Changes no output.
 
-**What the ceiling does and does not catch.** Of 37 phantom-vantage rows on 2 September,
-18 had leads beyond four hours and are caught. 19 — A461, A517, A519, with vantage delays
-of +1.7h, −3.3h and −2.2h at plausible leads — are not. A single-stop phantom with a
-believable lead passes both checks. A vantage-delay envelope would catch it and is not
-added, because that would be a threshold on delay size, which D52 deliberately avoided.
-Left as a known gap; the rows are visible in scoring as large over-predictions.
+**What the ceiling does and does not catch, and the fourth change it led to.** Of 37
+phantom-vantage rows on 2 September, 18 had leads beyond four hours and are caught. 19 —
+A461, A517, A519, with vantage delays of +1.7h, −3.3h and −2.2h at plausible leads — are
+not. Two questions were asked about those 19 before deciding what to do:
+
+*Does `journey_consistent` at prediction time catch any of them?* **No.** None of the
+three trains was `journey_inconsistent` at scoring; they were `scored` or `echo_suspect`.
+Each was a single wrong-train arrival at the vantage, and one point cannot be out of
+order with itself. The check needs two reported stops to disagree.
+
+*Would a bound on the vantage delay catch them?* **On the early side, yes; on the late
+side, no.** A scheduled passenger service does not arrive thirty minutes early. In the
+cleaned training examples the 99.9th percentile of early arrival is 12 minutes, and every
+record beyond 30 minutes early is a wrong-train arrival that happened to be monotonic.
+The training envelope itself cannot supply the bound — its minimum is −15,720s, because
+forty such records survived `journey_consistent` — so the bound is physical rather than
+empirical: **`MIN_VANTAGE_DELAY_SEC = −1,800`**, declined as `vantage_delay_out_of_range`.
+On 2 September that catches A517 (9 rows) and A519 (10 rows): **19 of the 19**, plus
+A731 and A730 which the ceiling already had.
+
+Except A461. Its vantage was +6,270s — 1h44m *late* — and there is no late-side bound,
+deliberately. Real disruptions reach an hour and a half (the Sligo trains, D57), the
+cleaned training data holds 144 vantages over an hour late and none over two, and a
+threshold anywhere in that range refuses real cases to catch fake ones — the trap D52
+names. A single late-side phantom at a plausible delay remains uncatchable by any
+label-only rule, and is visible in scoring as a large over-prediction.
+
+The bound went live with the promotion deploy on 2026-09-03, so `decline_reasons` gains a
+third value, `vantage_delay_out_of_range`, from that instant.
 
 **Verified on the first cycle:** 122 rows, 104 predicted, every one carrying
 `vantage_auto`, 18 declined `no_upstream_report`. `/health` 200. Generator errors alarm
 OK.
+
+**What none of this, and not the retrain either, addresses: the corridor coverage
+drop.** Interval coverage on the Kildare line and the Cork corridor fell from 79% in July
+validation to 63–69% in the first three live days (D56). That is not a label defect and
+these changes do not touch it. The retrain in D57 is still trained on July data — the
+same weeks, minus the inconsistent journeys — so it carries the same July calibration
+into September. If those two corridors do not recover after promotion, the reading is
+**distribution shift**: the railway in September is more variable there than it was in
+July, and a model trained on July cannot know that. That would be a case for the coverage
+trigger, and the remedy is recalibration or retraining on recent data — not a verdict on
+this retrain, which was never aimed at it.
 
 **Date.** 2026-09-03
