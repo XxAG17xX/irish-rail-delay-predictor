@@ -62,8 +62,8 @@ def _staged(packaged: str, checkout: str) -> Path:
 
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
-from feedtime import (delay_seconds, feed_train_date, hms,  # noqa: E402
-                      lead_band, unwrap)
+from feedtime import (MAX_LEAD_SEC, delay_seconds, feed_train_date, hms,  # noqa: E402
+                      journey_consistent, lead_band, unwrap)
 from poll_live import (DUBLIN, USER_AGENT, Failure, fetch, in_dublin,  # noqa: E402
                        load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
@@ -244,6 +244,15 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
         return {**base, "reason": "not_in_service",
                 "explanation": f"{train} is not running today."}
 
+    # A journey whose reported arrivals go backwards along the route contains at least
+    # one time that belongs to a different train (D56). Predicting from it would be
+    # predicting from someone else's journey, so it is declined with a reason, the same
+    # way a train with nothing to reason from is. Effective from 2026-09-03.
+    if not journey_consistent(stops):
+        return {**base, "reason": "journey_inconsistent",
+                "explanation": f"{train}'s reported arrivals are out of order along its "
+                               f"route, so at least one of them is not this train's."}
+
     ti = next((i for i, s in enumerate(stops) if s["loc"] == station), None)
     if ti is None:
         return {**base, "reason": "station_not_on_route",
@@ -260,6 +269,12 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
     if target["sched"] is not None:
         base["lead_sec"] = int(target["sched"] - now_s)
         base["lead_band"] = lead_band(base["lead_sec"])
+        # Out of envelope. No journey on the network is this long, so a lead this far
+        # ahead means the feed's picture of this train is wrong (D56). Effective 2026-09-03.
+        if base["lead_sec"] > MAX_LEAD_SEC:
+            return {**base, "reason": "lead_out_of_range",
+                    "explanation": f"{station} is {base['lead_sec'] // 3600} hours ahead, "
+                                   f"longer than any journey on the network."}
 
     if target["arr"] is not None:
         return {**base, "reason": "already_arrived",
@@ -290,6 +305,9 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
             "current_delay_min": round(stops[vi]["delay"] / 60, 1),
             "vantage_location": stops[vi]["loc"],
             "vantage_delay_sec": stops[vi]["delay"],
+            # Offline evaluation requires AutoArrival=1 at the vantage as well as the
+            # target; live scoring could not check the vantage because it was not logged.
+            "vantage_auto": stops[vi]["auto"],
             "horizon_route_stops": target["order"] - stops[vi]["order"],
             "horizon_sched_sec": sched - stops[vi]["sched"],
             "pred_q10_sec": q10, "pred_q50_sec": q50, "pred_q90_sec": q90,

@@ -76,6 +76,14 @@ LEAD_BANDS = ((0, 300, "0-5 min"), (300, 900, "5-15 min"), (900, 1800, "15-30 mi
               (1800, 3600, "30-60 min"), (3600, 10 ** 9, "60+ min"))
 
 
+# The longest scheduled journey on the network is Heuston to Tralee at 3.89 hours
+# (2026-07-07; 95th percentile of journey spans is 2.66h). A lead beyond four hours
+# therefore cannot belong to a real journey in progress, whatever the feed says. Found
+# when the generator predicted seventeen hours ahead for an evening train the fleet feed
+# listed as running at dawn (D56). Derived from the timetable, not chosen.
+MAX_LEAD_SEC = 4 * 3600
+
+
 def lead_band(seconds):
     """Which band a lead time falls in. None for a lead that is negative or absent —
     the arrival is in the past, so nothing was being predicted."""

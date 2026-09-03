@@ -169,11 +169,11 @@ Where an answer lives in the decision log, the entry is named. Read it *after* t
 
 ---
 
-## N. The theme — seven failures with one shape
+## N. The theme — eight failures with one shape
 
 **This is the spine of the how-it-works page, not another section of it.**
 
-Seven separate failures in this project share a shape. None raised an exception. None
+Eight separate failures in this project share a shape. None raised an exception. None
 appeared in a log as an error. Every one produced output that looked exactly like a
 correct, unremarkable result, and every one was caught the same way: by taking a number
 and asking what it *should* have been.
@@ -184,6 +184,16 @@ all of them — no caveat, no "at least", just "39". Nothing was wrong with the 
 what was wrong was the sentence describing it. The same person cataloguing this failure
 mode committed it in the same document, two days later, and did not notice until the full
 merge returned 56.
+
+The eighth is the one that answers "why wasn't the documented list enough?" Irish Rail
+publish which lines return scheduled times instead of real ones, and the flagged-lines
+rule (D20–D23) dealt with that. Athenry is not on that list. Its arrivals were real,
+machine-captured, and marked `AutoArrival=1` — every signal of a verified observation —
+and they belonged to a different train. Nothing in the data marked them. They were found
+only because the live model started answering "40 minutes late" from a normal vantage,
+and someone asked why. The documented list was necessary: it caught the defect Irish Rail
+knew about. It was not sufficient, because the vendor's list is a list of what the vendor
+noticed.
 
 The seventh is the sharpest. A `!data/codes.json` negation was added under a bare `data/`
 and reported as the fix. It was inert — git does not descend into an excluded directory, so
@@ -203,20 +213,23 @@ is worth doing even when the answer comes back fine; especially then.
 | 5 | `0 new codes` from the harvest | A folder nothing had written to since July (D55) |
 | 6 | "39 codes are missing" | Measured on 400 of 2,088 files and reported as complete. It was 56 (D55) |
 | 7 | A `.gitignore` fix, with the file visibly in the repo | The rule was inert. `git add -f` had put the file there; the rule did nothing (D55) |
+| 8 | Arrival times with `AutoArrival=1`, on stations not on any warning list | The times were real and machine-captured — for a different train. The model absorbed them as 18% of its gain (D56) |
 
-- ★★★ What do these seven have in common, and why is that more interesting than any one of them?
+- ★★★ What do these eight have in common, and why is that more interesting than any one of them?
 - ★★★ Why is a silent wrong answer more dangerous than a crash?
 - ★★★ In each case, what was the number you compared against, and where did the expectation come from?
-- ★★★ Which of the seven would still happen today, and what specifically stops the others?
+- ★★★ Which of the eight would still happen today, and what specifically stops the others?
 - ★★ Why did none of these produce an error, given that the code has error handling throughout?
-- ★★ Three of the seven were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
+- ★★ Four of the eight were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
 - ★★ In case 4, what would have happened if only the headline number had been published?
 - ★★ In case 3, the deploy reported success. What is the general lesson about trusting a tool's own report that it worked?
+- ★★★ Number 8 passed every check the project had. What would a check that catches it look like, and why does it have to be a physical constraint rather than a threshold?
+- ★★★ In number 8, why was the vendor's list necessary but not sufficient?
 - ★★★ In number 7, what was the observation, what was the conclusion, and why did the gap between them survive two people looking at it?
 - ★★★ How do you tell "this fix worked" from "this fix is inert and something else is holding it up"?
 - ★★★ Number 6 was committed while writing up the other five. What does that tell you about how much protection knowing the failure mode gives you?
-- ★★ Four of the seven were introduced by *me*, after the system was working. What does that say about when to be most careful?
-- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the seven were which?
+- ★★ Four of the eight were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the eight were which?
 - ★★ When you report a number from a sample, what has to travel with it?
 - ★★ For each, what is the cheapest check that would have caught it on day one?
 - ★ Case 1 was "confirmed" by a first analysis before being overturned. What made the first analysis convincing?

@@ -76,7 +76,7 @@ from collections import Counter
 from datetime import datetime
 
 from api import journey, predict_row, state
-from feedtime import LEAD_BANDS, lead_band
+from feedtime import LEAD_BANDS, MAX_LEAD_SEC, lead_band
 from poll_live import DUBLIN, TIME_BUDGET_FLOOR_MS, Failure, fetch, in_quiet_hours
 
 NS = "{http://api.irishrail.ie/realtime/}"
@@ -121,6 +121,10 @@ def choose_targets(stops, now_s, rng, limit):
     by_band = {}
     for s in stops:
         if s["arr"] is not None or s["sched"] is None:
+            continue
+        # Beyond the envelope, predict_row would decline anyway; skipping here saves the
+        # decline row and keeps the coverage denominator about real questions (D56).
+        if s["sched"] - now_s > MAX_LEAD_SEC:
             continue
         band = lead_band(s["sched"] - now_s)
         if band is not None:
@@ -275,6 +279,10 @@ def _self_check():
 
     # a journey with nothing ahead of it yields nothing rather than raising
     assert choose_targets([stops[0]], now_s, rng, 5) == []
+
+    # a stop seventeen hours ahead is not a target, whatever band it would land in
+    far = stops + [{"loc": "GGGG", "arr": None, "sched": now_s + 17 * 3600}]
+    assert "GGGG" not in {p["loc"] for p in choose_targets(far, now_s, random.Random(2), 9)}
     print("generate.py self-check passed")
 
 

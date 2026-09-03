@@ -292,13 +292,27 @@ a journey. Seasonality and holiday effects are third-order polish.
 - **No scheduled retraining.** Reason: retraining is a change to a working system, and
   changes carry risk. One extra day on top of months of data moves the model almost not at
   all, so a nightly job is risk with no benefit.
-- **Trigger only on evidence.** The baseline is the **first 30 days of live scored
-  predictions after launch** — not the test week, which stays closed (D25). Retrain when
-  rolling 7-day MAE rises above that live baseline and stays there for a week.
+- **Trigger only on evidence, and on the product, not just the point estimate.** The
+  baseline is the **first 30 days of live scored predictions after launch** — not the test
+  week, which stays closed (D25). Two triggers, either sufficient:
+  - rolling 7-day MAE rises above the live baseline and stays there for a week;
+  - **rolling 7-day interval coverage falls below 75% overall, or below 70% on any
+    station group with at least 200 scored events that week, and stays there for a
+    week.** The intervals are the product of a quantile model. In the first three live
+    days MAE was healthy at 80s while coverage on the Kildare and Cork corridors fell
+    from 79% in July to 63–69% — a degradation the MAE trigger cannot see (D56). The
+    remedy for a coverage trigger may be recalibration (widening the intervals) rather
+    than a full retrain; the trigger decides that something is done, not what.
+  - A **label-quality finding** — contaminated training labels discovered after the
+    fact — is a third, non-scheduled trigger. It does not wait for a metric to move,
+    because the metric may be computed against the same contamination (D56).
 - **Champion/challenger gate.** A new model replaces the incumbent only if it beats it on
-  a recent held-out week on MAE *and* is not worse on any individual line's median. Reason:
-  without a gate, automated retraining is an automated way to degrade the system with
-  nothing checking.
+  a recent held-out week on MAE, is not worse on any individual line's median, *and* is
+  not worse on interval coverage for any station group. **Both models are scored on
+  identical data**: if the incumbent is evaluated on the old examples and the challenger
+  on cleaned ones, the gate measures the cleaning rather than the model. Reason: without a
+  gate, automated retraining is an automated way to degrade the system with nothing
+  checking.
 - If the trigger never fires, that is a finding, not a gap. Publish it: "trained on
   July 2026 data, unchanged since, no sustained degradation."
 

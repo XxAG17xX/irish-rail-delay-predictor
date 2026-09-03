@@ -61,6 +61,9 @@ import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from feedtime import journey_consistent  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PARSED = REPO_ROOT / "data" / "parsed"
 DEFAULT_OUT = REPO_ROOT / "data" / "examples"
@@ -135,7 +138,7 @@ def split_for(day: str):
     return None
 
 
-def build(parsed: Path, horizons):
+def build(parsed: Path, horizons, keep_inconsistent: bool = False):
     """Returns {(split, date): [example dicts]} plus counters."""
     dataset = ds.dataset(parsed, format="parquet", partitioning="hive")
     cols = ["file_date", "TrainCode", "LocationOrder", "LocationCode",
@@ -166,6 +169,16 @@ def build(parsed: Path, horizons):
 
     for (day, code), recs in journeys.items():
         recs.sort(key=lambda r: r["order"])
+        # A journey whose reported arrivals go backwards along the route contains at
+        # least one time that belongs to a different train (D56). Applied here, before
+        # any example is cut, so train, validation and test are filtered identically and
+        # the criterion never sees a model output. It reads only what the feed reported.
+        if not keep_inconsistent and not journey_consistent(
+                [{"order": r["order"], "sched": to_seconds(r["sched"]), "delay": r["delay"]}
+                 for r in recs]):
+            stats["journeys_inconsistent"] += 1
+            stats[f"journeys_inconsistent_{split_for(day)}"] += 1
+            continue
         split = split_for(day)
         dow = DAY_NAMES[date.fromisoformat(day).weekday()]
         n = len(recs)
@@ -226,6 +239,9 @@ def main() -> int:
                     help="observed stops ahead, comma separated "
                          f"(default: {','.join(str(h) for h in DEFAULT_HORIZONS)})")
     ap.add_argument("--force", action="store_true", help="rewrite existing partitions")
+    ap.add_argument("--keep-inconsistent", action="store_true",
+                    help="do NOT drop journeys whose arrivals go backwards along the "
+                         "route. Reproduces the pre-D56 example set.")
     args = ap.parse_args()
 
     if not args.parsed.exists():
@@ -245,7 +261,7 @@ def main() -> int:
           f"(thin 36-code test slice)\n")
 
     started = time.monotonic()
-    grouped, stats = build(args.parsed, horizons)
+    grouped, stats = build(args.parsed, horizons, args.keep_inconsistent)
     if not grouped:
         print("no examples built — check the parsed dataset covers the split ranges")
         return 2
@@ -270,6 +286,9 @@ def main() -> int:
     print("=" * W)
     print(f"  journeys with >=1 observed arrival {stats['journeys']:>10}")
     print(f"  journeys too short to use          {stats['journeys_too_short']:>10}")
+    print(f"  journeys dropped as inconsistent   {stats['journeys_inconsistent']:>10}"
+          + ("  (kept: --keep-inconsistent)" if args.keep_inconsistent else
+             "  train %d / val %d / test %d" % tuple(stats[f"journeys_inconsistent_{s}"] for s in ("train","val","test"))))
     print(f"  examples built                     {stats['examples']:>10}")
     print(f"  partitions written                 {written:>10}")
     if skipped:
