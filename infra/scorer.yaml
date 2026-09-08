@@ -42,6 +42,17 @@ Parameters:
       movements are refetchable by date, so a missed night is recoverable by noticing.
   AlarmEmail:
     Type: String
+  SiteBucket:
+    Type: String
+    Default: ""
+    Description: >-
+      Public site bucket to push accuracy.json to. Empty until the site stack exists, and
+      the scorer skips the copy when it is empty. Deliberately a SEPARATE bucket: the one
+      holding predictions, scores and raw captures keeps all four public-access blocks on,
+      and the rollup is pushed out to the site rather than the site reading in.
+
+Conditions:
+  HasSiteBucket: !Not [!Equals [!Ref SiteBucket, ""]]
 
 Resources:
 
@@ -91,6 +102,24 @@ Resources:
                 Effect: Allow
                 Action: s3:PutObject
                 Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${ScoresPrefix}/*
+              # Reading back its own output, for the rolling window in accuracy.json.
+              # Not a widening of what it can see: these rows are derived from the
+              # predictions it already reads, so it gains no access to anything new. It
+              # still has no PutObject on the prediction prefix, which is the property
+              # D39 actually rests on.
+              - Sid: ReadOwnScores
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${ScoresPrefix}/*
+              - !If
+                - HasSiteBucket
+                # One object, one key. Not a wildcard: the scorer publishes accuracy.json
+                # and must not be able to write anything else onto a public site.
+                - Sid: PublishAccuracyJson
+                  Effect: Allow
+                  Action: s3:PutObject
+                  Resource: !Sub arn:${AWS::Partition}:s3:::${SiteBucket}/accuracy.json
+                - !Ref AWS::NoValue
 
   ScorerFunction:
     Type: AWS::Serverless::Function
@@ -115,6 +144,7 @@ Resources:
           POLLER_PREFIX: !Ref PollerPrefix
           SCORES_PREFIX: !Ref ScoresPrefix
           SCORE_BACKFILL_DAYS: !Ref BackfillDays
+          SITE_BUCKET: !Ref SiteBucket
       EventInvokeConfig:
         MaximumRetryAttempts: 0
         MaximumEventAgeInSeconds: 60

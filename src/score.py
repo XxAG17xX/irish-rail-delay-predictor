@@ -515,6 +515,195 @@ def coverage(rows):
     return round(100 * sum(v) / len(v), 1) if v else None
 
 
+# ----------------------------------------------------------------- rollup
+
+# CLAUDE.md asks for three aggregations and this builds all three: a rolling window as the
+# headline, daily with sample sizes as the trend, and cumulative since launch as the CV
+# number. They are computed two different ways on purpose -- see build_rollup.
+ROLLUP_WINDOW_DAYS = 7
+
+
+def pooled(parts, keys):
+    """Weighted mean over per-day aggregates, weighting each day by its own n.
+
+    A mean pools; a MEDIAN does not. Averaging seven daily medians gives a number that is
+    the median of nothing, so no median appears in the daily or cumulative blocks. The
+    rolling window is recomputed from rows precisely so that it can carry one.
+    """
+    parts = [p for p in parts if p and p.get("n")]
+    if not parts:
+        return None
+    n = sum(p["n"] for p in parts)
+    return {"n": n, **{k: round(sum(p["n"] * p[k] for p in parts) / n, 1) for k in keys}}
+
+
+def scored_dates(client, bucket, scores_prefix):
+    page = client.list_objects_v2(Bucket=bucket, Prefix=f"{scores_prefix}/date=",
+                                  Delimiter="/")
+    return sorted(p["Prefix"].rstrip("/").split("date=")[-1]
+                  for p in page.get("CommonPrefixes", []))
+
+
+def read_day_rows(client, bucket, scores_prefix, day):
+    key = f"{scores_prefix}/date={day}/rows.jsonl.gz"
+    body = gzip.decompress(client.get_object(Bucket=bucket, Key=key)["Body"].read())
+    return [json.loads(l) for l in body.decode("utf-8").splitlines() if l.strip()]
+
+
+def read_day_summary(client, bucket, scores_prefix, day):
+    key = f"{scores_prefix}/date={day}/summary.json"
+    return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
+
+
+def accuracy_of(rows):
+    v = [r["model_err_rounded_sec"] for r in rows
+         if r.get("model_err_rounded_sec") is not None]
+    if not v:
+        return None
+    return {"n": len(v), "mae_sec": round(sum(abs(x) for x in v) / len(v), 1),
+            "medae_sec": round(sorted(abs(x) for x in v)[len(v) // 2], 1),
+            "bias_sec": round(sum(v) / len(v), 1)}
+
+
+def head_to_head_of(rows):
+    m = [r for r in rows if r.get("operator_err_sec") is not None]
+    if not m:
+        return None
+    mo = sum(abs(r["model_err_rounded_sec"]) for r in m) / len(m)
+    op = sum(abs(r["operator_err_sec"]) for r in m) / len(m)
+    wins = sum(1 for r in m
+               if abs(r["model_err_rounded_sec"]) < abs(r["operator_err_sec"]))
+    ties = sum(1 for r in m
+               if abs(r["model_err_rounded_sec"]) == abs(r["operator_err_sec"]))
+    return {"matched_events": len(m), "model_mae_sec": round(mo, 1),
+            "operator_mae_sec": round(op, 1),
+            "improvement_pct": round(100 * (op - mo) / op, 1) if op else None,
+            "model_wins": wins, "ties": ties, "operator_wins": len(m) - wins - ties}
+
+
+def build_rollup(client, bucket, scores_prefix, window=ROLLUP_WINDOW_DAYS):
+    """What the accuracy page reads. One file, three aggregations, computed two ways.
+
+    The rolling window is rebuilt from the scored ROWS, so its median and its per-group
+    splits are exact. Daily and cumulative are pooled from the per-day summaries, which
+    is correct for means and proportions and cheap as the archive grows -- reading every
+    row since launch would get slower every night for a number that moves less every
+    night.
+
+    `model_versions` is a count per version, not a single string. A seven-day window can
+    span a promotion, and this one does: the model changed at 2026-09-03 17:52. A page
+    naming one version over a window containing two would credit the new model with
+    numbers the old one produced.
+    """
+    days = scored_dates(client, bucket, scores_prefix)
+    if not days:
+        return None
+    win = days[-window:]
+
+    rows = []
+    for d in win:
+        try:
+            rows += read_day_rows(client, bucket, scores_prefix, d)
+        except Exception as e:
+            print(f"  ! rollup: no rows for {d}: {e}")
+    clean = [r for r in rows if r["score_state"] == "scored"]
+
+    by_group = {}
+    for g in sorted({r.get("station_group") or "(unpolled)" for r in clean}):
+        sel = [r for r in clean if (r.get("station_group") or "(unpolled)") == g]
+        by_group[g] = {"accuracy": accuracy_of(sel), "interval_coverage_pct": coverage(sel),
+                       "head_to_head": head_to_head_of(sel)}
+    by_band = {}
+    for _, _, lb in LEAD_BANDS:
+        sel = [r for r in clean if r.get("lead_band") == lb]
+        if sel:
+            by_band[lb] = {"accuracy": accuracy_of(sel),
+                           "interval_coverage_pct": coverage(sel),
+                           "head_to_head": head_to_head_of(sel)}
+
+    states = Counter(r["score_state"] for r in rows)
+    answered = len(rows) - states["declined"]
+
+    daily, acc_parts, cov_parts, h2h_parts = [], [], [], []
+    for d in days:
+        try:
+            s = read_day_summary(client, bucket, scores_prefix, d)
+        except Exception:
+            continue
+        a = s["headline"]["accuracy"]
+        hh = s["headline"]["head_to_head"]
+        cv = s["headline"]["interval_coverage_pct"]
+        daily.append({
+            "date": d, "events": s["events_after_dedup"],
+            "scored_n": (a or {}).get("n", 0), "mae_sec": (a or {}).get("mae_sec"),
+            "interval_coverage_pct": cv,
+            "matched_events": (hh or {}).get("matched_events", 0),
+            "model_mae_sec": hh["model"]["mae_sec"] if hh else None,
+            "operator_mae_sec": hh["operator"]["mae_sec"] if hh else None,
+            "improvement_pct": hh["improvement_pct"] if hh else None,
+        })
+        if a:
+            acc_parts.append({"n": a["n"], "mae_sec": a["mae_sec"]})
+            if cv is not None:
+                cov_parts.append({"n": a["n"], "interval_coverage_pct": cv})
+        if hh:
+            h2h_parts.append({"n": hh["matched_events"],
+                              "model_mae_sec": hh["model"]["mae_sec"],
+                              "operator_mae_sec": hh["operator"]["mae_sec"]})
+
+    cum_h2h = pooled(h2h_parts, ["model_mae_sec", "operator_mae_sec"])
+    if cum_h2h:
+        op, mo = cum_h2h["operator_mae_sec"], cum_h2h["model_mae_sec"]
+        cum_h2h["improvement_pct"] = round(100 * (op - mo) / op, 1) if op else None
+        cum_h2h["matched_events"] = cum_h2h.pop("n")
+
+    return {
+        # Both of these go on the page, not just in the file. A rollup that stopped being
+        # written looks exactly like one written this morning, which is the silent-success
+        # shape this project keeps meeting. Freshness is only a check if a reader sees it.
+        "generated_at": datetime.now(DUBLIN).isoformat(timespec="seconds"),
+        "model_versions": dict(Counter(r.get("model_version") for r in rows)),
+        "window_days": len(win),
+        "window_dates": win,
+        "rolling": {
+            "accuracy": accuracy_of(clean),
+            "interval_coverage_pct": coverage(clean),
+            "interval_coverage_nominal_pct": 80,
+            "head_to_head": head_to_head_of(clean),
+            "score_states": dict(states),
+            "coverage": {"answered": answered, "declined": states["declined"],
+                         "in_service_pct": (round(100 * answered / len(rows), 1)
+                                            if rows else None)},
+            "by_station_group": by_group,
+            "by_lead_band": by_band,
+        },
+        "daily": daily,
+        "cumulative": {
+            "days": len(daily),
+            "accuracy": pooled(acc_parts, ["mae_sec"]),
+            "interval_coverage": pooled(cov_parts, ["interval_coverage_pct"]),
+            "head_to_head": cum_h2h,
+        },
+    }
+
+
+def write_rollup(client, bucket, scores_prefix, rollup, site_bucket=None,
+                 site_key="accuracy.json"):
+    """Write beside the scores, then PUSH a copy to the public site bucket if configured.
+
+    A push, never a public read. The bucket holding predictions, scores and raw captures
+    keeps all four public-access blocks on; the site is a separate bucket that receives a
+    copy of this one file. Until the site stack exists `SITE_BUCKET` is unset and the copy
+    is skipped, so this ships inert rather than waiting to be written later.
+    """
+    body = json.dumps(rollup, indent=2, sort_keys=True).encode("utf-8")
+    client.put_object(Bucket=bucket, Key=f"{scores_prefix}/accuracy.json", Body=body)
+    if site_bucket:
+        client.put_object(Bucket=site_bucket, Key=site_key, Body=body,
+                          ContentType="application/json", CacheControl="max-age=300")
+    return f"{scores_prefix}/accuracy.json"
+
+
 # ----------------------------------------------------------------- driving
 
 def is_complete(day: str) -> bool:
@@ -618,6 +807,62 @@ def report(summary):
               f"rerun to pick them up")
 
 
+def report_rollup(r):
+    """What the accuracy page will show, in the terminal, so it can be read before it is
+    rendered. Same fields, same order."""
+    W = 74
+    print("\n" + "=" * W)
+    print(f"ACCURACY ROLLUP  —  generated {r['generated_at']}")
+    print("=" * W)
+    vers = ", ".join(f"{v} ({n:,} rows)" for v, n in sorted(r["model_versions"].items()))
+    print(f"  window     {r['window_dates'][0]} .. {r['window_dates'][-1]}  "
+          f"({r['window_days']} days)")
+    print(f"  models     {vers}")
+    ro = r["rolling"]
+    a, hh = ro["accuracy"], ro["head_to_head"]
+    if a:
+        print(f"\n  rolling {r['window_days']}d   MAE {a['mae_sec']}s   median {a['medae_sec']}s   "
+              f"bias {a['bias_sec']:+}s   n={a['n']:,}")
+        print(f"  interval     {ro['interval_coverage_pct']}% inside the "
+              f"{ro['interval_coverage_nominal_pct']}% range")
+    if hh:
+        print(f"  vs operator  {hh['model_mae_sec']}s against {hh['operator_mae_sec']}s "
+              f"= {hh['improvement_pct']}% better, {hh['matched_events']:,} matched  "
+              f"(W/T/L {hh['model_wins']}/{hh['ties']}/{hh['operator_wins']})")
+    c = ro["coverage"]
+    print(f"  answered     {c['in_service_pct']}% of {c['answered'] + c['declined']:,} asked")
+
+    print(f"\n  {'lead band':<12}{'n':>8}{'MAE':>9}{'coverage':>11}{'h2h n':>8}{'vs op':>9}")
+    for lb, v in ro["by_lead_band"].items():
+        h = v["head_to_head"]
+        print(f"  {lb:<12}{v['accuracy']['n']:>8,}{v['accuracy']['mae_sec']:>8.1f}s"
+              f"{v['interval_coverage_pct']:>10.1f}%"
+              f"{(h or {}).get('matched_events', 0):>8,}"
+              f"{(h['improvement_pct'] if h else 0):>8.1f}%")
+
+    print(f"\n  {'station group':<26}{'n':>8}{'MAE':>9}{'coverage':>11}")
+    for g, v in sorted(ro["by_station_group"].items(),
+                       key=lambda kv: -(kv[1]["accuracy"] or {"n": 0})["n"]):
+        if not v["accuracy"]:
+            continue
+        print(f"  {g:<26}{v['accuracy']['n']:>8,}{v['accuracy']['mae_sec']:>8.1f}s"
+              f"{v['interval_coverage_pct']:>10.1f}%")
+
+    cum = r["cumulative"]
+    if cum["accuracy"]:
+        print(f"\n  cumulative over {cum['days']} days: MAE {cum['accuracy']['mae_sec']}s "
+              f"on {cum['accuracy']['n']:,}", end="")
+        if cum["head_to_head"]:
+            print(f", vs operator {cum['head_to_head']['improvement_pct']}% better on "
+                  f"{cum['head_to_head']['matched_events']:,} matched", end="")
+        print()
+    print(f"\n  {'date':<12}{'events':>8}{'scored':>8}{'MAE':>8}{'cover':>8}{'h2h n':>7}{'vs op':>8}")
+    for d in r["daily"]:
+        print(f"  {d['date']:<12}{d['events']:>8,}{d['scored_n']:>8,}"
+              f"{(d['mae_sec'] or 0):>7.1f}s{(d['interval_coverage_pct'] or 0):>7.1f}%"
+              f"{d['matched_events']:>7,}{(d['improvement_pct'] or 0):>7.1f}%")
+
+
 def lambda_handler(event, context):
     import boto3
     client = boto3.client("s3")
@@ -661,13 +906,22 @@ def lambda_handler(event, context):
         if (summary["score_states"].get("scored", 0) >= OPERATOR_ALARM_FLOOR
                 and not summary["headline"]["head_to_head"]):
             fatal.append(day)
+    # Rebuilt every run, even when nothing new scored. The page's `generated_at` is then
+    # the freshness of the nightly job rather than of the last day that happened to score,
+    # so a quiet day reads as quiet and a dead job reads as dead.
+    rollup = build_rollup(client, bucket, scores)
+    rollup_key = None
+    if rollup:
+        rollup_key = write_rollup(client, bucket, scores, rollup,
+                                  site_bucket=os.environ.get("SITE_BUCKET") or None)
+
     if fatal:
         raise RuntimeError(
             f"no operator matches on {', '.join(fatal)} despite scoring at least "
             f"{OPERATOR_ALARM_FLOOR} rows. Scores were written; the comparison is missing. "
             f"Most likely POLLER_PREFIX ({poller}) is not where the poller now writes.")
     return {"status": "ok", "scored_dates": done, "candidates": days,
-            "skipped_not_settled": skipped}
+            "skipped_not_settled": skipped, "rollup": rollup_key}
 
 
 def main():
@@ -686,10 +940,32 @@ def main():
                     help="report but write nothing back to S3")
     ap.add_argument("--force", action="store_true",
                     help="score a day that has not finished; see is_complete()")
+    ap.add_argument("--rollup-only", action="store_true",
+                    help="rebuild accuracy.json from existing scores and exit; scores "
+                         "nothing and fetches nothing from Irish Rail")
+    ap.add_argument("--site-bucket", default=os.environ.get("SITE_BUCKET"),
+                    help="also push accuracy.json to this bucket (the public site)")
     args = ap.parse_args()
 
     import boto3
     client = boto3.client("s3")
+
+    if args.rollup_only:
+        rollup = build_rollup(client, args.bucket, args.scores_prefix)
+        if not rollup:
+            print("no scored dates yet")
+            return 2
+        report_rollup(rollup)
+        if args.dry_run:
+            print("\n(dry run — nothing written)")
+        else:
+            key = write_rollup(client, args.bucket, args.scores_prefix, rollup,
+                               site_bucket=args.site_bucket)
+            print(f"\nwrote s3://{args.bucket}/{key}"
+                  + (f" and s3://{args.site_bucket}/accuracy.json"
+                     if args.site_bucket else ""))
+        return 0
+
     if args.backfill:
         days = unscored_dates(client, args.bucket, args.predictions_prefix,
                               args.scores_prefix, args.backfill)
@@ -719,6 +995,13 @@ def main():
             key = write_scores(client, args.bucket, args.scores_prefix, day,
                                summary, scored)
             print(f"\nwrote s3://{args.bucket}/{key}")
+
+    if not args.dry_run:
+        rollup = build_rollup(client, args.bucket, args.scores_prefix)
+        if rollup:
+            write_rollup(client, args.bucket, args.scores_prefix, rollup,
+                         site_bucket=args.site_bucket)
+            report_rollup(rollup)
     print(f"\n{time.monotonic() - started:.1f}s")
     return 0
 
@@ -846,6 +1129,82 @@ def _self_check():
     assert s["headline"]["head_to_head"]["matched_events"] == 1
     assert s["headline"]["accuracy"]["n"] == 1
     assert s["coverage"]["in_service"]["declined"] == 1
+    # --- rollup. The arithmetic that would fail quietly: pooling weighted by the wrong n,
+    # and a window that silently reports one model version when it spans two.
+    assert pooled([], ["mae_sec"]) is None
+    assert pooled([{"n": 0, "mae_sec": 5}], ["mae_sec"]) is None, "zero-n day must not count"
+    p = pooled([{"n": 100, "mae_sec": 50.0}, {"n": 300, "mae_sec": 90.0}], ["mae_sec"])
+    assert p == {"n": 400, "mae_sec": 80.0}, p          # weighted, not (50+90)/2 = 70
+
+    class RollupStub:
+        """Two days, two model versions, one day with no operator matches."""
+        def __init__(self):
+            self.put = {}
+            self.days = {
+                "2026-09-01": [
+                    {"score_state": "scored", "model_version": "old", "station_group": "dart",
+                     "lead_band": "5-15 min", "model_err_rounded_sec": 60,
+                     "operator_err_sec": 120, "interval_hit": True},
+                    {"score_state": "scored", "model_version": "old", "station_group": "dart",
+                     "lead_band": "5-15 min", "model_err_rounded_sec": -20,
+                     "operator_err_sec": 10, "interval_hit": False},
+                    {"score_state": "declined", "model_version": "old", "reason": "no_upstream_report"},
+                ],
+                "2026-09-02": [
+                    {"score_state": "scored", "model_version": "new", "station_group": None,
+                     "lead_band": "0-5 min", "model_err_rounded_sec": 0, "interval_hit": True},
+                ],
+            }
+            self.summaries = {
+                "2026-09-01": {"events_after_dedup": 3, "headline": {
+                    "accuracy": {"n": 2, "mae_sec": 40.0}, "interval_coverage_pct": 50.0,
+                    "head_to_head": {"matched_events": 2, "improvement_pct": 38.5,
+                                     "model": {"mae_sec": 40.0}, "operator": {"mae_sec": 65.0}}}},
+                "2026-09-02": {"events_after_dedup": 1, "headline": {
+                    "accuracy": {"n": 1, "mae_sec": 0.0}, "interval_coverage_pct": 100.0,
+                    "head_to_head": None}},
+            }
+
+        def list_objects_v2(self, **kw):
+            return {"CommonPrefixes": [{"Prefix": f"scores/date={d}/"} for d in self.days]}
+
+        def get_object(self, Bucket, Key):
+            day = Key.split("date=")[1].split("/")[0]
+            if Key.endswith("rows.jsonl.gz"):
+                raw = "".join(json.dumps(r) + "\n" for r in self.days[day]).encode()
+                buf = io.BytesIO()
+                with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+                    gz.write(raw)
+                return {"Body": io.BytesIO(buf.getvalue())}
+            return {"Body": io.BytesIO(json.dumps(self.summaries[day]).encode())}
+
+        def put_object(self, Bucket, Key, Body, **kw):
+            self.put[(Bucket, Key)] = Body
+
+    stub = RollupStub()
+    r = build_rollup(stub, "b", "scores")
+    assert r["window_dates"] == ["2026-09-01", "2026-09-02"]
+    assert r["model_versions"] == {"old": 3, "new": 1}, r["model_versions"]
+    assert r["rolling"]["accuracy"]["n"] == 3, "declined rows must not enter accuracy"
+    assert r["rolling"]["coverage"]["declined"] == 1
+    assert r["rolling"]["head_to_head"]["matched_events"] == 2, "only rows with an operator ETA"
+    # cumulative pools 2 rows at 40s and 1 at 0s -> 26.7, not the unweighted 20
+    assert r["cumulative"]["accuracy"] == {"n": 3, "mae_sec": 26.7}, r["cumulative"]["accuracy"]
+    # a day with no operator matches must not drag the cumulative head-to-head to zero
+    assert r["cumulative"]["head_to_head"]["matched_events"] == 2
+    assert r["daily"][1]["improvement_pct"] is None
+    assert len(r["daily"]) == 2 and r["daily"][0]["date"] == "2026-09-01"
+    assert r["generated_at"] and r["rolling"]["interval_coverage_nominal_pct"] == 80
+
+    # the copy is a push to a second bucket, and is skipped when none is configured
+    write_rollup(stub, "b", "scores", r)
+    assert ("b", "scores/accuracy.json") in stub.put
+    assert not any(bk == "site" for bk, _ in stub.put), "no site bucket was configured"
+    write_rollup(stub, "b", "scores", r, site_bucket="site")
+    assert ("site", "accuracy.json") in stub.put
+    assert stub.put[("b", "scores/accuracy.json")] == stub.put[("site", "accuracy.json")], \
+        "the site copy must be byte-identical to what was written beside the scores"
+
     print("score.py self-check passed")
 
 
