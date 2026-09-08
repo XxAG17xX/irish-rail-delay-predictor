@@ -87,6 +87,11 @@ sat in code comments and nobody looked for the hole.
 - [D57](#d57--the-retrain-on-consistent-journeys-what-it-fixed-what-it-revealed-and-a-gate-that-cannot-pass) The retrain on consistent journeys: what it fixed, what it revealed, and a gate that cannot pass
 - [D58](#d58--the-generator-refuses-out-of-envelope-questions-from-1725-utc-on-3-september) The generator refuses out-of-envelope questions, from 17:25 UTC on 3 September
 
+**Optimisation (buffer allocation)** 
+- [D59](#d59--buffer-allocation-not-delay-management-the-formulation-and-why-the-other-was-rejected) Buffer allocation, not delay management: the formulation and why the other was rejected
+- [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses
+- [D61](#d61--evaluation-bootstrap-over-days-report-both-weightings-declare-the-cap) Evaluation: bootstrap over days, report both weightings, declare the cap
+
 **Cutover and verification** 
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
 - [D38](#d38--two-structural-artefacts-in-the-parallel-run-diff-and-how-to-tell-them-from-real-disagreement) Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement
@@ -2397,3 +2402,161 @@ trigger, and the remedy is recalibration or retraining on recent data — not a 
 this retrain, which was never aimed at it.
 
 **Date.** 2026-09-03
+
+---
+
+## D59 — Buffer allocation, not delay management: the formulation and why the other was rejected
+
+**Why this matters:** the project needed a piece of real optimisation maths, and only one of
+the two candidate problems can be built from data we actually hold.
+
+**In plain terms.** A timetable has padding in it — trains are scheduled to take longer than
+they need, and that padding absorbs delay. The padding is currently spread around however
+the timetable happens to spread it. The question is whether, keeping the *same total*, there
+is a better place to put it. That is a decision with a budget and a measurable objective,
+which makes it a linear program.
+
+**Decision.** Buffer allocation across one train's segments, formulated as a linear program
+and solved with HiGHS via `scipy.optimize.linprog` (already installed as a transitive
+dependency; no new package). Written up in `docs/optimization-revision.pdf`.
+
+**Delay management rejected, and not for difficulty.** Deciding which connections to hold and
+which to drop is the better-known problem and would have been an integer program rather than
+an LP. It needs two things the four endpoints in use do not provide: which services connect,
+and passenger weights on each connection. Connections could be defined heuristically — two
+trains at one station within X minutes — but the passenger weights would be **invented, and
+they sit inside the objective function**. An optimum computed against fabricated weights is
+a number that has to be hedged, which is the opposite of the point. The same standard that
+retired the offline 56% figure (D53) applies here.
+
+**What the data supports**, measured on the train and validation window with
+`journey_consistent` applied (583 of 16,776 journeys rejected):
+
+- `Departure` is populated on 66.4% of rows and had never been used — the delay model only
+  ever touched arrivals. It is what allows a journey to be split into running time and dwell.
+- 211 segments with ≥30 clean observations; 240 trains with ≥20 days where *every* segment is
+  observed.
+- Slack, defined as scheduled minus 5th-percentile observed running time: median **90s**,
+  q75 150s, max 642s. 146 of 211 segments exceed a minute.
+- **Three segments have negative slack.** `CRLOW→ATHY` is scheduled at 600s against a
+  5th-percentile actual of 702s. That timetable is not achievable.
+
+**A trap found while measuring it.** The first pass used the *minimum* observed running time
+as the technical minimum and produced `ETOWN→MLGAR` scheduled at 1050s and apparently run in
+156s — about 580 km/h. `ETOWN` is one of the four D56 stations whose arrivals belong to other
+trains. Minimum-of-sample is not robust to that contamination; the 5th percentile is. This is
+D56 resurfacing in a new calculation, which is the argument for the percentile rather than a
+preference.
+
+**A correction to the original framing.** It is tempting to call this sample average
+approximation over the project's own quantile predictions. It is not. The model predicts
+*total accumulated arrival delay at a stop given a vantage stop*, not per-segment primary
+delay, and differencing consecutive predictions does not recover a coherent joint scenario
+along a route — the three quantile models were never fitted to be jointly consistent across
+stops. The defensible scenario source is **historical per-segment excess running time**:
+whole days, so within-day correlation is preserved by construction. That is genuine SAA, and
+it does *not* assume independence between segments.
+
+**Honest limits, to publish beside any result.** Primary delays assumed exogenous (the
+largest threat — drivers pace to the timetable, so added buffer may attract a slower run);
+minimum running time estimated from a sample quantile; single train, no network capacity or
+headway constraints; counterfactual, so simulated rather than validated; dwell buffer ignored
+in the base formulation.
+
+**Date.** 2026-09-08
+
+---
+
+## D60 — The linearisation is exact only under a condition the naive argument misses
+
+**Why this matters:** the whole claim to have *formulated* something rather than called a
+library rests on one step, and the obvious defence of that step has a hole in exactly the
+case this project runs.
+
+**In plain terms.** Delay propagation involves a "whichever is larger" rule, which a linear
+program cannot express. The standard trick replaces it with two inequalities and relies on
+the objective to squeeze the variable down onto the right value. That works — but the usual
+one-line justification for it is wrong under one of the two weightings we intend to publish.
+
+**The formulation.** True dynamics are
+`L_i = max(0, L_{i-1} + delta_i - b_i)`, replaced by
+`L_i >= L_{i-1} + delta_i - b_i` and `L_i >= 0`.
+
+**The usual argument, in three steps.** (1) Each `L_i` enters the objective with a
+non-negative coefficient, so nothing rewards a larger value. (2) Its only lower bounds are
+those two constraints, so pushed down it rests exactly on the maximum. (3) It appears once
+more, on the right-hand side of the constraint for `L_{i+1}` with coefficient +1, so
+reducing it *relaxes* that constraint — both forces act the same way and inflating it never
+buys anything.
+
+**Where that breaks.** Step 3's proof needs the objective to *strictly* decrease, which needs
+`w_i > 0`. Under **terminus-only weighting**, `w_i = 0` at every intermediate stop and the
+argument does not go through as stated. Terminus-only is one of the two weightings D61
+requires, so this is not a hypothetical.
+
+**The condition that closes it.** Lowering `L_i` relaxes the constraint at `i+1`, which lets
+`L_{i+1}` fall, which relaxes `i+2` — a reduction propagates forward along the chain with
+coefficient 1 at every step and reaches the terminus, where the weight is positive. So the
+relaxation is tight at `(i, omega)` provided
+
+> `w_j >= 0` for all `j`, **and** `sum of w_j for j >= i` is strictly positive.
+
+Uniform weighting satisfies this at every index trivially. Terminus-only satisfies it because
+`w_n > 0` and the reduction reaches it.
+
+**The failure mode, worth knowing separately.** A **negative** weight anywhere — for instance
+to reward early arrival — breaks exactness for real, not on a technicality. The objective then
+rewards a larger `L_k`, the solver inflates it because the constraints are only lower bounds,
+and the constraint at `k+1` absorbs the inflation. The lateness variables stop representing
+lateness and the buffer vector is optimal for a problem nobody posed. Rewarding earliness
+requires a separate non-negative variable with its own non-negative cost, not a sign flip.
+
+**Recorded because the shallow version is what gets said under pressure.** "The objective
+pushes it down" invites the follow-up *"what if that stop has zero weight?"*, and the answer
+has to be ready.
+
+**Date.** 2026-09-08
+
+---
+
+## D61 — Evaluation: bootstrap over days, report both weightings, declare the cap
+
+**Why this matters:** three ways this result could look better than the evidence supports,
+each closed before any number is produced.
+
+**1. Significance is a paired bootstrap over DAYS, not rows.** The plan said "evaluate on
+held-out days against b⁰" without saying how to decide the difference is real. The apparatus
+already exists — the paired bootstrap veto from D57 — but that one resamples *rows*, and
+here the independent unit is the **day**. Within one day, delay at consecutive stops is
+strongly correlated; that correlation *is* the propagation the model describes. Resampling
+stop-arrivals would treat correlated observations as independent and understate the variance.
+
+The consequence is uncomfortable and is accepted in advance: a 29-stop service with 32
+complete days has 896 lateness variables and **32 independent scenarios**. Power comes from
+32. The honest outcome may be "an improvement was measured and cannot be distinguished from
+noise." The remedy is more days, not a weaker test — the API serves history back to 2007, so
+the scenario set can be extended by backfilling.
+
+**2. Report both weightings; never choose one.** `w_i` is a modelling decision and boardings
+are unavailable. Picking a plausible-looking weight vector reintroduces exactly the objection
+that killed delay management in D59: invented numbers inside the objective. So both
+defensible extremes are run and both published — terminus-only (`w_n = 1`, else 0;
+end-to-end punctuality) and uniform (`w_i = 1`; passengers alighting anywhere). They bracket
+the answer. Beating `b⁰` under both is a stronger claim than either alone; winning under one
+and losing under the other is a finding about where the gain comes from, reported as such
+rather than resolved by picking the flattering one.
+
+**3. The per-segment cap must be defined and its bindingness reported.** `b_i <= b̄_i` was in
+the constraints and nowhere in the data. Two separate questions, and they have different
+answers. *Mathematically it is unnecessary*: the budget binds, so the solver has no reason to
+place buffer where it cannot be used, and anything beyond
+`max over omega of (L_{i-1} + delta_i)` on a segment is provably wasted. *Operationally it is
+needed* if the answer is to be implementable — uncapped, the optimum may schedule a
+four-minute segment at eleven, which conflicts with other traffic. A proportional cap
+`b̄_i = alpha * m_i` matches the running-time supplements timetable planners already use.
+
+**Whether it binds is itself a result.** If it does not, the cap is inert and the answer is
+data-driven. If it does, the answer is partly driven by a chosen constant, and that goes in
+writing with the sensitivity to `alpha`. Run once uncapped as the reference.
+
+**Date.** 2026-09-08
