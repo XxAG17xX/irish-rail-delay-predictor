@@ -84,6 +84,7 @@ sat in code comments and nobody looked for the hole.
 - [D51](#d51--three-custom-cloudwatch-metrics-for-the-generator-not-eight) Three custom CloudWatch metrics for the generator, not eight
 - [D52](#d52--delay-is-anchored-to-the-stops-own-schedule-everywhere) Delay is anchored to the stop's own schedule, everywhere
 - [D53](#d53--two-coverage-numbers-and-the-visitor-facing-one-is-the-headline) Two coverage numbers, and the visitor-facing one is the headline
+- [D64](#d64--the-coverage-trigger-fired-on-two-corridors-and-the-answer-is-to-publish-it-rather-than-patch-it) The coverage trigger fired on two corridors, and the answer is to publish it rather than patch it
 - [D57](#d57--the-retrain-on-consistent-journeys-what-it-fixed-what-it-revealed-and-a-gate-that-cannot-pass) The retrain on consistent journeys: what it fixed, what it revealed, and a gate that cannot pass
 - [D58](#d58--the-generator-refuses-out-of-envelope-questions-from-1725-utc-on-3-september) The generator refuses out-of-envelope questions, from 17:25 UTC on 3 September
 
@@ -2763,5 +2764,86 @@ hyperparameter chosen on the same held-out days used to report the improvement. 
 days there is no room for a third split, so **the reported gains are optimistic** by the
 usual amount that selecting on the evaluation set makes them. Reported as such. A proper
 answer needs more days, which remains the outstanding item from D62.
+
+**Date.** 2026-09-08
+
+---
+
+## D64 — The coverage trigger fired on two corridors, and the answer is to publish it rather than patch it
+
+**Why this matters:** the intervals promise to be right four times in five, and on two lines
+they are right closer to two times in three — and the decision was to say so on the page
+rather than quietly widen them until the number looked right.
+
+**In plain terms.** The system was built with a rule written in advance: if the ranges stop
+containing the right answer as often as they claim, something has to be done about it. That
+rule fired. It fired on exactly two corridors, six weeks after the model was trained, and
+not on the rest of the network. The choice was between fixing the number and reporting it.
+Reporting it is the more useful outcome, because the number going back to 80% would erase
+the evidence that the railway changed.
+
+**The trigger, and that it fired on its own terms.** CLAUDE.md's retraining policy fires when
+rolling 7-day interval coverage falls below 75% overall, **or** below 70% on any station group
+with at least 200 scored events that week, and stays there for a week. Measured over
+2026-09-01 to 09-07:
+
+| group | week | days below 70% | daily n | verdict |
+|---|---|---|---|---|
+| `intercity_cork_corridor` | **66.7%** | **7 of 7** | 485–641 | fires |
+| `commuter_kildare` | **64.7%** | **6 of 7** | 437–564 | fires |
+| `intercity_other` | **56.7%** | 5 of 7 | 11–64 daily, 270 for the week | fires on the weekly count |
+| `dart` | 77.6% | 0 | ~1,200 | fine |
+| `dublin_hubs` | 79.0% | 0 | ~1,000 | fine |
+
+Overall rolling coverage is **75.4%**, which is just *above* the 75% clause. So it is the
+**group** trigger that fired, not the global one, and the distinction matters: this is not a
+model that has gone bad everywhere.
+
+**The diagnosis, and why it is distinguishable from a broken model.** DART and Dublin hubs are
+untouched at 77.6% and 79.0%. The two corridors that fired **share track** (D29 chose Kildare
+precisely because commuter and intercity services run over the same rails there). A change
+confined to shared infrastructure, six weeks after training, with the rest of the network
+unaffected, reads as something that happened on that track — engineering works, a speed
+restriction, a timetable change — and not as a model defect. This is the distribution shift
+D58 predicted would show up if coverage did not recover after the promotion. It did not
+recover.
+
+**Decision: publish, do not patch.** The policy says the trigger "decides that something is
+done, not what". What is being done is that the per-group coverage goes on the accuracy page
+next to the nominal 80%, and this entry records the reasoning. That is a deliberate action,
+not an omission.
+
+**Why publishing beats recalibrating**, in order of weight:
+
+1. **The finding is worth more than the fix.** A trigger written in advance, firing six weeks
+   later, on two corridors that share track, distinguishable from a broken model because the
+   rest of the network held — that is this project's entire thesis demonstrated on itself.
+   An interval sitting at 80% because it was nudged there has no story attached.
+2. **Recalibrating would hide it.** Per-group conformal widening would take the number to 80%
+   and delete the evidence that the railway changed. Better metric, worse project.
+3. **The deadline.** Six days, three web pages unbuilt. A model change needs its own held-out
+   split, the champion/challenger gate (D57), and a redeploy.
+
+**The counter-argument, recorded because it is real.** The interval *is* the product. Serving
+"80% confidence" while delivering 64.7% on the Kildare line is a wrong number at the point of
+use, and a caveat on a different page does not fix that for someone reading a prediction. The
+mitigation is that `accuracy.json` already carries per-group coverage, so the page can show
+64.7% beside the nominal 80% rather than burying it. The cleaner fix — having the API's
+`confidence` field report the measured coverage for that line instead of prose — was
+considered and not done: it makes the API depend on the rollup at request time, and six days
+out that is a new failure mode for a cosmetic gain.
+
+**Binding requirement on the accuracy page.** Coverage must be shown **per station group,
+beside the nominal 80%**, not as a single blended figure. A page reporting only 75.4% would
+be technically true and would conceal that two corridors are at 65%. This follows the same
+rule D28 set for horizons and D53 set for the two coverage denominators: never one number
+where the spread is the finding.
+
+**What would change this decision.** Recovery, or the absence of it, is now itself a
+measurement. If coverage on those corridors returns to ~79% without intervention, the shift
+was temporary and the record should say so. If it stays low past the deadline, recalibration
+becomes the right call with time to do it properly — a per-group conformal adjustment fitted
+on one window and validated on a later one, through the gate like any other model change.
+Neither is work for this week.
 
 **Date.** 2026-09-08

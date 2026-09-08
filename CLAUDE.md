@@ -154,9 +154,17 @@ Open items that will not announce themselves:
   `journey_inconsistent` and `vantage_delay_out_of_range`. Of 37 phantom-vantage rows on
   2 Sep, 36 would now be declined; the one that would not (A461, +1h44m at a plausible
   lead) is uncatchable by any label-only rule without also refusing real disruptions.
-- **The Kildare and Cork corridor coverage drop (79% → 63–69%) is not addressed by the
-  retrain** (D58). Training data is still July. If it does not recover after promotion,
-  that is distribution shift in the railway, and a case for the coverage trigger.
+- **The coverage trigger has FIRED and the decision was to publish, not patch** (D64).
+  Rolling 7-day to 2026-09-07: `intercity_cork_corridor` 66.7% (below 70% on 7 of 7 days),
+  `commuter_kildare` 64.7% (6 of 7), `intercity_other` 56.7%. Overall is 75.4%, just above
+  the global 75% clause, so it is the group trigger that fired. DART 77.6% and dublin_hubs
+  79.0% are unaffected, and the two corridors that fired share track — a localised shift,
+  not a model that has gone bad. No model change was made; the reasoning is in D64.
+  **The accuracy page must show coverage per station group beside the nominal 80%**, never
+  as a single blended figure, or it conceals that two corridors sit at 65%.
+  Recovery is now itself a measurement: if those corridors return to ~79% unaided the shift
+  was temporary; if they stay low past the deadline, per-group conformal recalibration is
+  the right call with time to do it properly.
 - **Coverage is published as two numbers, headline visitor-facing** (D53): 89.3%
   conditional on the train being in service, **37.8%** as a visitor meets it on a station
   board (42.3% of board entries are trains that have not departed). The offline "~56% of
