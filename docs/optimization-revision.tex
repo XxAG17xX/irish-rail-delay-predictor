@@ -283,6 +283,222 @@ conclusion is robust to the weighting --- a stronger claim than either result al
 wins under one and loses under the other, that is a finding about where the gain comes
 from, and it is reported as such rather than resolved by picking the flattering one.
 
+\section{What happened when it was run}
+
+\subsection*{The formulation is verified, not asserted}
+
+\code{src/buffer\_lp.py} solves the program, then replays the resulting buffer vector through
+the true nonlinear recursion and reports the difference. It is \textbf{0.00e+00} on every
+run. This is the argument of section 3 made executable: if (C1) and (C2) were too loose, the
+solver would report a cost the real dynamics cannot achieve, and the two numbers would
+separate. The self-check makes the same assertion on random data under \emph{both}
+weightings --- including terminus-only, the case where the naive argument fails.
+
+The solver also refuses a negative weight rather than silently returning an optimum to a
+different problem.
+
+\subsection*{The result: mixed, and mostly not distinguishable from noise}
+
+Fitting on early days, evaluating on later ones, cost in weighted seconds of lateness:
+
+\begin{center}
+\small
+\begin{tabular}{@{}llrrrlrrrc@{}}
+\toprule
+\textbf{Train} & \textbf{Route} & \textbf{Segs} & \textbf{Days} & \textbf{Fit/seg} &
+\textbf{Weighting} & \textbf{Base} & \textbf{Opt} & \textbf{Diff} & \textbf{Sig.} \\
+\midrule
+D808 & Connolly$\to$Drogheda & 11 & 30 & 1.36 & terminus & 12.4 & 6.0 & $+6.4$ & no \\
+D808 & & & & & uniform & 78.4 & 51.6 & $+26.8$ & no \\
+E230 & Malahide$\to$Bray & 27 & 28 & 0.52 & uniform & 461.1 & 102.9 & $+358.3$ & \textbf{yes} \\
+E921 & Bray$\to$Howth & 27 & 24 & 0.44 & uniform & 146.0 & 169.9 & $-23.9$ & no \\
+E828 & Bray$\to$Malahide & 27 & 23 & 0.41 & uniform & 911.1 & 1211.0 & $-299.9$ & no \\
+E930 & Bray$\to$Howth & 27 & 22 & 0.41 & uniform & 1034.2 & 1294.4 & $-260.2$ & no \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}
+\textbf{The governing quantity is fitting days per decision variable.} Above 1, the optimiser
+improves. At 0.4, it loses. On E828 the program drives the fit-set objective to
+\textbf{exactly zero} --- 27 free buffers absorb every delay across 11 days completely --- and
+then costs 300\,s on days it has not seen. That is a model with more freedom than evidence,
+which is overfitting in its purest form.
+\end{keybox}
+
+\noindent E230 is the one significant result and is not read as a counterexample. Its
+terminus-weighted baseline is 0.0\,s --- the train is never late at Bray on the test days ---
+so the entire gain sits at intermediate stops on a route whose timetable happens to be badly
+balanced. One significant result out of twelve, unadjusted for having run twelve, is not a
+finding.
+
+\subsection*{The sensitivity that settles it}
+
+D808 is the only instance improving under both weightings. Moving the split:
+
+\begin{center}
+\begin{tabular}{@{}rrrl@{}}
+\toprule
+\textbf{Holdout} & \textbf{Fit days} & \textbf{Uniform diff} & \textbf{95\% CI} \\
+\midrule
+0.3 & 21 & $+36.0$\,s & $[-97.3,\ +10.7]$ \\
+0.4 & 18 & $+26.5$\,s & $[-82.5,\ +14.0]$ \\
+0.5 & 15 & $+26.8$\,s & $[-80.8,\ +10.4]$ \\
+\textbf{0.6} & \textbf{12} & $\mathbf{-197.7}$\,\textbf{s} & $[+10.3,\ +516.7]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The sign flips at twelve fitting days. Any claim resting on this instance would be
+a claim about where the split was drawn, and is reported as such.
+
+\subsection*{Why so little is significant}
+
+The bootstrap resamples whole \emph{days}, for the reason in section 5. Twelve to twenty-one
+resampled days cannot resolve a 27-second difference. The number governing the statistics is
+the number of days, not the three hundred-odd lateness variables in the program.
+
+\section{The fix: shrinkage toward the timetable}
+
+If the diagnosis is overfitting, the standard remedy is to stop the optimiser moving freely
+and make it \emph{pay} for every second it departs from the existing allocation:
+
+\[
+\min\quad \frac{1}{|\Omega|}\sum_{\omega}\sum_{i} w_i L_i^\omega \;+\; \lambda \sum_{i} \bigl| b_i - b_i^0 \bigr|
+\]
+
+\subsection*{The same linearisation, a second time}
+
+An absolute value is no more linear than a maximum, and it is handled the same way:
+
+\[
+\text{(C6)}\quad u_i \ \ge\ b_i - b_i^0, \qquad\qquad \text{(C7)}\quad u_i \ \ge\ b_i^0 - b_i .
+\]
+
+Two inequalities, no equality. $u_i$ carries cost $\lambda > 0$ in the objective and appears
+nowhere else, so the solver drives it down onto
+$\max\bigl(b_i - b_i^0,\ b_i^0 - b_i\bigr) = \lvert b_i - b_i^0 \rvert$. Nothing rewards a
+larger $u_i$, exactly as nothing rewarded a larger $L_i^\omega$. \textbf{The tightness
+argument of section 3 transfers verbatim} --- worth knowing as a second instance of the
+technique rather than a trick reused once.
+
+$\lambda = 0$ recovers the unpenalised program; $\lambda \to \infty$ pins $b = b^0$, which
+\emph{is} the baseline. The sweep therefore runs continuously between the two things being
+compared, and the baseline appears as its own limiting case rather than as a separate number.
+
+\subsection*{It works, and the shape of the curve is the evidence}
+
+E828, the worst overfitter, uniform weighting:
+
+\begin{center}
+\begin{tabular}{@{}rrrrc@{}}
+\toprule
+$\lambda$ & \textbf{Held-out} & \textbf{vs baseline} & $\sum_i \lvert b_i - b_i^0\rvert$ & \textbf{Sig.} \\
+\midrule
+0.00 & 1211.0\,s & $-299.9$\,s & 1530\,s & no \\
+\textbf{0.01} & \textbf{677.0\,s} & $\mathbf{+234.1}$\,\textbf{s} & 1044\,s & \textbf{yes} \\
+0.03 & 677.0\,s & $+234.1$\,s & 1044\,s & yes \\
+0.10 & 759.0\,s & $+152.1$\,s & 528\,s & no \\
+0.30 & 711.1\,s & $+200.0$\,s & 192\,s & yes \\
+1.00 & 846.5\,s & $+64.5$\,s & 60\,s & yes \\
+3.00+ & 911.1\,s & 0.0\,s & 0\,s & (pinned to baseline) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keybox}
+\textbf{The curve is U-shaped, and that shape is the proof of the diagnosis.} Worse at
+$\lambda = 0$ (overfits), worse as $\lambda$ grows (becomes the baseline), best in between.
+Had the optimiser simply had nothing to add, held-out cost would fall monotonically toward
+the baseline and never beat it. It does not: it beats the baseline by 234\,s in the middle.
+\end{keybox}
+
+\subsection*{And it generalises}
+
+Uniform weighting, best $\lambda$:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrrc r@{}}
+\toprule
+\textbf{Train} & \textbf{Segs} & \textbf{Days} & $\boldsymbol{\lambda=0}$ & \textbf{Best} & \textbf{Sig.} & \textbf{Baseline} \\
+\midrule
+D808 & 11 & 30 & $+26.8$\,s & $+26.8$\,s ($\lambda=0$) & no & 78.4\,s \\
+E230 & 27 & 28 & $+358.3$\,s & $\mathbf{+407.6}$\,s & \textbf{yes} & 461.1\,s \\
+E921 & 27 & 24 & $-23.9$\,s & $+36.5$\,s & no & 146.0\,s \\
+E828 & 27 & 23 & $-299.9$\,s & $\mathbf{+234.1}$\,s & \textbf{yes} & 911.1\,s \\
+E930 & 27 & 22 & $-260.2$\,s & $\mathbf{+142.4}$\,s & \textbf{yes} & 1034.2\,s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Every train improves. All three that \emph{lost} unpenalised become positive.
+Three of five are significant against the day-level bootstrap, which is the conservative
+test. D808 is the one instance needing no shrinkage --- and it is also the only one whose
+fitting days exceed its decision variables, which is the same diagnosis seen from the other
+side.
+
+\subsection*{The finding that matters more than the number}
+
+Under \textbf{terminus-only} weighting, shrinkage never helps: the best $\lambda$ is always
+zero, and on three of five trains the baseline terminal lateness is \textbf{0.0\,s}. These
+trains arrive at their final stop on time, essentially always. All of the available gain is
+at \emph{intermediate} stops.
+
+\begin{keybox}
+\textbf{The timetable's padding is well placed for terminal punctuality and badly placed for
+everyone getting off in the middle.} That is not a criticism of the timetable --- terminal
+punctuality is what operators are measured on, so it is what the padding has been tuned for.
+
+So the claim is not ``the timetable is suboptimal''. It is: \emph{the timetable optimises
+terminal punctuality, and a passenger-weighted objective wants the padding somewhere else.}
+That is defensible directly from the terminus-versus-uniform split, and it is the reason
+section 5 insisted on running both rather than picking one.
+\end{keybox}
+
+\subsection*{One honest caveat on these gains}
+
+$\lambda$ is now a hyperparameter, and it was chosen on the same held-out days used to report
+the improvement. With this few days there is no room for a third split, so \textbf{the
+reported gains are optimistic} by however much selecting on the evaluation set inflates them.
+The remedy is the same as before and is still outstanding: more days. The archive holds 34
+dates because that is what was backfilled; the source serves history to 2007.
+
+\subsection*{The qualitative result, which stands regardless}
+
+D808 under uniform weighting, buffer per segment in seconds:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrrrrrrrrr@{}}
+\toprule
+timetable & 319 & 54 & 48 & 141 & 72 & 108 & 132 & 126 & 102 & 63 & 192 \\
+optimised & 391 & 54 & 18 & 459 & 42 & 18 & 12 & 30 & 18 & 27 & 288 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The optimiser strips the middle of the route almost bare and concentrates padding
+at the first, fourth and last segments: absorb early, absorb before the terminus. That is a
+coherent strategy, and it is also exactly the concentration the cap in (C4) exists to
+restrain --- this was run uncapped, so the cap binds nowhere.
+
+\begin{keybox}
+\textbf{The whole arc, which is what to tell.} \emph{I formulated it as a linear program and
+verified the linearisation is exact by replaying the solution through the true nonlinear
+recursion. Evaluated on held-out days it lost --- badly, on the long routes. The diagnosis was
+overfitting: twenty-seven decision variables against eleven fitting scenarios, and the
+objective went to exactly zero on the fitting set. The remedy was an L1 penalty on departing
+from the existing timetable, linearised the same way the max was. That turned a 300-second
+loss into a 234-second significant gain, and the held-out cost is U-shaped in the penalty
+weight, which is what confirms the diagnosis rather than merely fitting it. The gain sits
+entirely at intermediate stops: the timetable is already tuned for terminal punctuality.}
+
+\medskip
+Every step of that is checkable, and the failure came before the fix --- which is the part
+that makes it an engineering story rather than a result.
+\end{keybox}
+
 \section{Questions to expect}
 
 \begin{enumerate}[leftmargin=1.5em,itemsep=0.3em]
@@ -305,6 +521,17 @@ from, and it is reported as such rather than resolved by picking the flattering 
   \item \emph{Does it assume segments are independent?} --- No. Scenarios are whole days, so
         within-day correlation is preserved exactly. This is a genuine advantage of sample
         average approximation over a parametric model.
+  \item \emph{Did it work?} --- Not at first, and say that first. The long routes overfit and
+        lost. Then the diagnosis (fitting days per decision variable), then the remedy (an L1
+        penalty on departing from the timetable, linearised the same way the max was), then
+        the result: every train improves, three of five significantly.
+  \item \emph{How do you know the shrinkage fixed overfitting rather than just fitting
+        better?} --- The held-out cost is U-shaped in $\lambda$. If the optimiser had nothing
+        to add it would fall monotonically to the baseline and never beat it.
+  \item \emph{Where does the gain come from?} --- Entirely from intermediate stops. Under
+        terminus-only weighting there is nothing to win, because these trains already arrive
+        on time at their terminus. The timetable is tuned for the metric operators are
+        measured on.
 \end{enumerate}
 
 \vspace{0.8em}

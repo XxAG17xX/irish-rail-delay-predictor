@@ -207,16 +207,34 @@ def weight_vector(kind, n):
     return w
 
 
-def solve(delta, l0, B, w, cap=None):
+def solve(delta, l0, B, w, cap=None, lam=0.0, b0=None):
     """Solve the LP. Returns (buffers, lp_objective, result).
 
     Variable layout, flat, because linprog takes one vector:
 
         x[0 : n]                       b_1 .. b_n
         x[n + s*n : n + (s+1)*n]       L_1^s .. L_n^s      for scenario s
+        x[n + n*S : 2n + n*S]          u_1 .. u_n          only when lam > 0
 
     Built sparse: C1 contributes n*S rows with at most 3 non-zeros each, so the dense form
     is almost entirely zeros and grows as (n*S)^2.
+
+    Shrinkage (`lam` > 0) adds a penalty on departing from the timetable's own allocation:
+
+        min  (1/S) sum_s sum_i w_i L_i^s  +  lam * sum_i |b_i - b0_i|
+
+    which is the standard remedy when a sample-average approximation has more decision
+    variables than scenarios (D62 measured exactly that failure). The absolute value is
+    linearised the SAME way the max was, and by the same argument:
+
+        C6   u_i >= b_i - b0_i
+        C7   u_i >= b0_i - b_i
+
+    Two inequalities, no equality. `u_i` enters the objective with coefficient lam > 0 and
+    appears nowhere else, so the solver drives it down onto max(b_i - b0_i, b0_i - b_i),
+    which is |b_i - b0_i|. Nothing rewards a larger u_i, exactly as nothing rewarded a
+    larger L_i. lam = 0 recovers the unpenalised program; lam -> infinity pins b = b0, the
+    baseline. So the sweep runs between the two things being compared.
     """
     S, n = delta.shape
     if np.any(w < 0):
@@ -229,15 +247,27 @@ def solve(delta, l0, B, w, cap=None):
     if w.sum() <= 0:
         raise ValueError("at least one weight must be positive")
 
-    nvar = n + n * S
+    if lam < 0:
+        raise ValueError("shrinkage weight must be non-negative")
+    if lam > 0 and b0 is None:
+        raise ValueError("shrinkage needs b0, the allocation to shrink toward")
+
+    n_u = n if lam > 0 else 0
+    nvar = n + n * S + n_u
 
     def L(i, s):
         return n + s * n + i
 
-    # --- objective: (1/S) * sum_s sum_i w_i L_i^s ; buffers cost nothing directly
+    def U(i):
+        return n + n * S + i
+
+    # --- objective: (1/S) * sum_s sum_i w_i L_i^s + lam * sum_i u_i
+    #     buffers cost nothing directly; only deviation from b0 does, and only when lam > 0
     c = np.zeros(nvar)
     for s in range(S):
         c[n + s * n: n + (s + 1) * n] = w / S
+    if lam > 0:
+        c[n + n * S:] = lam
 
     # --- C1, as A_ub x <= b_ub:
     #        L_i^s >= L_{i-1}^s + d_i^s - b_i
@@ -262,11 +292,24 @@ def solve(delta, l0, B, w, cap=None):
     rhs.append(B)
     k += 1
 
+    # --- C6 and C7, the absolute value of (b_i - b0_i), linearised as two inequalities:
+    #        u_i >= b_i - b0_i   ->   -u_i + b_i <= b0_i
+    #        u_i >= b0_i - b_i   ->   -u_i - b_i <= -b0_i
+    if lam > 0:
+        for i in range(n):
+            rows.append(k); cols.append(U(i)); vals.append(-1.0)
+            rows.append(k); cols.append(i);    vals.append(1.0)
+            rhs.append(float(b0[i])); k += 1
+            rows.append(k); cols.append(U(i)); vals.append(-1.0)
+            rows.append(k); cols.append(i);    vals.append(-1.0)
+            rhs.append(-float(b0[i])); k += 1
+
     A = coo_matrix((vals, (rows, cols)), shape=(k, nvar)).tocsr()
 
-    # --- C2 and C4 as bounds. L_i^s >= 0 is C2; b_i in [0, cap_i] is C4.
+    # --- C2 and C4 as bounds. L_i^s >= 0 is C2; b_i in [0, cap_i] is C4; u_i >= 0.
     caps = [None] * n if cap is None else [float(cap[i]) for i in range(n)]
-    bounds = [(0.0, caps[i]) for i in range(n)] + [(0.0, None)] * (n * S)
+    bounds = ([(0.0, caps[i]) for i in range(n)] + [(0.0, None)] * (n * S)
+              + [(0.0, None)] * n_u)
 
     res = linprog(c, A_ub=A, b_ub=np.array(rhs), bounds=bounds, method="highs")
     if not res.success:
@@ -316,7 +359,7 @@ def bootstrap_days(cost_a, cost_b, reps=10_000, seed=0):
 
 # ----------------------------------------------------------------- evaluation
 
-def evaluate(inst, weighting="terminus", cap_alpha=None, holdout=0.5, seed=0):
+def evaluate(inst, weighting="terminus", cap_alpha=None, holdout=0.5, seed=0, lam=0.0):
     """Fit buffers on early days, evaluate on later ones, against the timetable's own.
 
     Split is TEMPORAL, matching D25: fitting and evaluating on the same days measures the
@@ -332,13 +375,18 @@ def evaluate(inst, weighting="terminus", cap_alpha=None, holdout=0.5, seed=0):
     l_fit, l_test = inst["l0"][:cut], inst["l0"][cut:]
     cap = None if cap_alpha is None else cap_alpha * inst["m"]
 
-    b_opt, lp_obj, _ = solve(d_fit, l_fit, inst["B"], w, cap)
+    b_opt, lp_obj, _ = solve(d_fit, l_fit, inst["B"], w, cap, lam=lam, b0=inst["b0"])
 
     # The linearisation, checked rather than asserted in prose: the LP's objective must equal
     # the true recursion replayed on the same data. If C1/C2 were too loose the LP would
     # report a cost the real dynamics cannot achieve, and this would separate.
+    #
+    # With shrinkage the objective also carries the penalty term, so it is subtracted back
+    # off before comparing. That the remainder still matches is a check on C6/C7 too: if the
+    # u_i were not sitting exactly on |b_i - b0_i|, this would not reconcile.
     sim_fit = simulate(b_opt, d_fit, l_fit, w).mean()
-    tightness_gap = abs(lp_obj - sim_fit)
+    penalty = lam * float(np.abs(b_opt - inst["b0"]).sum())
+    tightness_gap = abs((lp_obj - penalty) - sim_fit)
 
     cost_opt = simulate(b_opt, d_test, l_test, w)
     cost_base = simulate(inst["b0"], d_test, l_test, w)
@@ -349,7 +397,8 @@ def evaluate(inst, weighting="terminus", cap_alpha=None, holdout=0.5, seed=0):
         binding = int(np.sum(b_opt > cap - 1e-6))
 
     return {
-        "weighting": weighting, "cap_alpha": cap_alpha,
+        "weighting": weighting, "cap_alpha": cap_alpha, "lam": lam,
+        "deviation_from_b0": float(np.abs(b_opt - inst["b0"]).sum()),
         "fit_days": cut, "test_days": S - cut,
         "lp_objective_fit": lp_obj, "simulated_fit": float(sim_fit),
         "tightness_gap": float(tightness_gap),
@@ -362,6 +411,33 @@ def evaluate(inst, weighting="terminus", cap_alpha=None, holdout=0.5, seed=0):
         "cap_binding_segments": binding,
         "b_opt": b_opt, "b0": inst["b0"],
     }
+
+
+def sweep(inst, cap_alpha=None, holdout=0.5,
+          lams=(0.0, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0)):
+    """Trace held-out cost as the shrinkage weight rises.
+
+    lam = 0 is the unpenalised optimum; large lam pins b to the timetable, so the last row
+    IS the baseline. If overfitting is what ails the unpenalised program, held-out cost
+    should be U-shaped: worse at both ends than somewhere in between. If it falls
+    monotonically toward the baseline, the optimiser has nothing to add on this instance
+    and the honest reading is that the timetable is already well allocated.
+    """
+    print(f"{inst['train_code']}  {inst['route']}  "
+          f"({inst['n_segments']} segments, {inst['n_scenarios']} days)")
+    for k in ("terminus", "uniform"):
+        print()
+        print(f"  --- {k} weighting ---")
+        print(f"  {'lambda':>8}{'held-out':>11}{'vs base':>10}{'|b-b0|':>10}{'sig':>6}")
+        base = None
+        for lam in lams:
+            r = evaluate(inst, weighting=k, cap_alpha=cap_alpha, holdout=holdout, lam=lam)
+            if base is None:
+                base = r["baseline_test"]
+            print(f"  {lam:>8.2f}{r['optimised_test']:>10.1f}s{r['improvement_sec']:>9.1f}s"
+                  f"{r['deviation_from_b0']:>9.0f}s"
+                  f"{'  Y' if r['bootstrap']['significant'] else '  n':>6}")
+        print(f"  {'baseline':>8}{base:>10.1f}s")
 
 
 def report(inst, results):
@@ -445,6 +521,25 @@ def _self_check():
     assert (b <= 5.0 + 1e-6).all(), "cap violated"
     assert b.sum() <= 30.0 + 1e-6
 
+    # --- shrinkage. Same linearisation trick as the max, applied to an absolute value:
+    #     u_i >= b_i - b0_i and u_i >= b0_i - b_i, with u_i costed positively.
+    w = weight_vector("uniform", n)
+    b0 = np.full(n, 50.0)
+    b_free, _, _ = solve(delta, l0, 300.0, w, lam=0.0)
+    b_mid, obj_mid, _ = solve(delta, l0, 300.0, w, lam=0.05, b0=b0)
+    b_pin, _, _ = solve(delta, l0, 300.0, w, lam=1e6, b0=b0)
+    dev = lambda b: float(np.abs(b - b0).sum())
+    assert dev(b_mid) < dev(b_free) + 1e-6, "shrinkage did not pull toward b0"
+    assert dev(b_pin) < 1e-3, f"huge lambda should pin b to b0, deviation {dev(b_pin)}"
+    # the objective must decompose exactly: lateness + lambda * |b - b0|
+    sim = simulate(b_mid, delta, l0, w).mean()
+    assert abs(obj_mid - (sim + 0.05 * dev(b_mid))) < 1e-6, "u_i not sitting on |b - b0|"
+    try:
+        solve(delta, l0, 300.0, w, lam=0.1)
+        raise AssertionError("shrinkage without b0 should be refused")
+    except ValueError as e:
+        assert "b0" in str(e)
+
     # --- simulate matches a hand-computed recursion
     d = np.array([[10.0, 0.0, 50.0]])
     b = np.array([4.0, 0.0, 20.0])
@@ -469,6 +564,11 @@ def main():
     ap.add_argument("--cap-alpha", type=float, default=None,
                     help="per-segment cap as a multiple of the minimum running time; "
                          "omit to run uncapped, which is the reference")
+    ap.add_argument("--lam", type=float, default=0.0,
+                    help="shrinkage weight on |b - b0|; 0 is unpenalised, large pins to "
+                         "the timetable")
+    ap.add_argument("--sweep", action="store_true",
+                    help="sweep the shrinkage weight and report held-out cost at each")
     ap.add_argument("--json", type=Path, help="write the results here")
     args = ap.parse_args()
 
@@ -480,8 +580,12 @@ def main():
         print(f"{args.train}: not enough complete days")
         return 2
 
+    if args.sweep:
+        sweep(inst, cap_alpha=args.cap_alpha, holdout=args.holdout)
+        return 0
+
     results = [evaluate(inst, weighting=k, cap_alpha=args.cap_alpha,
-                        holdout=args.holdout)
+                        holdout=args.holdout, lam=args.lam)
                for k in ("terminus", "uniform")]
     report(inst, results)
 

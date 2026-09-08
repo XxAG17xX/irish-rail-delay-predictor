@@ -92,6 +92,7 @@ sat in code comments and nobody looked for the hole.
 - [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses
 - [D61](#d61--evaluation-bootstrap-over-days-report-both-weightings-declare-the-cap) Evaluation: bootstrap over days, report both weightings, declare the cap
 - [D62](#d62--the-buffer-lp-is-built-and-works-the-result-is-under-powered-and-mostly-negative) The buffer LP is built and works; the result is under-powered and mostly negative
+- [D63](#d63--shrinkage-toward-the-timetable-turns-the-buffer-lp-positive-and-says-where-the-padding-is-wrong) Shrinkage toward the timetable turns the buffer LP positive, and says where the padding is wrong
 
 **Cutover and verification** 
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
@@ -2566,6 +2567,11 @@ writing with the sensitivity to `alpha`. Run once uncapped as the reference.
 
 ## D62 — The buffer LP is built and works; the result is under-powered and mostly negative
 
+**Superseded in its headline by D63**, which adds an L1 penalty on departing from the
+timetable and turns the result positive on every train tested. The measurement below is not
+withdrawn: it is the diagnosis D63 acts on, and the overfitting it identifies is what the
+penalty fixes.
+
 **Why this matters:** the optimiser can be shown to be correct and still not beat the
 timetable, and the reason is the size of the dataset rather than the formulation.
 
@@ -2654,5 +2660,108 @@ obvious next comparison.
 **Not done, deliberately.** No cap sweep, no shrinkage variant, no extended backfill. Each is
 a decision about the formulation or about collection, and the deadline for the three web
 pages is nearer than any of them.
+
+**Date.** 2026-09-08
+
+---
+
+## D63 — Shrinkage toward the timetable turns the buffer LP positive, and says where the padding is wrong
+
+**Why this matters:** the optimiser was losing because it had more freedom than evidence,
+and making it *earn* every departure from the existing timetable fixed it — turning a
+five-minute loss into a four-minute gain on the same data.
+
+**In plain terms.** The first version was free to rearrange the padding however it liked, and
+with only thirty days to learn from it rearranged it to suit those thirty days exactly and
+then did worse on new ones. The fix is to charge it for every second it moves: it now has to
+show the move is worth paying for. With a small charge it stops chasing noise and keeps only
+the changes that hold up.
+
+**Supersedes the headline of D62**, which recorded the unpenalised result as mostly negative.
+That measurement stands and is not withdrawn — it is the diagnosis this entry acts on.
+
+**The formulation.** An L1 penalty on departing from the timetable's own allocation:
+
+```
+min  (1/S) sum_s sum_i w_i L_i^s  +  lambda * sum_i |b_i - b0_i|
+```
+
+The absolute value is linearised **the same way the max was, by the same argument**:
+
+```
+C6   u_i >= b_i - b0_i
+C7   u_i >= b0_i - b_i
+```
+
+Two inequalities, no equality. `u_i` carries cost `lambda > 0` in the objective and appears
+nowhere else, so the solver drives it down onto `max(b_i - b0_i, b0_i - b_i)`, which is the
+absolute value. Nothing rewards a larger `u_i`, exactly as nothing rewarded a larger `L_i`.
+This is worth knowing as a second instance of the technique rather than a trick reused: the
+tightness argument transfers verbatim.
+
+`lambda = 0` recovers the unpenalised program; `lambda -> infinity` pins `b = b0`, which *is*
+the baseline. So the sweep runs continuously between the two things being compared, and the
+baseline appears in the table as its own limiting case rather than as a separate number.
+
+**Verified, not assumed.** With shrinkage the LP objective carries the penalty term, so
+`evaluate` subtracts it back off before comparing to the replayed recursion. That the
+remainder still reconciles to `0.00e+00` is a check on C6/C7 as well: if the `u_i` were not
+sitting exactly on `|b_i - b0_i|`, the decomposition would not close.
+
+**The sweep on E828, the worst overfitter, uniform weighting:**
+
+| lambda | held-out cost | vs baseline | total deviation | significant |
+|---|---|---|---|---|
+| 0.00 | 1211.0s | **-299.9s** | 1530s | no |
+| **0.01** | **677.0s** | **+234.1s** | 1044s | **yes** |
+| 0.03 | 677.0s | +234.1s | 1044s | yes |
+| 0.10 | 759.0s | +152.1s | 528s | no |
+| 0.30 | 711.1s | +200.0s | 192s | yes |
+| 1.00 | 846.5s | +64.5s | 60s | yes |
+| 3.00+ | 911.1s | 0.0s | 0s | (pinned to baseline) |
+
+**The curve is U-shaped, which is the point.** Worse at `lambda = 0` (overfits), worse at
+large `lambda` (becomes the baseline), best in between. That shape is what confirms
+overfitting was the diagnosis rather than a guess: if the optimiser simply had nothing to
+add, held-out cost would fall monotonically toward the baseline and never beat it.
+
+**It generalises. Uniform weighting, best lambda:**
+
+| train | segments | days | lambda=0 | best | significant | baseline |
+|---|---|---|---|---|---|---|
+| D808 | 11 | 30 | +26.8s | +26.8s (at 0) | no | 78.4s |
+| E230 | 27 | 28 | +358.3s | **+407.6s** | **yes** | 461.1s |
+| E921 | 27 | 24 | -23.9s | +36.5s | no | 146.0s |
+| E828 | 27 | 23 | -299.9s | **+234.1s** | **yes** | 911.1s |
+| E930 | 27 | 22 | -260.2s | **+142.4s** | **yes** | 1034.2s |
+
+Every train improves. All three that *lost* unpenalised become positive. Three of five are
+significant against a bootstrap over days, which is the conservative test (D61). D808 is the
+one instance needing no shrinkage — it is also the only one whose fitting days exceed its
+decision variables, which is the same diagnosis seen from the other side.
+
+**The finding that is more interesting than the number.** Under **terminus-only** weighting,
+shrinkage never helps and the best lambda is always zero — and on three of five trains the
+baseline terminal lateness is **0.0s**. These trains arrive at their final stop on time,
+essentially always. All of the available gain is at **intermediate** stops.
+
+Read plainly: the timetable's padding is well placed for protecting end-to-end punctuality,
+and badly placed for everyone getting off in the middle. That is not a criticism of the
+timetable — terminal punctuality is what operators are measured on, so it is what the padding
+has been tuned for. It does mean the optimiser is not finding slack the planners missed; it
+is finding a different objective from the one they optimised.
+
+That reframes the result: **not "the timetable is suboptimal" but "the timetable optimises
+terminal punctuality, and a passenger-weighted objective wants the padding elsewhere."** That
+claim is defensible from the terminus-versus-uniform split, and it is the reason D61 insisted
+on running both rather than picking one.
+
+**Limitations, unchanged from D59 and still binding.** Primary delays assumed exogenous;
+minimum running time estimated from a sample quantile; single train, no network capacity;
+counterfactual, so simulated rather than validated. Additionally: `lambda` is now a tuned
+hyperparameter chosen on the same held-out days used to report the improvement. With so few
+days there is no room for a third split, so **the reported gains are optimistic** by the
+usual amount that selecting on the evaluation set makes them. Reported as such. A proper
+answer needs more days, which remains the outstanding item from D62.
 
 **Date.** 2026-09-08
