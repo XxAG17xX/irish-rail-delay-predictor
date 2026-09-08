@@ -91,6 +91,7 @@ sat in code comments and nobody looked for the hole.
 - [D59](#d59--buffer-allocation-not-delay-management-the-formulation-and-why-the-other-was-rejected) Buffer allocation, not delay management: the formulation and why the other was rejected
 - [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses
 - [D61](#d61--evaluation-bootstrap-over-days-report-both-weightings-declare-the-cap) Evaluation: bootstrap over days, report both weightings, declare the cap
+- [D62](#d62--the-buffer-lp-is-built-and-works-the-result-is-under-powered-and-mostly-negative) The buffer LP is built and works; the result is under-powered and mostly negative
 
 **Cutover and verification** 
 - [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
@@ -2558,5 +2559,100 @@ four-minute segment at eleven, which conflicts with other traffic. A proportiona
 **Whether it binds is itself a result.** If it does not, the cap is inert and the answer is
 data-driven. If it does, the answer is partly driven by a chosen constant, and that goes in
 writing with the sensitivity to `alpha`. Run once uncapped as the reference.
+
+**Date.** 2026-09-08
+
+---
+
+## D62 — The buffer LP is built and works; the result is under-powered and mostly negative
+
+**Why this matters:** the optimiser can be shown to be correct and still not beat the
+timetable, and the reason is the size of the dataset rather than the formulation.
+
+**In plain terms.** The program was written, and it does exactly what the maths says. But
+with only 30-ish days of history per train, it has too much freedom and too few examples: it
+finds a padding allocation that perfectly absorbs every delay on the days it is shown, and
+that allocation then does worse on days it has not seen. This is overfitting, and the fix is
+more days, not a different program.
+
+**Decision.** `src/buffer_lp.py` is committed with the formulation, evaluation and checks.
+The headline result is recorded as **mixed and mostly not statistically distinguishable from
+noise**, and it is kept in that form.
+
+**The formulation is verified, not asserted.** `evaluate` solves the LP, then replays the
+resulting buffer vector through the true nonlinear recursion in `simulate`, and reports the
+gap. It is `0.00e+00` on every run. If C1/C2 were too loose the LP would report a cost the
+real dynamics cannot achieve and the two would separate. The self-check makes the same
+assertion on random data under **both** weightings, including terminus-only, which is the
+case where the naive tightness argument fails (D60).
+
+**What was measured**, fitting on early days and evaluating on later ones:
+
+| train | route | segs | days | fit/segs | weighting | baseline | optimised | diff | sig |
+|---|---|---|---|---|---|---|---|---|---|
+| D808 | Connolly$\to$Drogheda | 11 | 30 | 1.36 | terminus | 12.4s | 6.0s | **+6.4s** | no |
+| D808 | | | | | uniform | 78.4s | 51.6s | **+26.8s** | no |
+| E230 | Malahide$\to$Bray | 27 | 28 | 0.52 | uniform | 461.1s | 102.9s | **+358.3s** | **yes** |
+| E921 | Bray$\to$Howth | 27 | 24 | 0.44 | uniform | 146.0s | 169.9s | -23.9s | no |
+| E828 | Bray$\to$Malahide | 27 | 23 | 0.41 | uniform | 911.1s | 1211.0s | -299.9s | no |
+| E930 | Bray$\to$Howth | 27 | 22 | 0.41 | uniform | 1034.2s | 1294.4s | -260.2s | no |
+
+**The governing quantity is fitting days per decision variable.** Above 1, the optimiser
+improves; at 0.4, it loses. On E828 the LP drives the fit-set objective to **exactly zero** —
+27 free buffers absorb every delay across 11 days completely — and then costs 300s on held-out
+days. That is the signature of a model with more freedom than evidence.
+
+E230 is the exception and is not read as a counterexample: its terminus-weighted baseline is
+0.0s, meaning the train is never late at Bray on the test days, so the entire uniform gain
+sits at intermediate stops on a route where the timetable happens to be badly balanced. One
+significant result out of twelve, unadjusted for having run twelve, is not a finding.
+
+**D808 is the only instance that improves under both weightings, and it is not significant.**
+Sensitivity to the split, the check that matters most:
+
+| holdout | fit days | uniform diff | 95% CI |
+|---|---|---|---|
+| 0.3 | 21 | +36.0s | [-97.3, +10.7] |
+| 0.4 | 18 | +26.5s | [-82.5, +14.0] |
+| 0.5 | 15 | +26.8s | [-80.8, +10.4] |
+| **0.6** | **12** | **-197.7s** | [+10.3, +516.7] |
+
+The sign flips at 12 fitting days. Any claim resting on this would be a claim about where the
+split was drawn. Reported as such.
+
+**Why the bootstrap says "not significant" so often.** It resamples whole **days**, because
+the day is the independent unit — within a day, lateness at consecutive stops is correlated
+by construction, and that correlation is the propagation the model describes (D61). Twelve to
+twenty-one resampled days cannot resolve a 27-second difference. The number governing the
+statistics is the number of days, not the 300-odd lateness variables.
+
+**What would change the answer**, in order of expected effect:
+
+1. **More scenarios.** The archive holds 34 dates because that is what was backfilled; the
+   API serves history to 2007. Ten times the days would take the fit/variable ratio on a
+   27-segment DART service from 0.4 to about 4. This is the single change most likely to turn
+   the result, and it is collection, not modelling.
+2. **Shrinkage toward $b^0$.** Penalise $\lVert b - b^0 \rVert_1$ so the optimiser must earn
+   any departure from the timetable. Standard for SAA with few scenarios, and it changes the
+   objective, so it is a decision rather than a tweak.
+3. **Shorter routes.** Fewer segments per scenario is the same lever from the other side.
+
+**The interesting allocation, recorded because it is the qualitative result.** D808 under
+uniform weighting, buffer per segment in seconds:
+
+```
+timetable: [319, 54, 48, 141,  72, 108, 132, 126, 102,  63, 192]
+optimised: [391, 54, 18, 459,  42,  18,  12,  30,  18,  27, 288]
+```
+
+The optimiser strips the middle of the route almost bare and concentrates padding at the
+first, fourth and last segments. That is a coherent strategy --- absorb early, absorb before
+the terminus --- and it is also exactly the kind of concentration the cap in C4 exists to
+restrain. It was run uncapped here, so the cap does not bind anywhere; a capped run is the
+obvious next comparison.
+
+**Not done, deliberately.** No cap sweep, no shrinkage variant, no extended backfill. Each is
+a decision about the formulation or about collection, and the deadline for the three web
+pages is nearer than any of them.
 
 **Date.** 2026-09-08
