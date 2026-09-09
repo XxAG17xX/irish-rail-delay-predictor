@@ -29,10 +29,9 @@
 <main class="mx-auto max-w-5xl px-6 pt-10 pb-16">
 
   <h1 class="max-w-[16ch] text-4xl font-extrabold md:text-5xl">What is due, and how sure.</h1>
-  <p class="mt-4 max-w-2xl text-ink-2">Pick the station you are travelling to. You get everything
-    due there in the next ninety minutes, and for each service, three times side by side: what the
-    timetable says, what Irish Rail currently expects, and what RailCast expects together with the
-    range it is willing to stand behind.</p>
+  <p class="mt-4 max-w-2xl text-ink-2">Pick a station. You get every train calling there in the
+    next ninety minutes, and for each one, three times side by side: the timetable, what Irish Rail
+    currently expects, and what RailCast expects with its range.</p>
 
   <form id="picker" class="mt-7 flex flex-wrap items-end gap-3">
     <div>
@@ -51,9 +50,11 @@
       <h2 class="text-base font-bold">How to read a row</h2>
       <div class="mt-4 border-b border-rule pb-3.5">
         <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <div class="min-w-0">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
             <span class="font-bold tracking-wide">A223</span>
-            <span class="ml-2 text-[0.94rem] text-ink-2">Cork to Dublin Heuston</span>
+            <span class="rounded-sm border border-rule px-1.5 py-px text-[0.68rem] uppercase tracking-wider text-ink-3">Train</span>
+            <span class="text-[0.94rem] text-ink">to Dublin Heuston</span>
+            <span class="text-[0.88rem] text-ink-3">terminates here · from Cork</span>
           </div>
           <div class="flex items-start justify-end gap-4 sm:gap-6">
             <div class="text-right">
@@ -73,23 +74,31 @@
           </div>
         </div>
         <p class="mt-2 text-xs text-ink-3">
-          <span class="text-clear">RailCast expects 19:07 to 19:10, four times in five</span>
+          <span class="text-clear">Expected between 19:07 and 19:10</span>
           <span> · last reported 5.0 min late at Park West and Cherry Orchard</span>
         </p>
       </div>
       <ul class="mt-4 space-y-2 text-sm text-ink-2">
-        <li><b class="text-ink">Timetable</b> is the published arrival time. It never changes.</li>
-        <li><b class="text-ink">Irish Rail</b> is the operator's own current estimate, the number
-          you would read on the real departure board.</li>
-        <li><b class="text-ink">RailCast</b> is this model's estimate, shown on flaps because it
-          is the only number on the page this site is responsible for. Under it is the range the
-          arrival should fall inside four times in five, and where the train last reported.</li>
+        <li><b class="text-ink">A223</b> is Irish Rail's code for that one service on that one
+          day. <b class="text-ink">Train</b> or <b class="text-clear">DART</b> says which network
+          it is on: DART is the electric line along Dublin Bay, everything else is marked
+          Train.</li>
+        <li><b class="text-ink">to Dublin Heuston</b> is where the service is going, which is how
+          you pick yours. Next to it, whether your station is where it
+          <b class="text-ink">starts</b>, a stop it <b class="text-ink">calls</b> at, or where it
+          <b class="text-ink">terminates</b>, then where it came from. Most services on a board
+          only pass through, so your station usually will not appear in either name.</li>
+        <li><b class="text-ink">Timetable</b> is the published time. It never changes.</li>
+        <li><b class="text-ink">Irish Rail</b> is the operator's own estimate, the number on the
+          real departure board.</li>
+        <li><b class="text-ink">RailCast</b> is this site's estimate, on flaps. Under it, the
+          range the arrival should fall inside four times in five, and where the train last
+          reported.</li>
       </ul>
-      <p class="mt-4 text-sm text-ink-2">The board shows trains that have <b class="text-ink">not
-        arrived yet</b>. Nothing here is a prediction made after the fact: every one is logged the
-        moment it is made and
-        <a href="accuracy.html" class="text-clear underline underline-offset-2">marked the
-        following morning</a>.</p>
+      <p class="mt-4 text-sm text-ink-2">Every service listed is still to arrive. Each RailCast
+        time is saved the moment it is shown and
+        <a href="accuracy.html" class="text-clear underline underline-offset-2">checked against
+        the real arrival</a> the next morning.</p>
     </div>
 
     <div class="panel px-5 py-5">
@@ -97,16 +106,16 @@
         <span class="lamp lamp-out mt-1.5 shrink-0"></span>
         <div>
           <h2 class="text-base font-bold">A dash instead of a prediction</h2>
-          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">Many rows will show a dash under
-            RailCast. That is the honest answer, not a failure: the model reads how late a train
-            already is at the stops behind you, so a service that has not left its origin has
-            reported nowhere and there is nothing to reason from.</p>
-          <p class="mt-2 text-sm leading-relaxed text-ink-2">Expect a lot of dashes at a terminus
-            like Heuston, where nearly every service on the board is a departure that has not
-            started, and far fewer at a through station like Kildare or Portarlington.</p>
-          <p class="mt-2 text-sm leading-relaxed text-ink-2">Those services are listed rather than
-            hidden. Dropping them would make the coverage figure look better than the board you
-            are actually standing in front of.</p>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">A dash under RailCast means there is no
+            prediction for that service. RailCast works from how late a train already is at the
+            stops behind you, so it can only answer once the train is moving and has reported
+            somewhere.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">You will see mostly dashes at a terminus
+            like Heuston, where most services on the board start there, and far fewer at a
+            through station like Kildare or Portarlington. Late in the evening most boards look
+            like this, because the trains on them have not set off yet.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">They stay on the board because they are
+            still the trains you are waiting for. The times beside them are Irish Rail's.</p>
         </div>
       </div>
     </div>
@@ -120,17 +129,15 @@
     <p class="max-w-3xl text-sm leading-relaxed text-ink-2">
       <b class="text-ink">Timetable</b> is the published time.
       <b class="text-ink">Irish Rail</b> is the operator's own estimate.
-      <b class="text-ink">RailCast</b>, on the flaps, is this model's, with the range it expects
-      the arrival to fall inside four times in five.
-      A dash under RailCast means the service has not reported anywhere yet, so there is nothing
-      to predict from. Those rows are listed rather than hidden, because dropping them would make
-      the <a href="accuracy.html" class="text-clear underline underline-offset-2">coverage
-      figure</a> look better than the board in front of you.
+      <b class="text-ink">RailCast</b>, on the flaps, is this site's, with the range the arrival
+      should fall inside four times in five.
+      A dash means RailCast has no prediction for that service, which is the case until the train
+      is moving and has reported at a stop.
+      <a href="accuracy.html" class="text-clear underline underline-offset-2">How often the range
+      is right</a> is measured every night.
     </p>
-    <p class="mt-3 max-w-3xl text-sm leading-relaxed text-ink-3">Every prediction here was logged
-      the moment it was made, before the train arrived, and is marked against the real arrival the
-      following morning. To be a good guest on Irish Rail's free feed, boards are limited to a few
-      per minute; if you hit that, the page will say so and count down.</p>
+    <p class="mt-3 max-w-3xl text-sm leading-relaxed text-ink-3">Boards are limited to a few per minute so the
+      Irish Rail feed is not hammered. If you reach that limit the page says so and counts down.</p>
   </section>
 
 </main>
@@ -144,6 +151,7 @@
     </div>
     <nav class="flex flex-wrap gap-2" aria-label="Elsewhere">
         <a class="social" href="https://github.com/XxAG17xX" rel="me noopener" target="_blank"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+        <a class="social" href="https://www.linkedin.com/in/xag17x/" rel="me noopener" target="_blank"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/></svg><span>LinkedIn</span></a>
     </nav>
   </div>
 </footer>

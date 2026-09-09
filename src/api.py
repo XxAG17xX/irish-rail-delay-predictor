@@ -377,6 +377,12 @@ def predict(request: Request,
 
 BOARD_MINS = 90
 
+# What this station is to the service. `LocationType` is documented as O origin, S stop,
+# D destination, T timing point, plus an undocumented C (docs/data-dictionary.md), so
+# anything unrecognised falls back to the safe general phrasing.
+CALLS_AS = {"O": "starts here", "S": "calls here", "D": "terminates here",
+            "T": "passes through", "C": "calls here"}
+
 
 def board_clock(rec, *fields):
     """First of `fields` carrying a real time, or "".
@@ -451,6 +457,15 @@ def board(request: Request,
             "operator_late_min": rec.get("Late", ""),
             "scope": scope,
             "last_location": rec.get("Lastlocation", ""),
+            # Passed through so the page can say what kind of service this is and what this
+            # station is to it. Without them a board reads as a list of unrelated place
+            # names: "Maynooth to Grand Canal Dock" gives no clue that it stops here.
+            "kind": rec.get("Traintype", ""),          # DART or Train
+            "direction": rec.get("Direction", ""),
+            "calls_as": CALLS_AS.get(rec.get("Locationtype", ""), "calls here"),
+            # The operator's own word for whether it is moving. More trustworthy than our
+            # inference from Origintime, and it agrees with it.
+            "operator_status": rec.get("Status", ""),
         }
         if scope != "departed":
             # Listed, not predicted, and the page says which. Silently dropping these is

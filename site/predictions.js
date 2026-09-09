@@ -41,6 +41,10 @@ const DEFAULT_STATION = "KDARE"; // a through station: a terminus board is nearl
  * @property {string} scheduled
  * @property {string} operator_eta
  * @property {string} scope
+ * @property {string} kind
+ * @property {string} direction
+ * @property {string} calls_as
+ * @property {string} operator_status
  * @property {Prediction|null} prediction
  * @property {string|null} reason
  * @property {string|null} explanation
@@ -124,6 +128,22 @@ function lateness(min) {
   return `${min.toFixed(1)} min late`;
 }
 
+/**
+ * Why a service has no prediction, in the visitor's terms. The API's own `explanation` is
+ * written for the log; this is written for someone standing on a platform.
+ * @param {Entry} t
+ */
+function noPredictionReason(t) {
+  if (t.reason === "not_yet_departed" || t.operator_status === "No Information") {
+    return `Starts at ${t.origin || "its origin"} at ${hhmm(t.scheduled) || "a later time"}. ` +
+      "Nothing to predict from until it is moving.";
+  }
+  if (t.reason === "no_upstream_report") return "Moving, but it has not reported at a stop yet.";
+  if (t.reason === "already_arrived") return "Already arrived.";
+  if (t.reason === "station_not_on_route") return "Timetable and route disagree for this service.";
+  return t.explanation || "No prediction for this service.";
+}
+
 /** @param {Entry} t */
 function row(t) {
   const times = el("div", { class: "flex items-start justify-end gap-4 sm:gap-6" });
@@ -141,35 +161,48 @@ function row(t) {
     times.append(timeCell("RailCast", "–", "text-ink-3 text-[0.95rem]"));
   }
 
-  const where = t.prediction?.vantage_name || t.prediction?.vantage_location;
-  const seen =
-    t.prediction && t.prediction.current_delay_min != null
-      ? `${lateness(t.prediction.current_delay_min)} at ${where}`
-      : "";
+  // Destination first, because that is what a passenger reads a board by, then what this
+  // station is to the service, then where it came from.
+  const heading = el("div", { class: "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1" }, [
+    el("span", { class: "font-bold tracking-wide", text: t.train }),
+  ]);
+  if (t.kind) {
+    heading.append(
+      el("span", {
+        class:
+          "rounded-sm border px-1.5 py-px text-[0.68rem] uppercase tracking-wider " +
+          (t.kind === "DART" ? "border-clear/40 text-clear" : "border-rule text-ink-3"),
+        text: t.kind === "DART" ? "DART" : "Train",
+      })
+    );
+  }
+  heading.append(
+    el("span", { class: "text-[0.94rem] text-ink", text: `to ${t.destination || "–"}` })
+  );
+  heading.append(
+    el("span", {
+      class: "text-[0.88rem] text-ink-3",
+      text: [t.calls_as, t.origin ? `from ${t.origin}` : ""].filter(Boolean).join(" · "),
+    })
+  );
 
   const detail = el("p", { class: "mt-2 text-xs text-ink-3" });
   if (t.prediction) {
     const [lo, hi] = t.prediction.interval_80pct;
+    const where = t.prediction.vantage_name || t.prediction.vantage_location;
+    const seen =
+      t.prediction.current_delay_min != null ? `${lateness(t.prediction.current_delay_min)} at ${where}` : "";
     detail.append(
-      el("span", {
-        class: "text-clear",
-        text: `RailCast expects ${hhmm(lo)} to ${hhmm(hi)}, four times in five`,
-      }),
+      el("span", { class: "text-clear", text: `Expected between ${hhmm(lo)} and ${hhmm(hi)}` }),
       el("span", { text: seen ? ` · last reported ${seen}` : "" })
     );
   } else {
-    detail.append(el("span", { text: t.explanation || "No prediction for this service." }));
+    detail.append(el("span", { text: noPredictionReason(t) }));
   }
 
   return el("div", { class: "border-b border-rule py-3.5 last:border-b-0" }, [
     el("div", { class: "flex flex-wrap items-start justify-between gap-x-4 gap-y-2" }, [
-      el("div", { class: "min-w-0" }, [
-        el("span", { class: "font-bold tracking-wide", text: t.train }),
-        el("span", {
-          class: "ml-2 text-[0.94rem] text-ink-2",
-          text: [t.origin, t.destination].filter(Boolean).join(" to "),
-        }),
-      ]),
+      heading,
       times,
     ]),
     detail,
@@ -195,10 +228,12 @@ async function showBoard(code) {
     status.replaceChildren(
       el("b", { text: b.station_name }),
       el("span", {
-        text: ` · ${b.trains.length} due in the next ${b.board_minutes} minutes` +
-          ` · ${predicted} with a range` +
-          (waiting ? `, ${waiting} not departed yet` : "") +
-          ` · as of ${hhmm(b.generated_at.slice(11))}`,
+        text:
+          `: ${b.trains.length} ${b.trains.length === 1 ? "train calls" : "trains call"} here in ` +
+          `the next ${b.board_minutes} minutes. ${predicted} of them ` +
+          `${predicted === 1 ? "has" : "have"} a RailCast range` +
+          (waiting ? `; ${waiting} have not started their journey yet` : "") +
+          `. Read at ${hhmm(b.generated_at.slice(11))}.`,
       })
     );
 
