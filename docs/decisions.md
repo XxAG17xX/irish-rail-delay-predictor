@@ -3207,3 +3207,60 @@ a footnote that changes to "this service has not reported anywhere yet, so every
 the timetable" when there are no recorded arrivals to explain.
 
 **Date.** 2026-09-10
+
+---
+
+## D71 — What a determined caller could actually cost, and the alarm that shortens it
+
+**Why this matters:** the endpoint is public and unauthenticated by design, so the honest
+question is not "can it be abused" but "how much, and how fast would I know".
+
+**In plain terms.** Someone could point a script at the public URL. This entry works out what
+that would actually cost in money and in politeness, and adds an alarm that says so within
+five minutes instead of the next morning.
+
+**The ceiling, derived rather than guessed.**
+
+| Limit | Value | Where it comes from |
+|---|---|---|
+| Concurrent containers | 10 | account concurrency limit, unchangeable without a support request |
+| Upstream requests per container | 2/s | the Pacer inside each request |
+| **Upstream to Irish Rail, worst case** | **~20/s** | 10 x 2/s |
+| Board request duration | ~3.5s | 7 paced requests |
+| Throughput ceiling | ~2.9/s, ~250k/day | 10 containers / 3.5s |
+
+Cost at that ceiling, past the free tier: Lambda at 1 GB x 3.5s is 3.5 GB-s a request, so
+250k/day is ~875,000 GB-s, about **$15/day**, plus roughly $1.25/day of S3 PUTs. CloudFront
+stays inside its always-free 1 TB. So a full day of an unnoticed, flat-out attack is
+**tens of dollars, not hundreds**, and the $5 monthly budget makes even that visible.
+
+**The token buckets are not what bounds this, and saying otherwise would be wrong.** They
+hold one caller down and they protect against the accidental loop, which is the likely case.
+They are per container, so a caller spread across ten containers gets ten buckets. What
+actually bounds the upstream rate is the Pacer at 2/s inside each container, and what bounds
+the cost is the concurrency limit of 10.
+
+**The 20/s figure is the one that matters**, more than the money. Irish Rail ask for one to
+two requests a second and provide the feed with no support and no way to complain. Ten times
+that, sustained, is the kind of thing that gets an IP blocked, and the loss would be the
+project rather than the bill.
+
+**What was added.** `ApiFloodAlarm`: invocations above 200 in five minutes on the public
+function. Baseline traffic is **28 invocations a day**, so this is three orders of magnitude
+above normal use and still far below the ceiling. Budgets settle roughly daily and are a
+next-morning signal; this is a five-minute one, which is the difference between noticing at
+$1 and noticing at $15. Nine of the ten free alarms are now in use.
+
+**What was considered and not done.**
+
+- **Reserved concurrency on the API** would be the real fix, capping containers directly.
+  AWS refuses a reservation that leaves under 100 unreserved and this account's limit is 10
+  (D37), so it is unavailable. The way to unlock it is counter-intuitive: request a
+  concurrency *increase* to 1,000, then reserve a small number for the API. That is a free
+  support request and is the right move before this is linked anywhere public.
+- **AWS WAF rate rules on the distribution** would cap it properly across containers, at
+  about $6/month. Worth it if the alarm ever fires; not worth it for a site nobody visits.
+- **A shared rate limit across containers** needs shared state, which means DynamoDB, which
+  means a service and a cost for a problem that has not happened.
+
+**Date.** 2026-09-10

@@ -202,6 +202,37 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlarmTopic]
 
+  # The abuse alarm, and the reason it is worth an alarm slot.
+  #
+  # The Function URL is AuthType NONE and nothing outside this account can be stopped from
+  # calling it. The token buckets in src/ratelimit.py hold one caller down, and the Pacer
+  # holds each container to 2 requests a second against Irish Rail, but neither can cap the
+  # number of containers: with no reserved concurrency (D37: AWS refuses a reservation that
+  # leaves under 100 unreserved, and this account's limit is 10) the ceiling is 10 at once.
+  #
+  # The budget alarm catches the cost, but budgets settle roughly daily, so it is a
+  # next-morning signal. This is a five-minute one. Normal traffic is tens of invocations a
+  # DAY; 200 in five minutes is an order of magnitude above any human browsing and far below
+  # what a determined caller would produce, so it fires early and does not cry wolf.
+  ApiFloodAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-api-unusual-traffic
+      AlarmDescription: >-
+        Sustained traffic on the public prediction endpoint, far above human browsing.
+        Check the CloudFront logs, and if it is abuse, disable the Function URL or put a
+        WAF rate rule on the distribution.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions: [{ Name: FunctionName, Value: !Ref ApiFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 200
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
   # Errors, not a liveness check on PredictionsLogged: the function returns early during
   # Irish quiet hours, so a "produced nothing" alarm would fire every night by design.
   # The gap that leaves — a generator that runs, succeeds and logs nothing — is caught a
