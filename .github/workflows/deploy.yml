@@ -58,14 +58,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-api.txt
 
-      # The self-checks each module carries. They need no AWS access and no network, which
-      # is exactly why they are the right thing to run on every push.
+      # api.py imports lightgbm, numpy, fastapi and requests at module scope, so its
+      # self-check cannot run on a bare interpreter. Installing the real serving set here
+      # is not overhead: it also proves the pinned versions still resolve together, which
+      # is the thing that breaks a deploy weeks after anyone touched it.
+      - name: Install the serving dependencies
+        run: pip install -r requirements-api.txt
+
+      # The self-checks each module carries. No AWS access, no network, no model artifact:
+      # they exercise the pure logic, which is what makes them safe to run on every push.
       - name: Self-checks
         run: |
+          python src/ratelimit.py
+          python src/prediction_log.py
           python src/api.py
           python src/generate.py
-          python src/prediction_log.py
 
       - name: Upload the built site
         uses: actions/upload-artifact@v4
@@ -91,15 +101,24 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # One query per output. A single filtered query returns the values in the order the
+      # template declares them, not the order the filter names them, so reading two values
+      # positionally silently swapped the bucket and the distribution id.
       - name: Read the stack outputs
         id: stack
         run: |
-          read -r BUCKET DIST <<< "$(aws cloudformation describe-stacks \
-            --stack-name "$SITE_STACK" --region "$AWS_REGION" \
-            --query "Stacks[0].Outputs[?OutputKey=='SiteBucket'||OutputKey=='DistributionId'].OutputValue" \
-            --output text)"
+          set -euo pipefail
+          output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$SITE_STACK" --region "$AWS_REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+          }
+          BUCKET="$(output SiteBucket)"
+          DIST="$(output DistributionId)"
+          [ -n "$BUCKET" ] && [ -n "$DIST" ] || { echo "stack outputs missing"; exit 1; }
           echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
           echo "distribution=$DIST" >> "$GITHUB_OUTPUT"
+          echo "Publishing to $BUCKET, invalidating $DIST"
 
       # accuracy.json is excluded on purpose: the nightly scorer owns that object, and a
       # deploy that overwrote it would put a stale scoreboard back on the site.
