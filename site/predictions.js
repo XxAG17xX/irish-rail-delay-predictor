@@ -4,7 +4,7 @@
  * scripts/dev_site.py forwards it the same way locally, so there is no environment branch.
  */
 
-import { el, flap, hhmm, need, notice } from "./site.js";
+import { el, flap, hhmm, need, notice, reducedMotion } from "./site.js";
 
 /** Thrown by `get` so the caller can tell a refusal from an outage. */
 class ApiError extends Error {
@@ -45,9 +45,20 @@ const DEFAULT_STATION = "KDARE"; // a through station: a terminus board is nearl
  * @property {string} direction
  * @property {string} calls_as
  * @property {string} operator_status
+ * @property {Stop[]} [journey]
  * @property {Prediction|null} prediction
  * @property {string|null} reason
  * @property {string|null} explanation
+ */
+
+/**
+ * @typedef {object} Stop
+ * @property {string} code
+ * @property {string} name
+ * @property {string} scheduled
+ * @property {string|null} arrived
+ * @property {number|null} delay_min
+ * @property {boolean} here
  */
 
 /**
@@ -200,13 +211,146 @@ function row(t) {
     detail.append(el("span", { text: noPredictionReason(t) }));
   }
 
-  return el("div", { class: "border-b border-rule py-3.5 last:border-b-0" }, [
+  const parts = [
     el("div", { class: "flex flex-wrap items-start justify-between gap-x-4 gap-y-2" }, [
       heading,
       times,
     ]),
     detail,
+  ];
+  if (t.journey && t.journey.length) parts.push(...journeyToggle(t));
+
+  return el("div", { class: "border-b border-rule py-3.5 last:border-b-0" }, parts);
+}
+
+/**
+ * A stop's time, and how far off the timetable it was if it has already happened.
+ * @param {Stop} s
+ */
+function stopTime(s) {
+  const cell = el("span", { class: "when" });
+  if (s.arrived) {
+    cell.append(el("span", { text: s.arrived }));
+    if (s.delay_min != null && Math.abs(s.delay_min) >= 0.5) {
+      cell.append(
+        el("span", {
+          class: "ml-2 " + (s.delay_min > 0 ? "late" : "early"),
+          text: (s.delay_min > 0 ? "+" : "") + s.delay_min.toFixed(1),
+        })
+      );
+    }
+  } else {
+    cell.append(el("span", { class: "text-ink-3", text: s.scheduled || "–" }));
+  }
+  return cell;
+}
+
+/**
+ * The disclosure and the route it opens. Built as a button plus a labelled region rather
+ * than a clickable div so it works from the keyboard and announces its state.
+ * @param {Entry} t
+ */
+function journeyToggle(t) {
+  const stops = t.journey ?? [];
+  const id = `journey-${t.train}`;
+  const done = stops.filter((s) => s.arrived).length;
+
+  const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  chevron.setAttribute("viewBox", "0 0 12 12");
+  chevron.setAttribute("aria-hidden", "true");
+  const arrow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  arrow.setAttribute("d", "M4 2l4 4-4 4");
+  arrow.setAttribute("fill", "none");
+  arrow.setAttribute("stroke", "currentColor");
+  arrow.setAttribute("stroke-width", "1.8");
+  arrow.setAttribute("stroke-linecap", "round");
+  arrow.setAttribute("stroke-linejoin", "round");
+  chevron.append(arrow);
+
+  const label = el("span", { text: `Full route, ${stops.length} stops` });
+  const button = el("button", {
+    class: "jrny-toggle",
+    type: "button",
+    "aria-expanded": "false",
+    "aria-controls": id,
+  });
+  button.append(chevron, label);
+
+  const list = el("ol", { class: "jrny" });
+  stops.forEach((s, i) => {
+    const item = el("li", {
+      class: [s.arrived ? "done" : "", s.here ? "here" : ""].filter(Boolean).join(" "),
+    });
+    item.style.setProperty("--i", String(i));
+    item.append(
+      el("span", { text: s.name + (s.here ? " · you are here" : "") }),
+      stopTime(s)
+    );
+    list.append(item);
+  });
+  // The green overlay stops at the last station that has actually reported.
+  list.style.setProperty(
+    "--travelled",
+    stops.length > 1 ? `${(Math.max(0, done - 1) / (stops.length - 1)) * 100}%` : "0%"
+  );
+
+  const inner = el("div", {}, [
+    list,
+    el("p", {
+      class: "text-xs text-ink-3",
+      text:
+        "Times already recorded are shown with how far off the timetable they were, in " +
+        "minutes. Later stops show the timetable.",
+    }),
   ]);
+  const wrap = el("div", {
+    class: "jrny-wrap",
+    id,
+    role: "region",
+    "aria-label": `Route of ${t.train}`,
+    "data-open": "false",
+  });
+  wrap.append(inner);
+
+  button.addEventListener("click", () => {
+    const open = wrap.dataset.open === "true";
+    wrap.dataset.open = String(!open);
+    button.setAttribute("aria-expanded", String(!open));
+    label.textContent = open ? `Full route, ${stops.length} stops` : "Hide route";
+    slide(wrap, !open);
+  });
+
+  return [button, wrap];
+}
+
+/**
+ * Open or close a panel, setting the final state first and animating over the top.
+ *
+ * The obvious version transitions `height` in CSS and waits for `transitionend` to release
+ * it back to `auto`. That leaves the panel stuck at zero whenever the animation does not
+ * run: a throttled background tab, a browser that drops the frame, anything. Here the
+ * element is already in its finished state before the animation starts, so the animation
+ * is decoration and its absence costs nothing.
+ *
+ * @param {HTMLElement} panel
+ * @param {boolean} open
+ */
+function slide(panel, open) {
+  // A half-finished animation from a previous toggle would otherwise keep holding the
+  // height it was mid-way through, which reads as a panel that refuses to open.
+  for (const running of panel.getAnimations()) running.cancel();
+
+  const from = panel.getBoundingClientRect().height;
+  panel.style.height = open ? "auto" : "0px";
+  if (reducedMotion || typeof panel.animate !== "function") return;
+
+  const to = panel.getBoundingClientRect().height;
+  if (Math.abs(to - from) < 1) return;
+
+  panel.animate(
+    [{ height: `${from}px` }, { height: `${to}px` }],
+    { duration: 380, easing: "cubic-bezier(.16, 1, .3, 1)" }
+  );
 }
 
 /** @param {string} code */

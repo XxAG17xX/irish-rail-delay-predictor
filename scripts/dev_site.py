@@ -28,6 +28,13 @@ class Handler(SimpleHTTPRequestHandler):
             return self.proxy()
         return super().do_GET()
 
+    def end_headers(self):
+        # Never cache in development. Twice now a rebuilt app.css was served from the
+        # browser cache while the HTML was fresh, which looks exactly like a CSS bug and
+        # costs an hour to tell apart from one.
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
+
     def proxy(self):
         url = UPSTREAM + self.path[len("/api"):]
         try:

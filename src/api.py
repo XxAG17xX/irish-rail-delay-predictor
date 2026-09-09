@@ -141,6 +141,12 @@ def journey(session, pacer, train_code, when):
             "origin": text(rec, "TrainOrigin"),
             "destination": text(rec, "TrainDestination"),
             "sched_text": text(rec, "ScheduledArrival"),
+            # Additive, for the calling pattern only; no feature or prediction reads these.
+            # An origin has no scheduled arrival and reports 00:00 for it, so the departure
+            # is the only real time it has. LocationType separates places the train stops
+            # from timing points it merely passes (docs/data-dictionary.md).
+            "sched_dep_text": text(rec, "ScheduledDeparture"),
+            "type": text(rec, "LocationType").upper(),
         })
     stops.sort(key=lambda s: s["order"])
     for field, dest in (("sched_raw", "sched"), ("arr_raw", "arr")):
@@ -398,6 +404,36 @@ def board_clock(rec, *fields):
     return ""
 
 
+def calling_pattern(stops, here_codes):
+    """Every stop on the journey, in order, for the page to draw.
+
+    Built from the journey already downloaded for the prediction, so it costs no extra
+    request. `arrived` is the recorded arrival where the operator has one, which is what
+    makes the passed part of the route distinguishable from the part still to come.
+    """
+    if not stops:
+        return []
+    here = {c.upper() for c in here_codes if c}
+    out = []
+    for s in stops:
+        # T is a timing point the train passes without stopping. Listing junctions like
+        # DC427 among the stations makes the route look wrong to anyone who knows it.
+        if s.get("type") == "T" and s["loc"] not in here:
+            continue
+        sched = (s.get("sched_text") or "").strip()
+        if sched in ("", "00:00", "00:00:00"):
+            sched = (s.get("sched_dep_text") or "").strip()
+        out.append({
+            "code": s["loc"],
+            "name": s["name"] or s["loc"],
+            "scheduled": sched[:5],
+            "arrived": hhmmss(int(s["arr"]))[:5] if s.get("arr") is not None else None,
+            "delay_min": round(s["delay"] / 60, 1) if s.get("delay") is not None else None,
+            "here": s["loc"] in here,
+        })
+    return out
+
+
 def alias_map(known):
     """{code: other codes for the same station name}. See the note in state()."""
     same_name = defaultdict(list)
@@ -444,6 +480,10 @@ def board(request: Request,
         except ValueError:
             return 999
 
+    # Computed once and passed down, so the journey fetch and the prediction cannot end up
+    # on opposite sides of midnight within one board.
+    today = datetime.now(DUBLIN).date()
+
     entries, to_log, spent = [], [], 0
     for rec in sorted(recs, key=due):
         scope = board_scope(rec)
@@ -479,14 +519,24 @@ def board(request: Request,
             entry["explanation"] = f"Beyond the first {limit} trains this request predicts for."
         else:
             spent += 1
-            row = predict_row(st, entry["train"], code, extra={"source": "api_board"})
-            # This train may report under one of the station's other codes. Only retried
-            # on that one reason, so a train that genuinely does not call here still costs
-            # a single request.
+            # Fetched here rather than inside predict_row so the same download serves both
+            # the prediction and the calling pattern below. It is one request either way;
+            # previously the journey was parsed, used and discarded.
+            try:
+                stops = journey(st["session"], st["pacer"], entry["train"], today)
+            except Failure:
+                stops = None  # predict_row retries once and reports upstream_unavailable
+
+            row = predict_row(st, entry["train"], code, stops=stops,
+                              extra={"source": "api_board"})
+            # This train may report under one of the station's other codes. Retried only on
+            # that one reason, and now free: the journey is already in hand.
             for alt in st["aliases"].get(code, []):
                 if row.get("reason") != "station_not_on_route":
                     break
-                row = predict_row(st, entry["train"], alt, extra={"source": "api_board"})
+                row = predict_row(st, entry["train"], alt, stops=stops,
+                                  extra={"source": "api_board"})
+            entry["journey"] = calling_pattern(stops, [code, *st["aliases"].get(code, [])])
             to_log.append(row)
             entry["prediction"] = (None if row.get("outcome") != "predicted" else
                                    {k: v for k, v in row.items() if k not in _PRIVATE})

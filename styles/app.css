@@ -254,6 +254,68 @@
     background: var(--color-panel); border: 1px solid var(--color-rule); border-radius: 2px;
   }
 
+  /* ── the journey a row opens ─────────────────────────────────────────────
+     Animated with grid-template-rows 0fr to 1fr, which transitions to the
+     content's real height without measuring anything in JavaScript. */
+
+  /* Closed by default; the open and closed heights are set from script, and the movement
+     between them is a Web Animations API animation played over the top. No CSS transition
+     here on purpose: a transition that never fires would leave the panel stuck shut. */
+  .jrny-wrap { overflow: hidden; height: 0; }
+
+  .jrny-toggle {
+    display: inline-flex; align-items: center; gap: .4rem;
+    margin-top: .55rem; padding: .3rem .55rem .3rem 0;
+    background: none; border: 0; cursor: pointer;
+    font: inherit; font-size: .78rem; color: var(--color-ink-3);
+    transition: color .15s ease;
+  }
+  .jrny-toggle:hover { color: var(--color-ink-2); }
+  .jrny-toggle svg { width: .7rem; height: .7rem; transition: transform .3s var(--ease-out-soft); }
+  .jrny-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+  .jrny-toggle[aria-expanded="true"] { color: var(--color-ink-2); }
+
+  .jrny { position: relative; margin: .6rem 0 .5rem; padding-left: 1.25rem; list-style: none; }
+  /* The rail the whole route sits on, and over it the part already travelled. */
+  .jrny::before {
+    content: ""; position: absolute; left: .29rem; top: .7rem; bottom: .7rem;
+    width: 2px; background: var(--color-rail);
+  }
+  .jrny::after {
+    content: ""; position: absolute; left: .29rem; top: .7rem; width: 2px;
+    height: var(--travelled, 0%); background: var(--color-clear); opacity: .75;
+    transition: height .6s var(--ease-out-soft) .15s;
+  }
+
+  .jrny li {
+    position: relative;
+    display: grid; grid-template-columns: 1fr auto; gap: 0 1rem;
+    align-items: baseline; padding: .28rem 0;
+    font-size: .84rem; color: var(--color-ink-3);
+  }
+  .jrny li::before {
+    content: ""; position: absolute; left: -1.25rem; top: .55rem;
+    width: .52rem; height: .52rem; border-radius: 50%;
+    background: var(--color-panel); border: 2px solid var(--color-rail);
+  }
+  .jrny li.done { color: var(--color-ink-2); }
+  .jrny li.done::before { background: var(--color-clear); border-color: var(--color-clear); }
+  .jrny li.here { color: var(--color-ink); font-weight: 600; }
+  .jrny li.here::before {
+    left: -1.34rem; top: .46rem; width: .72rem; height: .72rem;
+    background: var(--color-void); border-color: var(--color-ink);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 14%, transparent);
+  }
+  .jrny .when { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .jrny .late { color: var(--color-caution); }
+  .jrny .early { color: var(--color-clear); }
+
+  /* Each stop arrives just after the one above it: one sequence, once per opening. */
+  .jrny-wrap[data-open="true"] .jrny li {
+    animation: stopIn .32s var(--ease-out-soft) both;
+    animation-delay: calc(var(--i, 0) * 26ms);
+  }
+  @keyframes stopIn { from { opacity: 0; transform: translateX(-5px); } }
   /* ── footer links ───────────────────────────────────────────────────────── */
 
   .social {
@@ -282,6 +344,8 @@
   }
   .rise { opacity: 1; transform: none; }
   .draw { stroke-dashoffset: 0; }
+  /* The panel still opens; it just opens at once rather than unrolling. */
+  .jrny::after { transition: none; }
 }
 
 /* The diagram keeps its viewBox on a phone, so its type shrinks with it. Bump the drawn
