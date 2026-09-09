@@ -1,0 +1,279 @@
+/* One stylesheet for four pages. No build step, no framework (D41). */
+
+:root {
+  --ink: #161d1a;
+  --ink-soft: #4a5551;
+  --ink-faint: #7b8783;
+  --rule: #dfe4e2;
+  --bg: #fbfaf7;
+  --panel: #ffffff;
+  --accent: #0b5d3b;
+  --accent-soft: #e8f1ec;
+  --warn: #8a4b00;
+  --warn-soft: #fbf1e4;
+  --measure: 34rem;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- frame ---- */
+
+.wrap { max-width: 46rem; margin: 0 auto; padding: 0 1.25rem; }
+.prose { max-width: var(--measure); }
+
+header.site {
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+}
+
+header.site .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1.4rem;
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+}
+
+.brand {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.brand span { color: var(--accent); }
+
+nav.site a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.94rem;
+  margin-left: 1.1rem;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+nav.site a:first-child { margin-left: 0; }
+nav.site a:hover { color: var(--ink); }
+nav.site a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+main { padding: 2.5rem 0 4rem; }
+
+footer.site {
+  border-top: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  padding: 1.5rem 0 3rem;
+}
+
+footer.site a { color: var(--ink-faint); }
+
+/* ---- type ---- */
+
+h1 {
+  font-size: 2.05rem;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  margin: 0 0 0.6rem;
+  font-weight: 660;
+}
+
+h2 {
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+  margin: 2.8rem 0 0.7rem;
+  font-weight: 640;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.8rem 0 0.4rem;
+  font-weight: 640;
+}
+
+p, li { margin: 0 0 0.9rem; }
+li { margin-bottom: 0.45rem; }
+ul, ol { padding-left: 1.2rem; }
+
+a { color: var(--accent); }
+
+.lede {
+  font-size: 1.12rem;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+  margin-bottom: 2rem;
+}
+
+.sub { color: var(--ink-faint); font-size: 0.85rem; }
+
+code, .mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+code { background: var(--accent-soft); padding: 0.08em 0.32em; border-radius: 3px; }
+
+/* ---- blocks ---- */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1.1rem 1.25rem;
+  margin: 1.4rem 0;
+}
+
+.card > :last-child { margin-bottom: 0; }
+.card h3 { margin-top: 0; }
+
+.caveat {
+  background: var(--warn-soft);
+  border-left: 3px solid var(--warn);
+  padding: 0.9rem 1.1rem;
+  margin: 1.4rem 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.caveat > :last-child { margin-bottom: 0; }
+.caveat strong { color: var(--warn); }
+
+/* ---- headline figures ---- */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 1.6rem 0;
+}
+
+.figure { background: var(--panel); padding: 1rem 1.1rem; }
+
+.figure .n {
+  display: block;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+
+.figure .label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin-top: 0.3rem;
+}
+
+.figure .note { display: block; font-size: 0.75rem; color: var(--ink-faint); margin-top: 0.15rem; }
+
+/* ---- tables ---- */
+
+.scroll { overflow-x: auto; margin: 1.2rem 0; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+  background: var(--panel);
+}
+
+th, td {
+  text-align: right;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+th { font-weight: 620; color: var(--ink-soft); font-size: 0.82rem; }
+thead th { border-bottom: 1px solid var(--ink-faint); }
+th:first-child, td:first-child { text-align: left; }
+tbody tr:last-child td { border-bottom: none; }
+
+td.good { color: var(--accent); }
+td.bad { color: var(--warn); }
+tr.flag td:first-child::after {
+  content: " ▲";
+  color: var(--warn);
+  font-size: 0.75em;
+}
+
+/* ---- coverage bar, used on the accuracy page ---- */
+
+.bar {
+  position: relative;
+  height: 0.55rem;
+  min-width: 6rem;
+  background: var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.bar i.low { background: #b06a1a; }
+.bar u {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--ink);
+  opacity: 0.55;
+}
+
+/* ---- inline chart ---- */
+
+.chart { width: 100%; height: auto; display: block; margin: 1rem 0 0.4rem; }
+.chart .grid { stroke: var(--rule); stroke-width: 1; }
+.chart .axis { fill: var(--ink-faint); font-size: 10px; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.chart .line.alt { stroke: var(--ink-faint); stroke-dasharray: 4 3; }
+.chart .dot { fill: var(--accent); }
+.chart .nominal { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 3 3; }
+
+.legend { font-size: 0.82rem; color: var(--ink-soft); }
+.legend b { font-weight: 500; }
+.legend .swatch { display: inline-block; width: 0.8rem; height: 2px; vertical-align: middle; margin-right: 0.35rem; }
+
+/* ---- landing ---- */
+
+.hero { padding: 1rem 0 0; }
+.hero h1 { font-size: 2.6rem; }
+
+.links { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+         border-radius: 6px; overflow: hidden; margin-top: 2rem; }
+.links a {
+  display: block;
+  background: var(--panel);
+  padding: 1rem 1.2rem;
+  text-decoration: none;
+  color: var(--ink);
+}
+.links a:hover { background: var(--accent-soft); }
+.links a b { display: block; font-weight: 620; }
+.links a span { display: block; color: var(--ink-soft); font-size: 0.9rem; margin-top: 0.15rem; }
+
+/* ---- states ---- */
+
+.loading, .error { color: var(--ink-faint); font-size: 0.92rem; }
+.error { color: var(--warn); }
+
+@media (max-width: 34rem) {
+  body { font-size: 16px; }
+  h1 { font-size: 1.7rem; }
+  .hero h1 { font-size: 2rem; }
+}

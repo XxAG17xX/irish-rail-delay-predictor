@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works — RailCast</title>
+<meta name="description" content="Where the data comes from, how the model is trained and measured, and what it cannot do.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html">Rail<span>Cast</span></a>
+    <nav class="site">
+      <a href="predictions.html">Predictions</a>
+      <a href="accuracy.html">Accuracy</a>
+      <a href="how-it-works.html" aria-current="page">How it works</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <h1>How it works</h1>
+  <p class="lede">A live delay predictor for Irish Rail that answers with a range instead
+  of a single time. This page is the full account: where the numbers come from, how the
+  model is trained and measured, and — at the end — the parts that do not work.</p>
+
+  <div class="prose">
+
+    <h2>The question it answers</h2>
+
+    <p>For a train that is <strong>currently running</strong> and has already reported at
+    a stop behind you, how late will it be when it reaches your station? The answer is a
+    range: <em>most likely 17:09, probably between 17:07 and 17:14</em>.</p>
+
+    <p>The range is the useful part. If you have a four-minute connection at the other
+    end, a one-minute-wide range says you are fine and an eight-minute-wide range says you
+    might not be. A single number cannot tell you that, and Irish Rail's own boards give
+    you a single number.</p>
+
+    <p>The technical name is a <strong>prediction interval</strong>: a low and a high
+    bound, chosen so the true answer falls between them a stated fraction of the time. The
+    claim here is 80% — four times in five. That is a claim you can check, and
+    <a href="accuracy.html">the accuracy page</a> checks it every night.</p>
+
+    <div class="card">
+      <h3>What it deliberately refuses to answer</h3>
+      <p>It does not forecast future-dated services. Every input describes a journey in
+      progress — how late the train is now, how far it has to go — so a train that has not
+      departed leaves no trace to reason from. Ask about tomorrow's 08:15 and the honest
+      answer is that this system has nothing to say, so it declines rather than guessing.</p>
+      <p class="sub" style="margin-bottom:0">A visitor expecting next-week forecasts will
+      think it is broken. It isn't; it is scoped.</p>
+    </div>
+
+    <h2>Where the data comes from</h2>
+
+    <p>Irish Rail publish a realtime feed. No sign-up, no key, no support, provided as-is.
+    Four of its endpoints are in use:</p>
+
+    <ul>
+      <li><strong>One train's full journey on one date</strong> — every stop, the
+      scheduled time, and the actual arrival if it was recorded. This is the whole
+      project: it is the record of what really happened, and it is what the model learns
+      from.</li>
+      <li><strong>A station's board</strong> — what is due in the next ninety minutes,
+      including Irish Rail's own expected arrival time. That field is the baseline being
+      competed against, and it is captured live because it cannot be recovered later.</li>
+      <li><strong>Which trains are running right now</strong> — how the system knows what
+      it can be asked about.</li>
+      <li><strong>The station list</strong> — fetched once, cached.</li>
+    </ul>
+
+    <p>An early thing worth verifying: does the feed serve real history, or does it replay
+    the timetable for old dates? Asking for the same train on the same date in 2020, 2024,
+    2025 and 2026 returns times that all differ, and the 2020 version has three fewer stops
+    and a different scheduled arrival at Cork — the 2020 timetable on 2020 infrastructure.
+    It is genuine history, back to at least 2007. That single check is what makes a missed
+    collection run recoverable rather than lost.</p>
+
+    <p>The training archive is 28,706 gzipped responses covering 1,087 train codes across
+    34 dates, about half a million stop-level records. It was collected once, at two
+    requests per second, backing off when the server complained, overnight.</p>
+
+    <h3>Two rules set at the start</h3>
+
+    <p><strong>Keep the raw responses.</strong> Every reply is archived exactly as received
+    before anything is done with it. When the interpretation of a field changed later, the
+    archive could be reprocessed instead of re-downloaded. Parse-and-discard makes every
+    mistake in the parsing permanent.</p>
+
+    <p><strong>Assume everything will be interrupted.</strong> Files are written
+    atomically, so a killed process cannot leave a half-written one behind. Reruns skip
+    what already exists. A failed request goes to a retry log rather than stopping the run.
+    None of it is clever; it is what stops one dropped connection on hour three from
+    costing you hour four.</p>
+
+    <h2>The problem that turned out to be the project</h2>
+
+    <p>To learn how late trains are, you need to know how late trains <em>were</em> — the
+    true arrival at each stop. That is the <strong>label</strong>: the right answer the
+    model is trained against. The feed has a field for it. But on parts of the network the
+    operator does not observe arrivals, and the field comes back holding
+    <strong>the timetable</strong>, presented as an observation. It looks completely
+    normal. Nothing marks it. Train on it and the model learns that those lines are
+    perfectly punctual.</p>
+
+    <p>Call it an <strong>echo</strong>: the schedule reflected back dressed as a
+    measurement. You can look for it, because a real arrival almost never lands on exactly
+    the scheduled second. Across the whole archive, 2.92% of arrivals are identical to the
+    scheduled time.</p>
+
+    <p>Irish Rail document this, and list ten lines where the query returns the scheduled
+    time only. So the obvious fix is to distrust those lines. Tested, it looked like clean
+    confirmation: the flagged lines matched exactly 21% of the time against under 3%
+    everywhere else. An eightfold difference.</p>
+
+    <p><strong>It was the wrong conclusion.</strong> Every arrival record also carries a
+    flag saying whether the time was captured automatically by the signalling equipment.
+    Split by <em>that</em> instead, and the comparison reverses: among machine-captured
+    records the flagged lines echo <em>less</em> than the rest of the network. What made
+    them look bad is that far more of their records were non-automatic — 47% against 1.5%
+    elsewhere — and the non-automatic ones are where echoes live. The lines were not worse.
+    Their data was captured differently.</p>
+
+    <p>A comparison that reverses when you split it is <strong>Simpson's paradox</strong>.
+    Three quarters of the suspect records sit on lines the documentation never mentions, so
+    a line filter would have discarded good data and kept bad. The rule became: use the
+    per-record capture flag, not the published line list.</p>
+
+    <p>And one more thing, which stops this being a delete button: an exact match is
+    <em>suspicious</em>, not proof. About 2.4% of the most trustworthy records genuinely do
+    land on the scheduled second — partly because every time in the feed is rounded to six
+    seconds, so there are only ten possible second-values in a minute and coincidences are
+    commoner than they look. Nothing is deleted at ingestion. The flag is carried through,
+    exclusion is decided at evaluation time, and the numbers are reported both ways.</p>
+
+    <h2>The model</h2>
+
+    <p>One model for the whole network, not one per train. It is
+    <strong>gradient-boosted trees</strong> — a method that builds many small decision
+    trees, each correcting what the ones before it got wrong — trained with
+    <strong>quantile loss</strong>, which is what makes an interval possible. An ordinary
+    model is trained to be wrong by as little as possible in both directions, which gives
+    you a middle. A quantile model is trained with lopsided penalties: to learn the 90th
+    percentile, being too low is penalised nine times as heavily as being too high, so it
+    settles where 90% of outcomes fall below. Train three — the 10th, 50th and 90th — and
+    you have a low bound, a most-likely value, and a high bound.</p>
+
+    <p>They are trained separately and nothing forces them to agree, so occasionally the
+    "10th" comes out above the "90th". That is <strong>quantile crossing</strong>, and the
+    fix is to sort the three values at prediction time; sorting is provably no worse than
+    leaving them crossed.</p>
+
+    <div class="card">
+      <h3>The rule that governs every feature</h3>
+      <p><strong>Features describe the situation, not the identity.</strong> The train
+      code is not an input. A service launched next March would arrive as an unknown
+      category, and a model that learned "A218 runs two minutes down" has nothing to say
+      about it — or about the same service after a renumbering.</p>
+      <p>What it uses instead: delay accumulated upstream today, stops and minutes
+      remaining, time of day, day of week, and a route proxy. All twelve inputs exist for a
+      train that started running yesterday. Get this wrong and the model fails silently on
+      exactly the trains people most want to ask about.</p>
+      <p style="margin-bottom:0">The dominant input is the delay at the previous stop, as
+      expected — lateness is strongly autocorrelated within a journey.</p>
+    </div>
+
+    <h2>How it is measured</h2>
+
+    <p>The headline claim is a <strong>head-to-head against Irish Rail's own expected
+    arrival time</strong>, which is the right baseline because it is what a passenger would
+    otherwise be reading. Beating a naive guess would prove nothing.</p>
+
+    <p>Three rules make the comparison fair, and each exists because ignoring it produces a
+    flattering wrong number:</p>
+
+    <ul>
+      <li><strong>Matched events only.</strong> A number is counted only where both the
+      model and the operator produced a prediction for the same train, at the same station,
+      at the same moment. Comparing all of one against all of the other compares
+      populations, not methods.</li>
+      <li><strong>One result per event, not per poll.</strong> A single arrival is polled
+      about eighteen times as the train approaches. Treating those as eighteen independent
+      results inflates the sample size roughly eighteen-fold and makes noise look
+      significant.</li>
+      <li><strong>Matched precision.</strong> The operator publishes to the minute, the
+      model to the second. Scoring the model at second precision against a minute-rounded
+      baseline hands it an advantage it did not earn, so the model's answer is rounded to
+      match before either is scored.</li>
+    </ul>
+
+    <p>A week of data — 20 to 26 July — has never been opened and stays sealed until the
+    end. Every offline number quoted anywhere in this project is validation, not test. The
+    reason is simple: a test set you have looked at is no longer a test set, and the value
+    of an untouched one only exists if it stays untouched.</p>
+
+    <p>Nothing is scored against a prediction that was reconstructed after the fact. Every
+    prediction is written to storage the moment it is made, with a timestamp and the model
+    version, and the nightly scorer can only read that log — it has no permission to write
+    to it. That is enforced by the credentials the scorer runs with, not by discipline,
+    which is the difference between a claim and a checkable claim.</p>
+
+    <h2>What is actually deployed</h2>
+
+    <p>Everything runs as scheduled functions writing to object storage. There is no
+    database and no server that stays up: the read pattern is "give me one whole day", the
+    write pattern is append-only, and neither needs one.</p>
+
+    <svg class="chart" viewBox="0 0 446 470" role="img"
+         aria-label="Pipeline: the Irish Rail feed is read by a five-minute poller and by
+                     the prediction API; a generator asks the API questions; a nightly
+                     scorer joins logged predictions to real arrivals and publishes the
+                     rollup these pages read.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
+                markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#7b8783"/>
+        </marker>
+      </defs>
+      <g font-family="-apple-system, Segoe UI, Roboto, sans-serif">
+        <g stroke="#dfe4e2" fill="#ffffff">
+          <rect x="60" y="8"   width="326" height="54" rx="5"/>
+          <rect x="60" y="88"  width="326" height="54" rx="5"/>
+          <rect x="60" y="168" width="326" height="54" rx="5"/>
+          <rect x="60" y="248" width="326" height="54" rx="5"/>
+          <rect x="60" y="328" width="326" height="54" rx="5"/>
+          <rect x="60" y="408" width="326" height="54" rx="5"/>
+        </g>
+        <g fill="#161d1a" font-size="15" text-anchor="middle">
+          <text x="223" y="31">Irish Rail realtime feed</text>
+          <text x="223" y="111">Poller — every 5 minutes</text>
+          <text x="223" y="191">Generator — every 5 minutes</text>
+          <text x="223" y="271">Prediction API — /predict</text>
+          <text x="223" y="351">Scorer — nightly, 06:15 UTC</text>
+          <text x="223" y="431">accuracy.json</text>
+        </g>
+        <g fill="#7b8783" font-size="11.5" text-anchor="middle">
+          <text x="223" y="50">the only external input</text>
+          <text x="223" y="130">archives 30 station boards + the operator's ETA</text>
+          <text x="223" y="210">picks trains in service, one per lead band</text>
+          <text x="223" y="290">logs every answer with its model version</text>
+          <text x="223" y="370">refetches real arrivals, joins them to the log</text>
+          <text x="223" y="450">the rollup these pages read</text>
+        </g>
+        <g stroke="#7b8783" marker-end="url(#ah)">
+          <line x1="223" y1="62"  x2="223" y2="86"/>
+          <line x1="223" y1="142" x2="223" y2="166"/>
+          <line x1="223" y1="222" x2="223" y2="246"/>
+          <line x1="223" y1="302" x2="223" y2="326"/>
+          <line x1="223" y1="382" x2="223" y2="406"/>
+        </g>
+        <g stroke="#7b8783" fill="none" marker-end="url(#ah)">
+          <path d="M60,35 L26,35 L26,355 L58,355"/>
+        </g>
+        <text x="14" y="195" fill="#7b8783" font-size="11.5"
+              transform="rotate(-90 14 195)" text-anchor="middle">the scorer re-reads the feed for the true answer</text>
+      </g>
+    </svg>
+
+    <p>The <strong>generator</strong> deserves a note, because it is unusual and it is
+    honest to say so. Nobody visits this site, so there is no user traffic to score. Rather
+    than publish an accuracy page built on a handful of my own test queries, a scheduled
+    function asks the live API a spread of questions every five minutes — one per lead band,
+    sampled without favouring any route — and those logged answers are what the scorer
+    grades. The predictions on the accuracy page are therefore
+    <strong>scheduled samples, not user traffic</strong>. They are real predictions made
+    before the outcome existed; they are just not anyone's.</p>
+
+    <p>The whole thing costs about ten cents a month, almost all of it storage requests.</p>
+
+    <h2>What it cannot do</h2>
+
+    <div class="caveat">
+      <p><strong>The intervals do not cover disruptions.</strong> On real delays over an
+      hour, coverage is <strong>0%</strong> — and it was 0% for the previous model too.
+      When three Sligo-line trains each lost seventy-five to ninety minutes in a single
+      stretch, the service had been asked sixteen times across those journeys, and at every
+      one of those moments the train was two to seven minutes late. Nothing in "how late is
+      it now, how far to go, what time is it" can see that coming.</p>
+      <p style="margin-bottom:0">This is a limit of the approach, not a bug to be tuned
+      out. A wider interval would mean lying about ordinary days to hedge against rare
+      ones. The ranges are calibrated for ordinary lateness.</p>
+    </div>
+
+    <ul>
+      <li><strong>No upstream report, no prediction.</strong> Every feature is derived from
+      where the train has already been. The system declines rather than guessing, and the
+      decline rate is published beside the accuracy rather than left out of it.</li>
+      <li><strong>Coverage is honest about two different denominators.</strong> Given a
+      train actually in service, the service answers about 93% of the time. Standing in
+      front of a station board, the figure a visitor meets is far lower, because roughly
+      four in ten board entries are trains that have not yet departed.</li>
+      <li><strong>Two corridors are currently below the interval's own promise.</strong>
+      See the accuracy page, where it is published per line rather than blended into one
+      number.</li>
+      <li><strong>It is not a route planner</strong>, has no map, no accounts and no
+      notifications. Each of those costs a week and answers nothing this project set out
+      to answer.</li>
+    </ul>
+
+    <h2>The thread through all of it</h2>
+
+    <p>Eleven separate failures in this project shared a shape. None raised an error. Every
+    one produced output that looked exactly like a correct result: arrival times identical
+    to the schedule; 420 successful downloads that were all an internet provider's login
+    page; an alarm with no subscribers; a 22-minute average error sitting next to a
+    48-second median; a harvester reporting "0 new codes" from a folder nothing had written
+    to in a month; a count taken from 400 of 2,088 files and reported as complete; a
+    configuration fix that was inert while the file sat visibly in the repository; arrival
+    times marked machine-verified that belonged to a different train; a model that appeared
+    to cover a quarter of severe delays, every one of them a wrong label matched by a wrong
+    prediction; a rebuild that reported success because the command reporting it was
+    <code>tail</code> and not the program that had crashed; and a nightly job that printed a
+    complete, healthy report and then died four minutes later, leaving a frozen page that
+    looked exactly like a working one.</p>
+
+    <p>Every one was caught the same way: taking a number and asking what it should have
+    been. Four of them I introduced myself, after the system was working, while writing up
+    the others. The lesson is not "be more careful". It is that a system which works and a
+    system you can <em>tell</em> is working are different things, and most of the effort
+    here went into the second.</p>
+
+  </div>
+
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    RailCast — a personal project, not affiliated with Iarnród Éireann. Data from the
+    public Irish Rail realtime feed.
+  </div>
+</footer>
+
+</body>
+</html>

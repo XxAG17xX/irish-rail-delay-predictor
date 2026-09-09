@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RailCast — Irish Rail delays, as a range</title>
+<meta name="description" content="A live delay predictor for Irish Rail that answers with an 80% range instead of a single time, and publishes how often it is right.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html">Rail<span>Cast</span></a>
+    <nav class="site">
+      <a href="predictions.html">Predictions</a>
+      <a href="accuracy.html">Accuracy</a>
+      <a href="how-it-works.html">How it works</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap hero">
+
+  <h1>Irish Rail delays,<br>as a range.</h1>
+
+  <p class="lede">Station boards tell you a train is expected at 17:09. They don't tell you
+  how sure they are. RailCast answers <em>most likely 17:09, probably between 17:07 and
+  17:14</em> — and then publishes how often that range was right.</p>
+
+  <div class="figures" id="headline">
+    <div class="figure">
+      <span class="n">26%</span>
+      <span class="label">closer than the operator's own estimate</span>
+      <span class="note">on matched predictions, scored nightly</span>
+    </div>
+    <div class="figure">
+      <span class="n">80%</span>
+      <span class="label">is what the range claims</span>
+      <span class="note">measured every night against what happened</span>
+    </div>
+    <div class="figure">
+      <span class="n">5 min</span>
+      <span class="label">between updates</span>
+      <span class="note">predictions are logged before the train arrives</span>
+    </div>
+  </div>
+
+  <p class="prose"><strong>The honest limitation, up front:</strong> the ranges are
+  calibrated for ordinary lateness. On a real disruption — a train losing an hour in one
+  stretch — they miss every time, and the accuracy page says so with the number attached.</p>
+
+  <div class="links">
+    <a href="predictions.html">
+      <b>Predictions →</b>
+      <span>Pick a train and a station, get a range.</span>
+    </a>
+    <a href="accuracy.html">
+      <b>Accuracy →</b>
+      <span>The scoreboard, split by line, including where it loses.</span>
+    </a>
+    <a href="how-it-works.html">
+      <b>How it works →</b>
+      <span>Where the data comes from, how it's measured, what it can't do.</span>
+    </a>
+  </div>
+
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    RailCast — a personal project, not affiliated with Iarnród Éireann. Data from the
+    public Irish Rail realtime feed.
+  </div>
+</footer>
+
+<script>
+// The headline numbers are written into the HTML so the page reads correctly with no JS
+// and no network; this replaces them with last night's if the rollup is reachable.
+fetch("accuracy.json", { cache: "no-store" })
+  .then((r) => (r.ok ? r.json() : Promise.reject()))
+  .then((a) => {
+    const h = a.rolling.head_to_head;
+    const f = document.querySelectorAll("#headline .figure");
+    f[0].querySelector(".n").textContent = Math.round(h.improvement_pct) + "%";
+    f[0].querySelector(".note").textContent =
+      "on " + h.matched_events.toLocaleString("en-IE") + " matched predictions, last 7 days";
+    f[1].querySelector(".n").textContent = a.rolling.interval_coverage_pct.toFixed(1) + "%";
+    f[1].querySelector(".label").textContent = "of arrivals landed inside it";
+    f[1].querySelector(".note").textContent =
+      "against the " + a.rolling.interval_coverage_nominal_pct + "% it claims";
+  })
+  .catch(() => {});
+</script>
+</body>
+</html>

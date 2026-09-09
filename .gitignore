@@ -34,3 +34,6 @@ data/live/*
 # exact artifact behind any published figure is recoverable, which the accuracy page's
 # claims depend on. Retraining is not scheduled (see CLAUDE.md), so this grows rarely.
 !data/models/
+
+# Pulled from S3 for local preview; the scorer publishes the real one to the site bucket
+site/accuracy.json
