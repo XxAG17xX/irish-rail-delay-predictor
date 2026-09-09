@@ -42,3 +42,6 @@ site/accuracy.json
 # 14 MB of third-party instruction files; the lockfile is what belongs in git.
 .agents/
 .claude/skills/
+
+# npm
+node_modules/
