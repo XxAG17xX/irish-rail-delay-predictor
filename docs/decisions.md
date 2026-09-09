@@ -2918,3 +2918,83 @@ length and should not grow much. If it does, the fix is a second invocation over
 dates, not a faster request rate.
 
 **Date.** 2026-09-09
+
+---
+
+## D66 — The site gets a visual world, a build step, and a deployment pipeline
+
+**Why this matters:** the site now looks like something rather than like a template, and
+publishing it is one `git push` instead of a sequence of commands remembered correctly at
+the end of a long day.
+
+**In plain terms.** Three things changed together. The pages were redesigned around the way a
+railway actually communicates, using signals and track rather than cards and badges. Tailwind
+was added, which means the CSS is now compiled from a source file rather than written by hand.
+And pushing to the main branch now checks the code and publishes the site by itself, with no
+AWS password stored anywhere.
+
+**The design direction, and why the first three were thrown away.** The first attempt produced
+three directions that turned out to be the three looks `anthropics/skills/frontend-design`
+names as the clusters AI reliably lands in: warm cream with a serif display and a terracotta
+accent; near black with one neon accent; broadsheet hairlines with mono labels. Landing on all
+three is the self-check failing, so they were replaced by deriving from the subject rather than
+from web design: seven candidates from railway graphic tradition, of which five were built on
+real numbers.
+
+The chosen world is the **signalling panel**. It is the only one where the visual language and
+the product's idea are the same thing: an 80% prediction interval *is* a section of track the
+train could be occupying, and lamp colour is how a railway already communicates confidence.
+Green means meeting the promise, amber means below it, red means outside it entirely, and
+saturated colour is used for nothing else on the site.
+
+**Amends D41, which said no build step and no npm.** That rule existed to keep the deploy
+simple and the stack explicable, and both still hold, but the rule as written is now wrong and
+this entry replaces it:
+
+- **Tailwind v4 is compiled ahead of time.** `npm run css` produces `site/app.css`, which is
+  committed. The deployed site is still eight static files and the deploy is still a file copy.
+  The play CDN was rejected: it ships the whole compiler to the browser and is explicitly not
+  for production, so using it would be a worse signal than plain CSS.
+- **TypeScript runs in `checkJs` mode.** Types live in JSDoc comments, `tsc --noEmit` is a
+  check rather than a compiler, and the browser receives the same plain JavaScript. This is the
+  cheapest honest way to have type safety on a static site, and it caught two real bugs on
+  first run.
+- **No framework.** React on a four page static site would be padding an interviewer can
+  smell, and D41's actual reasoning survives that part intact.
+
+**Why the tooling was added at all, stated plainly because it is a personal reason rather than
+a technical one.** The CV needs technologies on it. The honest way to satisfy that is to add
+tooling that is genuinely useful here rather than tooling that is merely fashionable, so what
+was added is a build step that solves a real problem, a type checker that catches a real class
+of bug, and a deployment pipeline that closes a gap CLAUDE.md has recorded as open since the
+templates were first written.
+
+**The pipeline.** `.github/workflows/deploy.yml`: on push to main, install, compile the
+stylesheet, **fail if the committed CSS differs from what the source compiles to**, type
+check, run the module self-checks, then sync to S3 and invalidate CloudFront. Lighthouse runs
+afterwards against the deployed pages and is a warning rather than a gate, because a cold
+CloudFront edge can cost twenty performance points on a first request and a check that fails
+for reasons nobody controls is a check everyone learns to ignore.
+
+Credentials come from **GitHub OIDC** (`infra/github-oidc.yaml`), not from a stored key. The
+trust condition names the repository *and* the branch: without the branch, anyone who opens a
+pull request from a fork could deploy to production. The role may write to the site bucket,
+read the site stack's outputs, and create an invalidation. It cannot modify the distribution
+and cannot see the data bucket.
+
+**The one thing the pipeline deliberately does not touch.** `accuracy.json` is excluded from
+the sync. The nightly scorer owns that object, and a deploy that overwrote it would put a
+stale scoreboard back on the site with nothing raising.
+
+**What was checked rather than assumed.** Type check passes clean on all four page scripts.
+The stylesheet compiles to 24 KB. No page overflows horizontally at 375px. Every table wider
+than the viewport scrolls inside its own container rather than the body. The hero diagram's
+labels were unreadable at 3px on a phone until the drawn type was raised and the intermediate
+stations hidden below 640px, which was found by measuring rather than by looking.
+
+**Still open.** The site stack has not been deployed. `docs/aws-web-layer.md` explains the
+bucket policy from first principles, which was written because the four security checks meant
+nothing to a reader who has not done this before, and a rule nobody understands is a rule that
+gets deleted the first time it is inconvenient.
+
+**Date.** 2026-09-09

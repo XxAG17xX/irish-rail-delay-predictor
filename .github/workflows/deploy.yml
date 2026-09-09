@@ -1,0 +1,134 @@
+name: Build and deploy the site
+
+# Push to main and the site is checked, built and published. No AWS key exists anywhere in
+# this repository or in GitHub's secrets: the job asks GitHub for a short lived token that
+# says which repo and branch it is, and AWS trades that for temporary credentials scoped to
+# the site bucket alone. See infra/github-oidc.yaml for the trust condition that enforces it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "styles/**"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write # required to mint the OIDC token; without it the AWS step cannot assume
+
+env:
+  AWS_REGION: eu-west-1
+  SITE_STACK: rail-delay-site
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compile the stylesheet
+        run: npm run css
+
+      # The committed CSS must match what the source compiles to, or the deployed site and
+      # the repository disagree about what it looks like and nobody notices until a redeploy.
+      - name: The committed stylesheet is up to date
+        run: git diff --exit-code -- site/app.css
+
+      - name: Type check
+        run: npm run typecheck
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # The self-checks each module carries. They need no AWS access and no network, which
+      # is exactly why they are the right thing to run on every push.
+      - name: Self-checks
+        run: |
+          python src/api.py
+          python src/generate.py
+          python src/prediction_log.py
+
+      - name: Upload the built site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+          retention-days: 1
+
+  deploy:
+    name: Deploy
+    needs: check
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
+
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read the stack outputs
+        id: stack
+        run: |
+          read -r BUCKET DIST <<< "$(aws cloudformation describe-stacks \
+            --stack-name "$SITE_STACK" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='SiteBucket'||OutputKey=='DistributionId'].OutputValue" \
+            --output text)"
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          echo "distribution=$DIST" >> "$GITHUB_OUTPUT"
+
+      # accuracy.json is excluded on purpose: the nightly scorer owns that object, and a
+      # deploy that overwrote it would put a stale scoreboard back on the site.
+      - name: Publish
+        run: |
+          aws s3 sync site/ "s3://${{ steps.stack.outputs.bucket }}/" \
+            --delete --exclude "accuracy.json" \
+            --cache-control "public,max-age=300"
+
+      - name: Invalidate the cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.stack.outputs.distribution }}" \
+            --paths "/*"
+
+  audit:
+    name: Lighthouse
+    needs: deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true # a score is evidence, not a gate; a slow CDN edge should not fail a deploy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit the deployed pages
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: |
+            https://${{ vars.SITE_DOMAIN }}/
+            https://${{ vars.SITE_DOMAIN }}/accuracy.html
+            https://${{ vars.SITE_DOMAIN }}/how-it-works.html
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          configPath: ./.lighthouserc.json

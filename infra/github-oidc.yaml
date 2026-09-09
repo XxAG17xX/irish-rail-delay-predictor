@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# github-oidc.yaml — let GitHub Actions deploy the site without any long-lived AWS key.
+#
+#   sam deploy --region eu-west-1 --template-file infra/github-oidc.yaml \
+#     --stack-name rail-delay-ci --capabilities CAPABILITY_NAMED_IAM \
+#     --parameter-overrides GitHubRepo=XxAG17xX/irish-rail-delay-predictor SiteStackName=rail-delay-site
+#
+# How this works, because "OIDC" explains nothing on its own. When a workflow runs, GitHub
+# mints a short-lived, signed token describing exactly which repository, which branch and
+# which workflow is running. AWS is told to trust GitHub's signing key, and to hand out
+# temporary credentials to tokens whose description matches the condition below. Nothing is
+# stored: no access key in the repo, none in GitHub's secrets, nothing to leak or rotate.
+# CLAUDE.md's rule is "no long-lived access keys in the repo"; this is how that rule is kept
+# once deploys stop being manual.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Description: owner/repo, exactly as it appears in the GitHub URL.
+  SiteStackName:
+    Type: String
+    Default: rail-delay-site
+    Description: The stack whose bucket and distribution the workflow may touch.
+  SiteBucketName:
+    Type: String
+    Default: railcast-site-kg
+    Description: The public site bucket. The only bucket this role may write to.
+  Branch:
+    Type: String
+    Default: main
+    Description: >-
+      Only this branch may assume the role. Without the branch in the condition, anyone who
+      can open a pull request from a fork could run a workflow that deploys to production.
+
+Resources:
+
+  # One provider per account. If a previous stack already created it, delete this resource
+  # and point the role's Federated principal at the existing ARN instead: a second provider
+  # for the same URL fails to create.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      # CloudFormation still requires a thumbprint, but since 2023 AWS verifies GitHub's
+      # certificate chain against its own trust store and ignores this value. It is here to
+      # satisfy the schema, not as a pin. Do not treat a rotation of GitHub's certificate as
+      # something that needs a change here: if this were a real pin, the deploy would break
+      # on a day nothing changed.
+      ThumbprintList: ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                # The audience. Without it the role would accept tokens minted for other
+                # services.
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # The repository AND the branch. This single line is what stops any other
+                # repository on GitHub, and any other branch of this one, from deploying.
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/${Branch}
+      Policies:
+        - PolicyName: publish-the-site
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Reading the stack's outputs is how the workflow learns the bucket name and
+              # the distribution id, rather than hard-coding them in the repository.
+              - Sid: ReadStackOutputs
+                Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${SiteStackName}/*
+
+              # The site bucket only. This role cannot see, let alone write to, the bucket
+              # holding predictions, scores and raw captures.
+              - Sid: WriteSiteObjects
+                Effect: Allow
+                Action: [s3:PutObject, s3:DeleteObject, s3:GetObject]
+                Resource: !Sub arn:${AWS::Partition}:s3:::${SiteBucketName}/*
+              - Sid: ListSiteBucket
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${SiteBucketName}
+
+              # Invalidation only. Not UpdateDistribution: a compromised workflow should not
+              # be able to repoint the site at a different origin.
+              - Sid: InvalidateOnly
+                Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt DeployRole.Arn
+    Description: Put this in the workflow as role-to-assume. It is not a secret.
