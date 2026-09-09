@@ -229,7 +229,7 @@ async function showBoard(code) {
       el("b", { text: b.station_name }),
       el("span", {
         text:
-          `: ${b.trains.length} ${b.trains.length === 1 ? "train calls" : "trains call"} here in ` +
+          `: ${b.trains.length} ${b.trains.length === 1 ? "train stops" : "trains stop"} here in ` +
           `the next ${b.board_minutes} minutes. ${predicted} of them ` +
           `${predicted === 1 ? "has" : "have"} a RailCast range` +
           (waiting ? `; ${waiting} have not started their journey yet` : "") +

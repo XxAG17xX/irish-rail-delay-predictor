@@ -380,8 +380,8 @@ BOARD_MINS = 90
 # What this station is to the service. `LocationType` is documented as O origin, S stop,
 # D destination, T timing point, plus an undocumented C (docs/data-dictionary.md), so
 # anything unrecognised falls back to the safe general phrasing.
-CALLS_AS = {"O": "starts here", "S": "calls here", "D": "terminates here",
-            "T": "passes through", "C": "calls here"}
+CALLS_AS = {"O": "starts here", "S": "stops here", "D": "ends here",
+            "T": "passes through", "C": "stops here"}
 
 
 def board_clock(rec, *fields):
