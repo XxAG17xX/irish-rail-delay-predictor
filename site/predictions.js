@@ -179,8 +179,11 @@ function noPredictionReason(t) {
   }
 }
 
-/** @param {Entry} t */
-function row(t) {
+/**
+ * @param {Entry} t
+ * @param {string} stationCode the board's station, so the route can mark where you are
+ */
+function row(t, stationCode) {
   const times = el("div", { class: "flex items-start justify-end gap-4 sm:gap-6" });
 
   times.append(timeCell("Timetable", hhmm(t.scheduled) || "–", "text-ink-3 text-[0.95rem]"));
@@ -242,7 +245,7 @@ function row(t) {
     ]),
     detail,
   ];
-  if (t.journey && t.journey.length) parts.push(...journeyToggle(t));
+  parts.push(...journeyToggle(t, stationCode));
 
   return el("div", { class: "border-b border-rule py-3.5 last:border-b-0" }, parts);
 }
@@ -273,9 +276,11 @@ function stopTime(s) {
  * The disclosure and the route it opens. Built as a button plus a labelled region rather
  * than a clickable div so it works from the keyboard and announces its state.
  * @param {Entry} t
+ * @param {string} stationCode
  */
-function journeyToggle(t) {
-  const stops = t.journey ?? [];
+function journeyToggle(t, stationCode) {
+  let stops = t.journey ?? [];
+  let loaded = stops.length > 0;
   const id = `journey-${t.train}`;
 
   const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -290,38 +295,54 @@ function journeyToggle(t) {
   arrow.setAttribute("stroke-linejoin", "round");
   chevron.append(arrow);
 
-  const label = el("span", { text: `Full route, ${stops.length} stops` });
-  const button = el("button", {
-    class: "jrny-toggle",
-    type: "button",
-    "aria-expanded": "false",
-    "aria-controls": id,
-  });
+  const closedLabel = () => (loaded ? `Full route, ${stops.length} stops` : "Show full route");
+  const label = el("span", { text: closedLabel() });
+  const button = /** @type {HTMLButtonElement} */ (
+    el("button", {
+      class: "jrny-toggle",
+      type: "button",
+      "aria-expanded": "false",
+      "aria-controls": id,
+    })
+  );
   button.append(chevron, label);
 
   const list = el("ol", { class: "jrny" });
-  stops.forEach((s, i) => {
-    const item = el("li", {
-      class: [s.arrived ? "done" : "", s.here ? "here" : ""].filter(Boolean).join(" "),
-    });
-    item.style.setProperty("--i", String(i));
-    item.append(
-      el("span", { class: "pip" }, [el("i")]),
-      el("span", { class: "stop-name", text: s.name + (s.here ? " · you are here" : "") }),
-      stopTime(s)
-    );
-    list.append(item);
-  });
+  const footnote = el("p", { class: "text-xs text-ink-3" });
+  const inner = el("div", {}, [list, footnote]);
 
-  const inner = el("div", {}, [
-    list,
-    el("p", {
-      class: "text-xs text-ink-3",
-      text:
-        "Times already recorded are shown with how far off the timetable they were, in " +
-        "minutes. Later stops show the timetable.",
-    }),
-  ]);
+  function draw() {
+    list.replaceChildren(
+      ...stops.map((s, i) => {
+        const item = el("li", {
+          class: [s.arrived ? "done" : "", s.here ? "here" : ""].filter(Boolean).join(" "),
+        });
+        item.style.setProperty("--i", String(i));
+        item.append(
+          el("span", { class: "pip" }, [el("i")]),
+          el("span", { class: "stop-name", text: s.name + (s.here ? " · you are here" : "") }),
+          stopTime(s)
+        );
+        return item;
+      })
+    );
+    footnote.textContent = stops.some((s) => s.arrived)
+      ? "Times already recorded show how far off the timetable they were, in minutes. Later stops show the timetable."
+      : "This service has not reported anywhere yet, so every time here is the timetable.";
+  }
+
+  /**
+   * Say something in the panel while there is no route in it yet.
+   * @param {string} text
+   * @param {string} [tone]
+   */
+  function placeholder(text, tone = "text-ink-3") {
+    list.replaceChildren();
+    footnote.className = `text-sm ${tone}`;
+    footnote.textContent = text;
+  }
+
+  if (loaded) draw();
   const wrap = el("div", {
     class: "jrny-wrap",
     id,
@@ -331,12 +352,46 @@ function journeyToggle(t) {
   });
   wrap.append(inner);
 
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     const open = wrap.dataset.open === "true";
     wrap.dataset.open = String(!open);
     button.setAttribute("aria-expanded", String(!open));
-    label.textContent = open ? `Full route, ${stops.length} stops` : "Hide route";
-    slide(wrap, !open);
+    label.textContent = open ? closedLabel() : "Hide route";
+
+    if (open || loaded) {
+      slide(wrap, !open);
+      return;
+    }
+
+    // Opening a route that was never downloaded. The panel opens straight away with a
+    // line saying what is happening, then resizes when the route lands: showing nothing
+    // for a second reads as a button that did not work.
+    placeholder("Fetching the route from Irish Rail.");
+    slide(wrap, true);
+    button.disabled = true;
+    try {
+      const data = await get(
+        `/journey?train=${encodeURIComponent(t.train)}&station=${encodeURIComponent(stationCode)}`
+      );
+      stops = data.journey ?? [];
+      loaded = true;
+      if (stops.length) {
+        footnote.className = "text-xs text-ink-3";
+        draw();
+      } else {
+        placeholder("Irish Rail has no route for this service today.");
+      }
+    } catch (err) {
+      const wait = err instanceof ApiError && err.status === 429 ? ` Try again in ${err.retryAfter}s.` : "";
+      placeholder(
+        `Could not load the route: ${err instanceof Error ? err.message : String(err)}.${wait}`,
+        "text-caution"
+      );
+    } finally {
+      button.disabled = false;
+      // Re-measure: the panel was sized around the placeholder, not the route.
+      if (wrap.dataset.open === "true") slide(wrap, true);
+    }
   });
 
   return [button, wrap];
@@ -405,7 +460,7 @@ async function showBoard(code) {
         el("p", { class: "text-ink-3", text: "Nothing due here in the next ninety minutes." })
       );
     } else {
-      const panel = el("div", { class: "panel px-4" }, b.trains.map(row));
+      const panel = el("div", { class: "panel px-4" }, b.trains.map((t) => row(t, b.station)));
       board.append(panel);
     }
     need("explainer").hidden = false;

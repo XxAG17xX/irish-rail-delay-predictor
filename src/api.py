@@ -176,6 +176,11 @@ app = FastAPI(title="rail-delay", version="0.1",
 # the Pacer already holds each of those to 2/s inside the request.
 BOARD_LIMITER = Limiter(rate=1 / 20, burst=3, shared_rate=1.0, shared_burst=20)
 PREDICT_LIMITER = Limiter(rate=1 / 3, burst=10, shared_rate=2.0, shared_burst=40)
+# /journey costs exactly what /predict costs, one movements request, so it is limited the
+# same way. Its own bucket rather than a shared one because reading routes and asking for
+# predictions are different activities and one should not exhaust the other; the shared
+# per-container budget still caps the pair.
+JOURNEY_LIMITER = Limiter(rate=1 / 3, burst=8, shared_rate=2.0, shared_burst=40)
 
 
 def enforce(limiter, request):
@@ -581,6 +586,38 @@ def board(request: Request,
     return {"station": code, "station_name": st["stations"][code],
             "generated_at": polled_at, "model_version": st["manifest"]["version"],
             "board_minutes": BOARD_MINS, "trains": entries}
+
+
+@app.get("/journey")
+def journey_endpoint(request: Request,
+                     train: str = Query(..., description="Train code, e.g. A220"),
+                     station: str = Query("", description="Station to mark as 'you are here'")):
+    """One service's calling pattern, fetched on demand.
+
+    /board returns the route for free with any train it predicted for, because the journey
+    was downloaded to make that prediction. A train that has not started has no prediction,
+    so its route costs a request that most visitors would never look at. This endpoint is
+    that request, made only when somebody actually opens the row: the cost then follows
+    what people click rather than the size of the board.
+
+    Nothing is logged here. It reads a timetable and makes no prediction, so there is no
+    claim to be checked later.
+    """
+    st = state()
+    code = train.strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="a train code is required")
+    enforce(JOURNEY_LIMITER, request)
+
+    try:
+        stops = journey(st["session"], st["pacer"], code, datetime.now(DUBLIN).date())
+    except Failure as f:
+        raise HTTPException(status_code=502,
+                            detail=f"Irish Rail did not answer for {code} ({f.kind})")
+
+    at = station.strip().upper()
+    here = [at, *st["aliases"].get(at, [])] if at else []
+    return {"train": code, "journey": calling_pattern(stops, here)}
 
 
 @app.get("/stations")

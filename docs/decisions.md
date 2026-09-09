@@ -3166,3 +3166,44 @@ arrival to predict". This was not introduced by the route work; it was reachable
 midnight.
 
 **Date.** 2026-09-10
+
+---
+
+## D70 — Routes are fetched when someone opens one, not when a board is drawn
+
+**Why this matters:** every train on the board can now show its full route, and the cost to
+Irish Rail follows what people actually click rather than how many trains happen to be due.
+
+**In plain terms.** Opening a train shows its whole route. For trains the model predicted
+for, that route was already downloaded and cost nothing. For the rest, the route is fetched
+the moment somebody opens it, and never if nobody does.
+
+**The version this replaces, and why it was wrong.** `/board` returned a route only for the
+services it predicted for, because the journey was already in hand. Everything else, which on
+a late evening board is most of it, had no route at all. The obvious fix is to fetch the
+missing ones while building the board, and that is the expensive answer: it doubles what a
+board costs the feed to serve routes almost nobody opens.
+
+**The design is the user's, and it is better than mine.** `GET /journey?train=&station=`
+fetches one calling pattern on demand. A board still returns the free routes eagerly, so the
+common case costs nothing extra, and the rest arrive on click. Cost now scales with curiosity
+rather than with the size of the board.
+
+- Rate limited by its own bucket at the same shape as `/predict`, because it costs the same
+  one movements request. Separate from `/predict` so reading routes cannot exhaust the
+  budget for asking predictions; the shared per-container bucket still caps the pair.
+- **Nothing is logged.** It reads a timetable and makes no prediction, so there is no claim
+  for the scorer to check later, and D39's leakage rules have nothing to say about it.
+- The result is cached in the page: reopening a route makes no second request. Verified by
+  counting network entries across a close and reopen, which stayed at one.
+
+**The panel opens before the data arrives**, with a line saying what is happening, and
+resizes when the route lands. Showing nothing for a second reads as a button that did not
+work, and the delay is real: one paced request plus a possible cold start.
+
+**Verified end to end.** A lazily loaded route: exactly one call to `/api/journey`, 16 stops
+rendered, this station marked, the button disabled while in flight and re-enabled after, and
+a footnote that changes to "this service has not reported anywhere yet, so every time here is
+the timetable" when there are no recorded arrivals to explain.
+
+**Date.** 2026-09-10
