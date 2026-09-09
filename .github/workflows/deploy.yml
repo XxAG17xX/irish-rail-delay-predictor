@@ -88,7 +88,17 @@ jobs:
     name: Deploy
     needs: check
     runs-on: ubuntu-latest
-    environment: production
+    # Deliberately no `environment:` here. Declaring one changes the OIDC token's own
+    # subject claim from
+    #     repo:<owner>/<repo>:ref:refs/heads/main
+    # to
+    #     repo:<owner>/<repo>:environment:production
+    # so the role in infra/github-oidc.yaml stops trusting it and STS refuses with
+    # "Not authorized to perform sts:AssumeRoleWithWebIdentity". Adding an environment
+    # would mean changing that trust condition to match, and restricting the environment
+    # to this branch in the repository settings to get the branch guarantee back. It buys
+    # a deployment history and nothing else here, so it is not worth the second place for
+    # the two to disagree.
     steps:
       - uses: actions/download-artifact@v4
         with:
