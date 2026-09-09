@@ -153,3 +153,19 @@ def journey_consistent(stops):
             return False
         prev = at
     return True
+
+
+def board_scope(row):
+    """Is this station-board entry a train the product can answer about at all?
+
+    The product answers for a train ALREADY IN SERVICE (CLAUDE.md). A station board also
+    lists trains that have not departed, and a visitor cannot tell the difference by
+    looking. `Origintime` against `polled_at` separates them without another request.
+
+    This is what makes the visitor-facing coverage number measurable rather than asserted.
+    On 27 August, 43.1% of 62,575 board rows were trains that had already departed.
+    """
+    o, p = hms(row.get("Origintime")), hms((row.get("polled_at") or "")[11:19])
+    if o is None or p is None:
+        return "unknown"
+    return "departed" if (p - o) % 86400 < 43200 else "not_yet_departed"

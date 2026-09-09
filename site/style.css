@@ -277,3 +277,97 @@ tr.flag td:first-child::after {
   h1 { font-size: 1.7rem; }
   .hero h1 { font-size: 2rem; }
 }
+
+/* ---- predictions board ---- */
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1.6rem 0 0.9rem;
+}
+
+.picker label { font-size: 0.9rem; color: var(--ink-soft); }
+
+.picker select {
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  max-width: 18rem;
+}
+
+.picker button {
+  font: inherit;
+  font-size: 0.92rem;
+  padding: 0.42rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.picker button:hover { background: #0a4e32; }
+
+.train {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.7rem;
+}
+
+.train-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.8rem;
+  margin-bottom: 0.45rem;
+}
+
+.train-head .code {
+  font-weight: 650;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.01em;
+}
+
+.train-head .route { color: var(--ink-soft); font-size: 0.93rem; }
+.train-head .due { margin-left: auto; color: var(--ink-faint); font-size: 0.85rem; }
+
+.train-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+}
+
+.train-times b {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-right: 0.28rem;
+}
+
+.train-times .mine b { color: var(--accent); }
+
+.pred {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  align-items: baseline;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--rule);
+}
+
+.pred .band { font-weight: 600; color: var(--accent); }
+.pred .sub { font-size: 0.85rem; }
+
+.why { margin: 0.35rem 0 0; }
+.why.declined { color: var(--ink-faint); font-style: italic; }

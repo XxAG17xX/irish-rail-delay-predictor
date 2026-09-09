@@ -41,13 +41,14 @@ requires accuracy and coverage published together.
 import json
 import os
 import sys
+from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
 import requests
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -62,10 +63,11 @@ def _staged(packaged: str, checkout: str) -> Path:
 
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
-from feedtime import (MAX_LEAD_SEC, MIN_VANTAGE_DELAY_SEC, delay_seconds,  # noqa: E402
-                      feed_train_date, hms, journey_consistent, lead_band, unwrap)
-from poll_live import (DUBLIN, USER_AGENT, Failure, fetch, in_dublin,  # noqa: E402
-                       load_station_config)
+from feedtime import (MAX_LEAD_SEC, MIN_VANTAGE_DELAY_SEC, board_scope,  # noqa: E402
+                      delay_seconds, feed_train_date, hms, journey_consistent,
+                      lead_band, unwrap)
+from poll_live import (DUBLIN, USER_AGENT, Failure, extract_station_records,  # noqa: E402
+                       fetch, in_dublin, load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
 
 NS = "{http://api.irishrail.ie/realtime/}"
@@ -181,8 +183,16 @@ def state():
                  for s in json.loads(STATIONS.read_text(encoding="utf-8"))}
         polled = load_station_config(CONFIG, known)
 
+        # The same platform is listed under several codes -- Adamstown is ADMTN on the
+        # mainline list and ADAMF on the suburban one -- and BOTH appear in movement
+        # records, because which one a service reports under depends on the service. So
+        # neither is "the" code: a request for one has to be able to fall back to the
+        # others, or half the trains at those stops decline as not on the route.
+        aliases = alias_map(known)
+
         _state.update(boosters=boosters, vocabs=vocabs, manifest=manifest,
-                      session=session, pacer=Pacer(2.0), log=log,
+                      session=session, pacer=Pacer(2.0), log=log, stations=known,
+                      aliases=aliases,
                       polled=polled, groups={s["code"]: s["group"] for s in polled})
     return _state
 
@@ -330,21 +340,193 @@ def predict(train: str = Query(..., description="Train code, e.g. A220"),
     return _respond(predict_row(state(), train, station))
 
 
+BOARD_MINS = 90
+
+
+def board_clock(rec, *fields):
+    """First of `fields` carrying a real time, or "".
+
+    The board writes 00:00, not empty, for whichever half of the arrival/departure pair
+    does not apply -- arrival at an origin, departure at a destination -- so a plain `or`
+    chain returns midnight for every terminus on the board.
+    """
+    for f in fields:
+        v = (rec.get(f) or "").strip()
+        if v and v != "00:00":
+            return v
+    return ""
+
+
+def alias_map(known):
+    """{code: other codes for the same station name}. See the note in state()."""
+    same_name = defaultdict(list)
+    for code, name in known.items():
+        same_name[name].append(code)
+    return {c: [o for o in same_name[n] if o != c] for c, n in known.items()}
+
+
+@app.get("/board")
+def board(station: str = Query(..., description="Station code, e.g. THRLS"),
+          limit: int = Query(6, ge=1, le=10, description="Trains to predict for")):
+    """What is due at one station, each entry with a prediction or a reason there is none.
+
+    Every journey costs one request at 2/second, so `limit` is the real cost control:
+    the board itself is one request and each predictable train is one more. Trains that
+    have not left their origin are listed but never fetched — the product cannot answer
+    for them (board_scope), and spending a request to be told so would halve how many
+    real trains fit inside the 30-second timeout.
+    """
+    st = state()
+    code = station.strip().upper()
+    if code not in st["stations"]:
+        raise HTTPException(status_code=404, detail=f"unknown station code {code!r}")
+
+    try:
+        body = fetch(st["session"], "getStationDataByCodeXML_WithNumMins",
+                     {"StationCode": code, "NumMins": BOARD_MINS},
+                     st["pacer"], "objstationdata")
+    except Failure as f:
+        raise HTTPException(status_code=502,
+                            detail=f"Irish Rail board unavailable ({f.kind})")
+
+    polled_at = in_dublin(datetime.now()).isoformat(timespec="seconds")
+    recs = extract_station_records(body, code, st["groups"].get(code, ""), polled_at, "")
+
+    def due(rec):
+        try:
+            return int(rec.get("Duein", "999"))
+        except ValueError:
+            return 999
+
+    entries, to_log, spent = [], [], 0
+    for rec in sorted(recs, key=due):
+        scope = board_scope(rec)
+        entry = {
+            "train": (rec.get("Traincode") or "").strip().upper(),
+            "origin": rec.get("Origin", ""),
+            "destination": rec.get("Destination", ""),
+            "due_in_min": due(rec) if due(rec) < 999 else None,
+            "scheduled": board_clock(rec, "Scharrival", "Schdepart"),
+            "operator_eta": board_clock(rec, "Exparrival", "Expdepart"),
+            "operator_late_min": rec.get("Late", ""),
+            "scope": scope,
+            "last_location": rec.get("Lastlocation", ""),
+        }
+        if scope != "departed":
+            # Listed, not predicted, and the page says which. Silently dropping these is
+            # what makes a coverage figure look better than the thing a visitor meets.
+            entry["prediction"] = None
+            entry["reason"] = "not_yet_departed"
+            entry["explanation"] = "Has not left its origin yet, so there is nothing to predict from."
+        elif spent >= limit:
+            entry["prediction"] = None
+            entry["reason"] = "not_asked"
+            entry["explanation"] = f"Beyond the first {limit} trains this request predicts for."
+        else:
+            spent += 1
+            row = predict_row(st, entry["train"], code, extra={"source": "api_board"})
+            # This train may report under one of the station's other codes. Only retried
+            # on that one reason, so a train that genuinely does not call here still costs
+            # a single request.
+            for alt in st["aliases"].get(code, []):
+                if row.get("reason") != "station_not_on_route":
+                    break
+                row = predict_row(st, entry["train"], alt, extra={"source": "api_board"})
+            to_log.append(row)
+            entry["prediction"] = (None if row.get("outcome") != "predicted" else
+                                   {k: v for k, v in row.items() if k not in _PRIVATE})
+            if entry["prediction"]:
+                # Added to the response, not to the row: the log keeps codes, which is what
+                # the scorer joins on. A name is presentation.
+                v = entry["prediction"].get("vantage_location")
+                entry["prediction"]["vantage_name"] = st["stations"].get(v, v)
+            entry["reason"] = row.get("reason")
+            entry["explanation"] = row.get("explanation")
+        entries.append(entry)
+
+    _log(to_log)
+    return {"station": code, "station_name": st["stations"][code],
+            "generated_at": polled_at, "model_version": st["manifest"]["version"],
+            "board_minutes": BOARD_MINS, "trains": entries}
+
+
+@app.get("/stations")
+def stations():
+    """One entry per station name, for the picker. Cached in the page, not per request.
+
+    The feed lists the same physical station under several codes -- Hazelhatch is HZLCH,
+    HAZEF and HAZES -- because it appears in the mainline, suburban and DART lists. A
+    picker showing "Hazelhatch" three times is unusable, so each name is offered under one
+    code, preferring one the poller watches, then one the model was actually trained on.
+    The rest are returned as `aliases` rather than hidden.
+    """
+    st = state()
+    polled = {s["code"] for s in st["polled"]}
+    vocab = set(st["vocabs"].get("target_location", {}))
+    by_name = defaultdict(list)
+    for code, name in st["stations"].items():
+        by_name[name].append(code)
+    out = []
+    for name, codes in by_name.items():
+        # Prefer a code the poller watches, since those are the ones with an operator
+        # comparison behind them. Which of the remaining codes is offered does not matter
+        # much: /board falls back through the aliases when a train reports under another.
+        codes.sort(key=lambda c: (c not in polled, c not in vocab, c))
+        out.append({"code": codes[0], "name": name, "polled": codes[0] in polled,
+                    "model_known": codes[0] in vocab, "aliases": codes[1:]})
+    return {"stations": sorted(out, key=lambda s: s["name"])}
+
+
+# Bookkeeping the log needs and a public response should not echo. `source` stays in:
+# it says whether an answer came from a visitor or the scheduled generator, which the
+# accuracy page's "these are samples, not traffic" claim depends on being checkable.
+_PRIVATE = ("train_code", "station_code", "train_date", "outcome")
+
+
+def _log(rows):
+    """A prediction that could not be logged is not served (D39). Raises 503 if it cannot."""
+    st = state()
+    if st["log"] is None or not rows:
+        return
+    try:
+        st["log"].write([dict(r) for r in rows])
+    except LogWriteFailed as e:
+        raise HTTPException(status_code=503, detail=f"prediction not logged: {e}")
+
+
 def _respond(row):
     """Log before returning. A prediction that could not be logged is not served."""
-    st = state()
-    if st["log"] is not None:
-        try:
-            st["log"].write([dict(row)])
-        except LogWriteFailed as e:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=503, detail=f"prediction not logged: {e}")
-    public = {k: v for k, v in row.items()
-              if k not in ("train_code", "station_code", "train_date", "outcome")}
-    return public
+    _log([row])
+    return {k: v for k, v in row.items() if k not in _PRIVATE}
 
 
 handler = None
 if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     from mangum import Mangum
     handler = Mangum(app)
+
+
+def _self_check():
+    """No network, no model: the two board helpers that are easy to get quietly wrong."""
+    assert board_clock({"Exparrival": "00:00", "Expdepart": "17:20"},
+                       "Exparrival", "Expdepart") == "17:20", "00:00 must not win"
+    assert board_clock({"Exparrival": "17:05", "Expdepart": "17:07"},
+                       "Exparrival", "Expdepart") == "17:05", "first real field wins"
+    assert board_clock({"Exparrival": " ", "Expdepart": ""},
+                       "Exparrival", "Expdepart") == "", "nothing real means empty"
+
+    known = {"ADMTN": "Adamstown", "ADAMF": "Adamstown", "ADAMS": "Adamstown",
+             "KDARE": "Kildare"}
+    al = alias_map(known)
+    assert al["ADMTN"] == ["ADAMF", "ADAMS"] or set(al["ADMTN"]) == {"ADAMF", "ADAMS"}
+    assert al["KDARE"] == [], "a station with one code has no aliases"
+    assert "ADMTN" not in al["ADMTN"], "a code is not its own alias"
+    for code, others in al.items():
+        for o in others:
+            assert code in al[o], f"aliasing must be symmetric: {code} <-> {o}"
+
+    print("api.py self-check passed")
+
+
+if __name__ == "__main__":
+    _self_check()

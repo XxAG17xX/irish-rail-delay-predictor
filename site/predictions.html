@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predictions — RailCast</title>
+<meta name="description" content="Pick a station and see the trains due there, each with an 80% arrival range.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html">Rail<span>Cast</span></a>
+    <nav class="site">
+      <a href="predictions.html" aria-current="page">Predictions</a>
+      <a href="accuracy.html">Accuracy</a>
+      <a href="how-it-works.html">How it works</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <h1>Predictions</h1>
+  <p class="lede">Trains due at a station in the next ninety minutes, each with a range
+  rather than a single time. Every answer below is being logged as you read it, and scored
+  against what actually happens tonight.</p>
+
+  <form id="picker" class="picker">
+    <label for="station">Station</label>
+    <select id="station" name="station"></select>
+    <button type="submit" id="go">Show board</button>
+  </form>
+
+  <p class="sub" id="status">Loading stations…</p>
+
+  <div id="board"></div>
+
+  <div class="caveat" id="explainer" hidden>
+    <p><strong>Why some trains have no range.</strong> The model reads how late a train
+    already is at the stops behind you. A train that has not left its origin has reported
+    nowhere, so there is nothing to reason from and it declines rather than guessing —
+    which is most of what you see at a terminus like Heuston, and much less at a
+    through-station like Kildare.</p>
+    <p style="margin-bottom:0">This is the coverage story on
+    <a href="accuracy.html">the accuracy page</a>, in the place a visitor actually meets
+    it.</p>
+  </div>
+
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    RailCast — a personal project, not affiliated with Iarnród Éireann. Data from the
+    public Irish Rail realtime feed.
+  </div>
+</footer>
+
+<script src="predictions.js"></script>
+</body>
+</html>
