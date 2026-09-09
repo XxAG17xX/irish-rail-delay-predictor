@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# site.yaml — the public web layer, and the only deliberately public thing in the project.
+#
+#   sam deploy --region eu-west-1 --template-file infra/site.yaml \
+#     --stack-name rail-delay-site --capabilities CAPABILITY_IAM \
+#     --parameter-overrides SiteBucketName=railcast-site-kg ApiUrl=https://xxxx.lambda-url.eu-west-1.on.aws
+#
+# Two things this template deliberately does NOT do:
+#
+# 1. It does not touch `rail-delay-poller-kg`. That bucket holds every prediction, score
+#    and raw capture, keeps all four public-access blocks on, and gains no policy here.
+#    `accuracy.json` is PUSHED to this bucket by the scorer (scorer.yaml's SiteBucket
+#    parameter, one key, no wildcard) rather than the site reading in.
+# 2. It does not make this bucket public either. The bucket keeps all four public-access
+#    blocks on as well; CloudFront reads it with Origin Access Control, and the bucket
+#    policy names that one distribution and nothing else. There is no `Principal: "*"`
+#    anywhere in this file. A visitor cannot address the bucket at all -- only the
+#    distribution in front of it.
+
+Parameters:
+  SiteBucketName:
+    Type: String
+    Description: >-
+      Globally unique bucket name for the site. NOT the data bucket. Deliberately a
+      separate bucket rather than a public prefix on the existing one: a prefix policy is
+      one typo away from exposing sibling prefixes, and the data bucket has nothing in it
+      that should ever be readable from the internet.
+  ApiUrl:
+    Type: String
+    Description: >-
+      The prediction Lambda's Function URL, e.g. https://xxxx.lambda-url.eu-west-1.on.aws.
+      CloudFront forwards /api/* here so the page never carries the Function URL in its
+      source. This does not make the endpoint private -- it is AuthType NONE and still
+      reachable directly by anyone who knows it -- but it does mean the site does not
+      publish it, and a throttle or WAF now has one place to live.
+
+Resources:
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref SiteBucketName
+      # All four, on a bucket that serves a public website. The distribution reads it with
+      # a signed request; nothing here is public in the S3 sense.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      VersioningConfiguration:
+        Status: Enabled
+
+  # The whole of the public access this project grants, in one statement: read one bucket,
+  # by one distribution, for GetObject only. No ListBucket -- a caller who guesses a key
+  # gets it, a caller who wants an inventory of the bucket does not.
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CloudFrontReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${SiteBucket.Arn}/*
+            Condition:
+              StringEquals:
+                # Without this the statement would let ANY CloudFront distribution in ANY
+                # account read the bucket, because the service principal is shared. The
+                # condition is what makes it "this distribution", and it is the load-
+                # bearing line in the file.
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # The Function URL serves /predict; the page calls /api/predict so that one distribution
+  # covers both. CloudFront cannot rewrite a path in a behaviour, so this six-line function
+  # strips the prefix at the edge. scripts/dev_site.py does the same thing locally, which
+  # is why the page needs no "which environment am I in" branch.
+  StripApiPrefix:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub ${AWS::StackName}-strip-api
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Strip the /api prefix before forwarding to the Lambda Function URL
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var r = event.request;
+          r.uri = r.uri.replace(/^\/api/, '');
+          if (r.uri === '') { r.uri = '/'; }
+          return r;
+        }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: RailCast
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100   # Europe and North America; the audience is one CV reader
+        Origins:
+          - Id: site
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig: {}
+          - Id: api
+            # !Select on the Function URL because CloudFront wants a host, not a URL, and
+            # the parameter is the URL the stack output gives you.
+            DomainName: !Select [2, !Split ["/", !Ref ApiUrl]]
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              HTTPSPort: 443
+        DefaultCacheBehavior:
+          TargetOriginId: site
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          # AWS managed CachingOptimized.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            # CachingDisabled: a board is a live answer, and every prediction must reach
+            # the Lambda to be logged. A cached /board would serve an answer that was
+            # never written down, which breaks the one property the accuracy page rests on.
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            # AllViewerExceptHostHeader. Forwarding the viewer's Host to a Function URL
+            # fails SigV4 host matching, so the managed AllViewer policy cannot be used.
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt StripApiPrefix.FunctionMetadata.FunctionARN
+        CustomErrorResponses:
+          # S3 answers 403 for a key that does not exist when there is no ListBucket, so a
+          # mistyped URL would otherwise show a raw XML AccessDenied.
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+            ErrorCachingMinTTL: 60
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+            ErrorCachingMinTTL: 60
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+Outputs:
+  SiteUrl:
+    Value: !Sub https://${Distribution.DomainName}
+  SiteBucket:
+    Value: !Ref SiteBucket
+    Description: Sync the site here; the scorer writes accuracy.json into it.
+  DistributionId:
+    Value: !Ref Distribution
