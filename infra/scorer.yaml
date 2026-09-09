@@ -131,7 +131,13 @@ Resources:
       Architectures: [arm64]
       # No model, so no numpy or lightgbm import to pay for at cold start. The work is
       # network-bound: one movements request per distinct train, paced at 2/second.
-      MemorySize: 512
+      #
+      # Raised from 512 after Runtime.OutOfMemory on 2026-09-09. The cause was the rollup
+      # holding seven days of whole scored rows (378 MB); that is fixed by projecting to
+      # ROLLUP_FIELDS, which brings it to 63 MB, so 512 would now suffice. 1024 is headroom
+      # plus CPU: Lambda scales CPU with memory, and the JSON parsing is the one part of
+      # this job that is not bound by the 2 req/s pacer.
+      MemorySize: 1024
       # ~700 distinct trains a day at 2 requests/second is ~6 minutes. 15 is the Lambda
       # ceiling; the function stops starting requests below its own floor and leaves the
       # rest for the next run, which the unscored-date scan will pick up.

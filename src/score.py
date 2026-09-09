@@ -544,10 +544,26 @@ def scored_dates(client, bucket, scores_prefix):
                   for p in page.get("CommonPrefixes", []))
 
 
-def read_day_rows(client, bucket, scores_prefix, day):
+# The seven fields the rollup actually reads. A scored row carries about twenty-five, and
+# holding seven days of whole rows at once killed a 512 MB Lambda with Runtime.OutOfMemory
+# on 2026-09-09 -- after the day's scores had already been written, so nothing was lost but
+# accuracy.json went stale and the Errors alarm was the only thing that said so.
+ROLLUP_FIELDS = ("score_state", "model_version", "model_err_rounded_sec",
+                 "operator_err_sec", "interval_hit", "station_group", "lead_band")
+
+
+def read_day_rows(client, bucket, scores_prefix, day, fields=None):
+    """The scored rows for one day. `fields` projects each row down as it is parsed, so the
+    whole row is never retained -- see ROLLUP_FIELDS."""
     key = f"{scores_prefix}/date={day}/rows.jsonl.gz"
     body = gzip.decompress(client.get_object(Bucket=bucket, Key=key)["Body"].read())
-    return [json.loads(l) for l in body.decode("utf-8").splitlines() if l.strip()]
+    out = []
+    for line in body.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        out.append({k: r.get(k) for k in fields} if fields else r)
+    return out
 
 
 def read_day_summary(client, bucket, scores_prefix, day):
@@ -603,7 +619,9 @@ def build_rollup(client, bucket, scores_prefix, window=ROLLUP_WINDOW_DAYS):
     rows = []
     for d in win:
         try:
-            rows += read_day_rows(client, bucket, scores_prefix, d)
+            # Projected to ROLLUP_FIELDS as each line is parsed. One day's full rows are
+            # never held alongside the previous six.
+            rows += read_day_rows(client, bucket, scores_prefix, d, fields=ROLLUP_FIELDS)
         except Exception as e:
             print(f"  ! rollup: no rows for {d}: {e}")
     clean = [r for r in rows if r["score_state"] == "scored"]
@@ -1142,9 +1160,13 @@ def _self_check():
             self.put = {}
             self.days = {
                 "2026-09-01": [
+                    # carries fields the rollup does not read, so the projection has
+                    # something to drop and the assertion below is not vacuous
                     {"score_state": "scored", "model_version": "old", "station_group": "dart",
                      "lead_band": "5-15 min", "model_err_rounded_sec": 60,
-                     "operator_err_sec": 120, "interval_hit": True},
+                     "operator_err_sec": 120, "interval_hit": True,
+                     "prediction_id": "x", "train_code": "E1", "station_code": "DART1",
+                     "scheduled_arrival": "10:00:00", "actual_delay_sec": 60},
                     {"score_state": "scored", "model_version": "old", "station_group": "dart",
                      "lead_band": "5-15 min", "model_err_rounded_sec": -20,
                      "operator_err_sec": 10, "interval_hit": False},
@@ -1182,6 +1204,13 @@ def _self_check():
             self.put[(Bucket, Key)] = Body
 
     stub = RollupStub()
+    # the projection must keep exactly the fields the rollup reads and drop the rest,
+    # because holding whole rows for seven days is what exhausted the Lambda
+    projected = read_day_rows(stub, "b", "scores", "2026-09-01", fields=ROLLUP_FIELDS)
+    assert set(projected[0]) == set(ROLLUP_FIELDS), set(projected[0])
+    full = read_day_rows(stub, "b", "scores", "2026-09-01")
+    assert set(full[0]) > set(ROLLUP_FIELDS), "unprojected read should keep everything"
+
     r = build_rollup(stub, "b", "scores")
     assert r["window_dates"] == ["2026-09-01", "2026-09-02"]
     assert r["model_versions"] == {"old": 3, "new": 1}, r["model_versions"]
