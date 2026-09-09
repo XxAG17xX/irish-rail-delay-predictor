@@ -3063,3 +3063,60 @@ Measured after the fix: 4.8px of headroom above and below the ink, on both sides
 with `Retry-After: 17`, and the header survives CloudFront.
 
 **Date.** 2026-09-09
+
+---
+
+## D68 — The board opens into the route, and the deploy runs itself
+
+**Why this matters:** a visitor could see when a train arrives but not whether it stopped
+anywhere near them, and every deploy needed someone to remember four commands in order.
+
+**In plain terms.** Clicking a train now unfolds its whole route, with the stops it has
+already passed filled in and your own station marked. And pushing to the main branch now
+checks the code and publishes the site by itself, using no stored AWS password.
+
+**The route costs nothing extra.** To make a prediction the API already downloads that
+train's entire journey, every stop with every time, uses two numbers from it and throws the
+rest away. `board()` now fetches that journey once and passes it to `predict_row` rather than
+letting it fetch internally, so the calling pattern is free. The alias retry became free at
+the same time: it used to refetch the journey per attempt.
+
+Two things had to be cleaned before it could be shown:
+
+- **Timing points are not stations.** `LocationType=T` marks a junction the train passes
+  without stopping. Listing DC427 between Pearse and Connolly makes the route look wrong to
+  anyone who knows the line. Filtered out. A journey went from 19 entries to 10 real stops.
+- **An origin has no scheduled arrival** and reports `00:00` for it, so the first stop showed
+  midnight. It falls back to the scheduled departure, which is the only real time it has.
+
+**The animation bug worth keeping.** The panel opens by height. The tidy version transitions
+`grid-template-rows: 0fr -> 1fr` in CSS; the flexible track resolved to zero here and clipped
+the route with nothing in the styles looking wrong. The replacement measured the height in
+script and released it to `auto` on `transitionend`, which was worse: it depended on the
+animation firing. In a throttled tab it never fired and the panel stayed shut.
+
+The version that shipped **sets the final state first and plays the animation over the top**,
+through the Web Animations API. If the animation is dropped, throttled, or refused for
+reduced motion, the panel is already correct and the movement is what is missing rather than
+the content. Any running animation is cancelled before a new toggle, so fast clicking cannot
+leave a stale one pinning the height.
+
+Diagnosed rather than guessed: an inline `height: 864px !important` was computing to `0px`,
+which is impossible under the cascade. `getAnimations()` showed a `CSSTransition` on `height`
+stuck in `running`. The browser pane pauses animations, which is also why the same pane
+reports `prefers-reduced-motion` inconsistently.
+
+**`scripts/dev_site.py` now sends `Cache-Control: no-store`.** Twice a rebuilt `app.css` was
+served from the browser cache while the HTML was fresh, which is indistinguishable from a CSS
+bug and cost real time both times.
+
+**CI is deployed.** `rail-delay-ci` holds an OIDC provider and a role
+(`arn:aws:iam::707865775405:role/rail-delay-ci-github-deploy`) whose trust condition names the
+repository **and** the branch: `repo:XxAG17xX/irish-rail-delay-predictor:ref:refs/heads/main`.
+Without the branch, anyone opening a pull request from a fork could deploy to production. The
+role may write to the site bucket, read that one stack's outputs, and create an invalidation.
+It cannot modify the distribution and cannot see the data bucket. **No access key exists**, in
+the repository or in GitHub's secrets, which is what closes the open item CLAUDE.md has carried
+since the templates were written.
+
+**Date.** 2026-09-10
