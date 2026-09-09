@@ -109,6 +109,57 @@ Resources:
           return r;
         }
 
+  # Headers the browser enforces on our behalf. A static site with no login and no user data
+  # still benefits from every one of these, and their absence is the first thing any security
+  # scanner reports.
+  SecurityHeaders:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub ${AWS::StackName}-security
+        SecurityHeadersConfig:
+          # 2 years, and the site is served over https only anyway. Not preloaded: preload
+          # is a one-way door on an apex domain, and this is a cloudfront.net subdomain.
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 63072000
+            IncludeSubdomains: true
+            Preload: false
+            Override: true
+          # Stops a browser guessing that a .json is really HTML and running it.
+          ContentTypeOptions: { Override: true }
+          # Nothing here should ever be framed; this is the clickjacking control.
+          FrameOptions: { FrameOption: DENY, Override: true }
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          ContentSecurityPolicy:
+            Override: true
+            # script-src is 'self' with no 'unsafe-inline': there is not one inline script
+            # on the site, so the strictest form costs nothing. style-src is equally strict
+            # because the page-local stylesheet was folded into app.css and the two bar
+            # widths are set through the CSSOM rather than as style attributes.
+            # connect-src 'self' covers /api, which is same-origin through this distribution.
+            ContentSecurityPolicy: >-
+              default-src 'none';
+              script-src 'self';
+              style-src 'self' https://fonts.googleapis.com;
+              font-src https://fonts.gstatic.com;
+              img-src 'self' data:;
+              connect-src 'self';
+              base-uri 'none';
+              form-action 'none';
+              frame-ancestors 'none'
+        CustomHeadersConfig:
+          Items:
+            # Not part of SecurityHeadersConfig, so it goes here. Switches off browser
+            # features this site never uses, so a future compromised script cannot either.
+            - Header: Permissions-Policy
+              Value: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+              Override: true
+            - Header: Cross-Origin-Opener-Policy
+              Value: same-origin
+              Override: true
+
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -138,6 +189,7 @@ Resources:
           Compress: true
           # AWS managed CachingOptimized.
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: !Ref SecurityHeaders
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: api
@@ -151,6 +203,7 @@ Resources:
             # AllViewerExceptHostHeader. Forwarding the viewer's Host to a Function URL
             # fails SigV4 host matching, so the managed AllViewer policy cannot be used.
             OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            ResponseHeadersPolicyId: !Ref SecurityHeaders
             FunctionAssociations:
               - EventType: viewer-request
                 FunctionARN: !GetAtt StripApiPrefix.FunctionMetadata.FunctionARN

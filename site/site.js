@@ -21,7 +21,13 @@ export function need(id) {
 }
 
 /**
- * Build an element. Attribute names are passed through except `class`, `text` and `html`.
+ * Build an element. Attribute names are passed through except `class` and `text`.
+ *
+ * There is deliberately no `html` option. Every string this page renders comes from the
+ * API or from accuracy.json, and an innerHTML sink sitting unused is the thing a later
+ * edit reaches for without thinking. textContent cannot execute anything, so the page has
+ * no XSS surface at all rather than one that is currently unreachable.
+ *
  * @param {string} tag
  * @param {Record<string, string>} [attrs]
  * @param {(Node|string)[]} [kids]
@@ -32,7 +38,6 @@ export function el(tag, attrs = {}, kids = []) {
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
     else if (k === "text") node.textContent = v;
-    else if (k === "html") node.innerHTML = v;
     else node.setAttribute(k, v);
   }
   for (const kid of kids) node.append(kid);

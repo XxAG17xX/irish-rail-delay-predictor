@@ -191,10 +191,14 @@ function render(a) {
       const g = /** @type {any} */ (raw);
       const cov = g.interval_coverage_pct;
       const low = cov < 70;
-      const track = el("div", { class: "sec" }, [
-        el("i", { class: low ? "warn" : "", style: `width:${cov}%` }),
-        el("u", { style: `left:${NOMINAL}%` }),
-      ]);
+      // Set through the CSSOM rather than as a style attribute: a style attribute written
+      // from script is subject to the content security policy, and avoiding it here is
+      // what lets style-src stay strict with no 'unsafe-inline'.
+      const fill = el("i", { class: low ? "warn" : "" });
+      fill.style.width = `${cov}%`;
+      const mark = el("u");
+      mark.style.left = `${NOMINAL}%`;
+      const track = el("div", { class: "sec" }, [fill, mark]);
       return el("tr", {}, [
         el("td", { text: GROUP_NAMES[key] ?? key }),
         el("td", { text: int(g.accuracy.n) }),
