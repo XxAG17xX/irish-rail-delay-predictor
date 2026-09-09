@@ -77,12 +77,30 @@ Current phase is **serving**: get the system running in AWS with a public URL.
   warm ~30ms. Predictions log to `s3://rail-delay-poller-kg/predictions/`.
 
 **Also deployed:** generator stack function `rail-delay-api-generator` (D49) — a sampled
-prediction producer, **schedule DISABLED** until after the 30 August cutover — and
-`infra/scorer.yaml` (D50), the nightly scorer, running at 06:15 UTC. Build with
-`scripts\build_scorer.ps1`. Scores land in `s3://rail-delay-poller-kg/scores/date=*/`
-as `summary.json` plus `rows.jsonl.gz`.
+prediction producer, **schedule ENABLED since the 31 August cutover**, firing every five
+minutes — and `infra/scorer.yaml` (D50), the nightly scorer, running at 06:15 UTC. Build
+with `scripts\build_scorer.ps1`. Scores land in `s3://rail-delay-poller-kg/scores/date=*/`
+as `summary.json` plus `rows.jsonl.gz`, and the rolling seven-day rollup as
+`scores/accuracy.json` — the file the accuracy page will read, carrying `generated_at`,
+the model version and per-group coverage. The scorer runs at 1024 MB after an
+out-of-memory failure on 9 September (D65), which is also where the write-ordering
+argument lives: the durable write happens before the derived one, so the crash cost a
+stale page and no data.
 
 **Not built:** the three web pages.
+
+**Built and finished, off the serving path: the optimisation component** (D59–D63).
+`src/buffer_lp.py` formulates timetable buffer allocation as a linear program — decision
+variables, objective and constraints written out and handed to a solver, not a library
+that optimises internally — solved over sampled scenarios (SAA) drawn from the archive,
+with an L1 penalty shrinking toward the timetable's own allocation. Uniform weighting at
+the best lambda: all five trains improve, three of five significant against a bootstrap
+over days. The more interesting finding is that under terminus-only weighting there is
+nothing to gain — the timetable is already tuned for terminal punctuality, so the
+available gain is all at intermediate stops. Formulation and the linearisation argument:
+`docs/optimization-formulation.pdf` and `docs/optimization-revision.pdf`; interview
+questions in section O of `docs/explain-index.md`. This is a CV/interview asset, not part
+of the deployed service, and nothing in serving depends on it.
 
 **Serving model: `20260903T173007Z-5ebf03f`, promoted 2026-09-03 17:52:58 UTC** (D57).
 Trained on journeys that pass `journey_consistent`, evaluated against the incumbent on
@@ -104,11 +122,16 @@ this on the accuracy page beside the coverage figure.
 
 Next actions, in this order:
 
-1. **Build the three pages** (D41: plain HTML, CSS, vanilla JS). This is the only
-   remaining deliverable. The accuracy page needs several days of scored output before it
-   shows anything meaningful, so it is gated on the scorer accumulating days.
-2. Fix `harvest_codes.py --from-snapshots`, which has been silently reading a directory
-   frozen since 28 July. See the open item below.
+1. **Build the pages** (D41: plain HTML, CSS, vanilla JS). The only remaining deliverable.
+   `scores/accuracy.json` exists and has nine days behind it, so the accuracy page is no
+   longer gated on anything. Scope order if time runs short: **how-it-works → accuracy →
+   predictions**, plus a landing page (one screen: what it is, the headline result, the
+   honest limitation in one line, links to the three). See the web-layer scope lock for the
+   binding constraints on the accuracy page and the site bucket.
+2. `/board?station=` on the API, needed for the predictions page. If it looks like more
+   than a day, cut it and ship the train-code version of that page instead.
+3. Hosting: a **separate** public site bucket plus CloudFront, deployed only once there is
+   a finished site to put in it.
 
 **Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
 hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6
@@ -464,6 +487,25 @@ interviewer will ask about. The deadline is real.
 build step, no npm. Reason in decisions.md D41. An earlier version of this file deferred
 React to "v2"; that line was removed in the July merge and the gap went unnoticed until
 2026-08-25, so the choice is stated explicitly here rather than left to inference.
+
+Binding constraints on the web layer, all decided in discussion and none negotiable by
+inference:
+
+- **The site gets its own bucket.** Never a public prefix on `rail-delay-poller-kg`, which
+  holds every prediction, score and raw capture; all four public-access blocks stay on
+  there. `accuracy.json` is **pushed out** to the site bucket by the scorer, not served
+  from where it is written (`SiteBucket` in `infra/scorer.yaml`, one key, no wildcard).
+- **This is the first deliberately public thing in the project, so the bucket policy gets
+  reviewed twice and shown before it deploys.** Do not deploy a site bucket policy without
+  putting it in front of me first.
+- **The accuracy page must show `generated_at` and the model version**, both of which
+  `accuracy.json` carries, so a stale page is visibly stale rather than silently so (D65
+  is what that guards against).
+- **Coverage goes on the page per station group, beside the nominal 80%**, never as a
+  single blended figure (D64). A blended 75.4% is true and conceals two corridors at 65%.
+- **State beside it that the intervals cover 0% of real delays over an hour** (D57), and
+  that the scored predictions are scheduled samples from the generator, not user traffic.
+- A landing page is allowed and is not a fourth feature page: one screen, no data.
 
 ## Conventions
 

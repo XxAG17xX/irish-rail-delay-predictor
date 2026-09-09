@@ -1,0 +1,305 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=black]{hyperref}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+
+\definecolor{accent}{HTML}{1F4E79}
+\definecolor{shade}{HTML}{F2F5F8}
+
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries}{}{0em}{}
+\titlespacing*{\section}{0pt}{1.6em}{0.6em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\color{accent}RailCast --- buffer allocation as a linear program}
+\rhead{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries\color{accent} Buffer allocation as a linear program}\\[0.4em]
+{\large RailCast --- feasibility, formulation, and what the data supports}\\[0.8em]
+{\small 8 September 2026}
+\end{center}
+
+\vspace{0.4em}
+\noindent\fcolorbox{accent!30}{shade}{%
+\begin{minipage}{0.97\textwidth}
+\vspace{0.3em}
+\textbf{Purpose.} Assess whether an existing Irish Rail delay-prediction dataset supports a
+genuine mathematical-programming component: deciding how to distribute a fixed total
+schedule buffer across a train's segments so that expected end-to-end lateness is
+minimised. The requirement is a formulation derived from scratch --- decision variables,
+objective, constraints --- and solved with a real solver, not a library call that happens
+to optimise internally.
+\vspace{0.3em}
+\end{minipage}}
+
+\section{What data we actually have}
+
+Everything needed is already in the archive. \textbf{Nothing new needs collecting.}
+
+Per stop, \code{getTrainMovementsXML} gives:
+
+\begin{center}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Field} & \textbf{Populated} \\
+\midrule
+\code{ScheduledArrival}, \code{ScheduledDeparture} & 95.4\% \\
+\code{Arrival} & 69.1\% \\
+\code{Departure} & 66.4\% \\
+\code{AutoArrival}, \code{AutoDepart} & with every actual \\
+\code{LocationOrder}, \code{LocationType} & $\approx$100\% \\
+\code{TrainOrigin}, \code{TrainDestination} & $\approx$100\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Departure times are the unlock.} They were unused until now --- the delay model only
+ever touched arrivals. Having both arrival and departure lets a journey be decomposed into
+\emph{running time} (departure at stop $i-1$ to arrival at stop $i$) and \emph{dwell time}
+(arrival at stop $i$ to departure at stop $i$), which is exactly the decomposition buffer
+allocation requires.
+
+Measured on the train and validation window, with the journey-consistency filter applied
+(583 of 16{,}776 journeys rejected):
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.2em]
+  \item \textbf{211 segments} with $\ge$30 clean observations.
+  \item \textbf{240 trains} with $\ge$20 days in which \emph{every} segment is observed ---
+        a complete scenario set.
+  \item \textbf{Slack} (scheduled minus 5th-percentile observed running time): median
+        \textbf{90\,s}, upper quartile 150\,s, maximum 642\,s. 146 of 211 segments exceed
+        one minute.
+  \item \textbf{Three segments have negative slack.} \code{CRLOW}$\to$\code{ATHY} is
+        scheduled at 600\,s; the 5th percentile of actual runs is 702\,s. The timetable
+        there is not achievable.
+\end{itemize}
+
+That last point matters: the problem is not purely academic. There is real, measurable,
+unevenly distributed slack.
+
+\subsection*{A caution about estimating the technical minimum}
+
+A first pass used the \emph{minimum} observed running time as the technical minimum and
+produced \code{ETOWN}$\to$\code{MLGAR} scheduled at 1050\,s and apparently run in 156\,s
+--- roughly 580\,km/h. \code{ETOWN} is one of four stations already identified as carrying
+arrival records belonging to other trains. Minimum-of-sample is not robust to that
+contamination; a 5th percentile is. Any use of a raw minimum in this work will reintroduce
+the same error.
+
+\subsection*{What is not available from the four endpoints in use}
+
+\begin{itemize}[leftmargin=1.4em,itemsep=0.15em]
+  \item connections between services, or which passengers transfer where;
+  \item passenger counts or loadings;
+  \item true minimum technical running times (these must be estimated);
+  \item headways, track occupancy, platform capacity;
+  \item rolling stock or crew circulation.
+\end{itemize}
+
+\section{Which formulation the data supports}
+
+\subsection*{Delay management: rejected}
+
+The delay-management problem --- deciding which connections to hold and which to drop to
+minimise total passenger delay --- requires two things the dataset does not hold: a
+definition of which services connect, and passenger weights on each connection.
+
+Connections could be defined heuristically (two trains at one station within $X$ minutes),
+but the passenger weights would be invented, and they sit \emph{inside the objective
+function}. An optimum computed against fabricated weights is not defensible. Rejected on
+those grounds.
+
+\subsection*{Buffer allocation: supported}
+
+The data supports it well, and it is a genuine linear program.
+
+One caveat to state plainly: this is a \textbf{counterfactual timetabling} exercise. Trains
+cannot be run on a re-buffered timetable, so evaluation is necessarily \emph{simulation} ---
+replaying historical primary delays through a propagation recursion under both the existing
+buffer vector and the optimised one. That is a standard and defensible method, but the
+recursion \emph{is} a model, and its assumptions are the honest limitations of the result
+rather than a footnote.
+
+\subsection*{A correction on scenario generation}
+
+It is tempting to describe this as sample average approximation over the project's existing
+quantile predictions. That does not hold. The model predicts \emph{total accumulated arrival
+delay at a stop given a vantage stop}, not per-segment primary delay. Differencing
+consecutive predictions does not recover a coherent joint scenario along a route, because
+the three quantile models were never fitted to be jointly consistent across stops.
+
+The defensible scenario source is \textbf{historical per-segment excess running time}: whole
+days, so that within-day correlation is preserved by construction. That is genuine sample
+average approximation.
+
+\section{The formulation}
+
+\subsection*{In plain terms}
+
+A timetable contains padding --- scheduled running times are longer than the fastest a train
+can actually complete the segment. That padding absorbs delay. It is currently distributed
+however the timetable happens to distribute it. The question is whether, given the
+\emph{same total} padding, there is a better place to put it so that trains arrive less late
+on average.
+
+The decision is how many seconds of padding to give each segment. No padding can be
+invented; it can only be moved. Real days are then replayed through the result and the
+lateness counted.
+
+\subsection*{Index and data}
+
+Stops $i = 0, 1, \dots, n$ along one train's route. Segment $i$ runs from stop $i-1$ to
+stop $i$.
+
+\[
+\begin{aligned}
+m_i &= \text{minimum technical running time on segment } i \\
+r_i &= \text{scheduled running time on segment } i \\
+b_i^0 &= r_i - m_i \\
+B &= \textstyle\sum_{i=1}^{n} b_i^0 \\
+\delta_i^\omega &= \max\!\left(0,\ \rho_i^\omega - m_i\right)
+\end{aligned}
+\]
+
+\noindent where $\rho_i^\omega$ is the observed running time on segment $i$ on day $\omega$.
+$m_i$ is estimated as the 5th percentile of observed running times, for the robustness
+reason given in section 1. $b_i^0$ is the timetable's existing buffer, which is also the
+baseline to beat. $B$ is the budget: the same total buffer is redistributed, never added to,
+so end-to-end journey time is unchanged. $\delta_i^\omega$ is the primary delay --- the
+excess running time actually incurred on that segment that day.
+
+\subsection*{Decision variables}
+
+\[
+b_i \ge 0 \quad (i = 1 \dots n), \qquad\qquad L_i^\omega \ge 0 \quad (i = 1 \dots n,\ \omega \in \Omega)
+\]
+
+$b_i$ is the buffer allocated to segment $i$. $L_i^\omega$ is arrival lateness at stop $i$
+under scenario $\omega$.
+
+\subsection*{Objective}
+
+\[
+\min_{b,\,L}\quad \frac{1}{|\Omega|}\sum_{\omega \in \Omega}\ \sum_{i=1}^{n} w_i\, L_i^\omega
+\]
+
+\subsection*{Constraints}
+
+\[
+\begin{aligned}
+L_i^\omega &\ \ge\ L_{i-1}^\omega + \delta_i^\omega - b_i && \forall i,\ \forall \omega \\
+L_i^\omega &\ \ge\ 0 && \forall i,\ \forall \omega \\
+\textstyle\sum_{i=1}^{n} b_i &\ \le\ B \\
+0 \le b_i &\ \le\ \bar b_i && \forall i \\
+L_0^\omega &\ =\ \ell_0^\omega && \text{(initial delay; } 0 \text{ if the train starts on time)}
+\end{aligned}
+\]
+
+\subsection*{The linearisation, which is the part that matters}
+
+The true dynamics are
+
+\[
+L_i^\omega = \max\!\left(0,\ L_{i-1}^\omega + \delta_i^\omega - b_i\right),
+\]
+
+that is: a train carries its delay forward, buffer eats into it, and it cannot arrive
+``negatively late'' in a way that would let it depart early. That $\max$ is
+piecewise-linear, not linear, and cannot enter a linear program as written.
+
+The standard move is to replace the \emph{equality} with the two \emph{inequalities} above
+and let the objective do the rest. The argument that this is exact:
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=0.25em]
+  \item Each $L_i^\omega$ enters the objective with coefficient $w_i / |\Omega| > 0$, so the
+        solver drives it as small as possible.
+  \item Its only lower bounds are the two constraints. Pushed down, it lands exactly on
+        the value $\max\bigl(0,\ L_{i-1}^\omega + \delta_i^\omega - b_i\bigr)$ that the
+        true recursion specifies.
+  \item $L_i^\omega$ also appears on the right-hand side of the constraint for
+        $L_{i+1}^\omega$, with a \emph{positive} coefficient --- so reducing it
+        \emph{relaxes} the next constraint. Both forces act in the same direction, giving
+        no incentive to inflate it.
+\end{enumerate}
+
+The linear program's optimum therefore reproduces the nonlinear recursion exactly.
+
+\medskip
+\noindent\fcolorbox{accent!30}{shade}{%
+\begin{minipage}{0.97\textwidth}
+\vspace{0.3em}
+\textbf{The failure mode to know.} This holds only while every $w_i \ge 0$. Introduce a
+negative weight anywhere --- for instance to ``reward early arrival'' --- and the relaxation
+breaks: the solver inflates that $L_i^\omega$ to buy an improvement elsewhere, and the
+lateness variables stop representing lateness. Rewarding earliness requires a different
+encoding, not a negative weight.
+\vspace{0.3em}
+\end{minipage}}
+
+\subsection*{Choosing the weights}
+
+$w_i$ is a modelling decision. Setting $w_i = 0$ for all stops but the terminus optimises
+end-to-end punctuality only; $w_i = 1$ everywhere optimises for passengers alighting
+anywhere along the route. Weighting by boardings would be preferable, and boardings are not
+available.
+
+\subsection*{Size and solver}
+
+For a 29-stop DART service with 32 complete days: 28 buffer variables, $28 \times 32 = 896$
+lateness variables, and roughly 1{,}820 constraints. This solves in milliseconds.
+
+\code{scipy.optimize.linprog} with the HiGHS backend is already installed as a transitive
+dependency, so no new package is required. The constraint matrix should be built sparse; its
+structure is very sparse and a dense representation wastes memory for no benefit at larger
+scale.
+
+\section{Baseline and limitations}
+
+\textbf{Baseline.} $b^0$, the timetable's own buffer vector, evaluated with the same
+recursion on \textbf{held-out days}. Buffers are fitted on one set of days and evaluated on
+another. Optimising and evaluating on the same days measures only the ability to fit noise.
+
+\textbf{Limitations, to be published alongside whatever number results:}
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=0.25em]
+  \item \textbf{Primary delays are assumed exogenous} --- that $\delta_i^\omega$ does not
+        change when $b_i$ changes. In practice drivers pace to the timetable, so a segment
+        given more buffer may simply attract a slower run. This is the largest threat to the
+        result and cannot be tested with this data.
+  \item \textbf{Minimum running time is estimated}, not known. The result moves with the
+        choice of percentile; the sensitivity should be reported.
+  \item \textbf{Single train, no network.} A re-buffered service could conflict with another
+        on shared track. There are no headway or platform constraints.
+  \item \textbf{Counterfactual.} The result cannot be validated against real operations, only
+        simulated.
+  \item \textbf{Dwell buffer is ignored} in the base formulation; buffer lives only on
+        running segments.
+\end{enumerate}
+
+\textbf{One assumption that is \emph{not} required:} the program does not assume independence
+between segments. Because each scenario is a whole day, within-day correlation is preserved
+exactly. This is a genuine advantage of sample average approximation over a parametric
+approach.
+
+\vspace{1em}
+\hrule
+\vspace{0.6em}
+\noindent\small\textit{If the optimiser does not beat the existing timetable, that result is
+recorded and kept. A negative result honestly measured is worth more than a claim that has to
+be hedged.}
+
+\end{document}

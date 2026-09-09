@@ -192,11 +192,11 @@ cover disruptions, and no delay-so-far model can.*
 
 ---
 
-## N. The theme — ten failures with one shape
+## N. The theme — eleven failures with one shape
 
 **This is the spine of the how-it-works page, not another section of it.**
 
-Ten separate failures in this project share a shape. None raised an exception. None
+Eleven separate failures in this project share a shape. None raised an exception. None
 appeared in a log as an error. Every one produced output that looked exactly like a
 correct, unremarkable result, and every one was caught the same way: by taking a number
 and asking what it *should* have been.
@@ -255,15 +255,18 @@ is worth doing even when the answer comes back fine; especially then.
 | 8 | Arrival times with `AutoArrival=1`, on stations not on any warning list | The times were real and machine-captured — for a different train. The model absorbed them as 18% of its gain (D56) |
 | 9 | A model covering 27.6% of hour-plus delays | Every covered row was a Galway garbage label swallowed by a garbage-wide interval. On real severe delays: 0%, both models (D57) |
 | 10 | A rebuild that "completed (exit code 0)" | It had crashed on line 58. The exit code was `tail`'s, not Python's. Two model evaluations then ran against stale data (D57) |
+| 11 | A nightly scorer printing a complete, healthy report | It died four minutes later out of memory. The report is printed before the last step, so a green log and a frozen accuracy page look identical (D65) |
 
-- ★★★ What do these ten have in common, and why is that more interesting than any one of them?
+- ★★★ What do these eleven have in common, and why is that more interesting than any one of them?
 - ★★★ Why is a silent wrong answer more dangerous than a crash?
 - ★★★ In each case, what was the number you compared against, and where did the expectation come from?
-- ★★★ Which of the ten would still happen today, and what specifically stops the others?
+- ★★★ Which of the eleven would still happen today, and what specifically stops the others?
 - ★★ Why did none of these produce an error, given that the code has error handling throughout?
-- ★★ Four of the ten were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
+- ★★ Four of the eleven were caught by a *distribution* rather than a single value. Which three, and what does that suggest about what to monitor?
 - ★★ In case 4, what would have happened if only the headline number had been published?
 - ★★ In case 3, the deploy reported success. What is the general lesson about trusting a tool's own report that it worked?
+- ★★ Number 11 printed a full, accurate report and then crashed. What is the difference between a job that reports success and a job that succeeded, and which one is the alarm actually watching?
+- ★★ Number 11 cost nothing but a stale page. What ordering decision made that true, and what would the same crash have cost under the other ordering?
 - ★★ Number 10 reported success truthfully. What was the question that should have been asked instead, and of whom?
 - ★★★ Number 9 looked like a regression caused by the fix for number 8. How do you tell a regression from a fiction being removed?
 - ★★★ Number 8 passed every check the project had. What would a check that catches it look like, and why does it have to be a physical constraint rather than a threshold?
@@ -271,8 +274,8 @@ is worth doing even when the answer comes back fine; especially then.
 - ★★★ In number 7, what was the observation, what was the conclusion, and why did the gap between them survive two people looking at it?
 - ★★★ How do you tell "this fix worked" from "this fix is inert and something else is holding it up"?
 - ★★★ Number 6 was committed while writing up the other five. What does that tell you about how much protection knowing the failure mode gives you?
-- ★★ Five of the ten were introduced by *me*, after the system was working. What does that say about when to be most careful?
-- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the ten were which?
+- ★★ Six of the eleven were introduced by *me*, after the system was working. What does that say about when to be most careful?
+- ★★ What is the difference between a measurement being wrong and the sentence describing it being wrong? Which of the eleven were which?
 - ★★ When you report a number from a sample, what has to travel with it?
 - ★★ For each, what is the cheapest check that would have caught it on day one?
 - ★ Case 1 was "confirmed" by a first analysis before being overturned. What made the first analysis convincing?
@@ -290,6 +293,32 @@ The uncomfortable version of the question, which is the one worth being ready fo
 
 ---
 
+## O. The optimisation component — buffer allocation
+
+Separate from the predictor and answering a different question: not "how late will this
+train be" but "given how late it has been, where should the timetable's slack sit".
+
+- ★★★ What problem does the LP solve, in one sentence, and how is it different from what the model does?
+- ★★★ What are the decision variables, the objective and the constraints? Say it without reading the file. (D59)
+- ★★★ Why is this a linear program and not something you hand to a library that "optimises" internally?
+- ★★★ Why buffer allocation rather than the delay-management formulation you rejected? (D59)
+- ★★ Where do the scenarios come from, and what is sample average approximation?
+- ★★ `max(0, ·)` is not linear. How is it in the model anyway, and why are two inequalities enough? (D60)
+- ★★★ That argument has a condition the naive version misses. What is it, and which weighting breaks it? (D60)
+- ★★ You linearise `|b_i - b0_i|` the same way. Why does the same argument transfer? (D63)
+- ★★ What is the total-buffer constraint doing, and what would the answer be without it?
+- ★★ Why is the minimum running time a sample quantile, and what does that assumption buy and cost?
+- ★★★ The first result was mostly negative. What was wrong, and how did you know it was overfitting rather than "no gain available"? (D62, D63)
+- ★★★ Why is a U-shaped curve in the shrinkage sweep evidence for the overfitting diagnosis rather than a tuning artefact? (D63)
+- ★★ Why does the bootstrap resample *days* rather than rows? (D61)
+- ★★ You report both uniform and terminus-only weighting instead of choosing. Why? (D61)
+- ★★★ Under terminus weighting the baseline lateness is 0.0s on three of five trains. What does that tell you about the timetable, and how does it change the claim you can make? (D63)
+- ★★ `lambda` was chosen on the same held-out days used to report the gain. Why is that a problem, and why did you do it anyway?
+- ★★ How do you know the solver returned what you asked for rather than something that merely looks optimal?
+- ★ Why does `evaluate` subtract the penalty term back off before comparing to the replayed recursion? (D63)
+- ★ Primary delays are assumed exogenous. What breaks if they are not?
+- ★ What would it take to turn this from a counterfactual simulation into a validated result?
+- ★ Why is this in the project at all, given the scope lock?
 ## Gaps to close before the page is written
 
 Things nobody can currently answer, including me:

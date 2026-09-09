@@ -388,14 +388,89 @@ the Cork and Kildare corridors the intervals were calibrated at 79% in July and 
 covering 63–69% now while the average error looks fine. For a model whose product is the
 range, watching only the midpoint would miss exactly this.
 
+On 8 September that coverage rule fired. Rolling over a week, the Cork corridor sat at
+66.7% and the Kildare line at 64.7% — both promising 80%, both below the 70% line every
+day of the week. The rest of the network was fine: the DART at 77.6%, the Dublin hubs at
+79.0%. The two that fired share track. A change confined to shared rails, six weeks after
+training, with everything else steady, reads as something that happened on that stretch of
+railway rather than as a model that has gone bad.
+
+There was a choice there, and it is the most revealing one in the project. The ranges could
+have been widened on those two lines until the number came back to 80%. That would have
+produced a better-looking scoreboard and destroyed the evidence — the whole point of writing
+the rule in advance was to find out whether it would ever fire, and it did, and quietly
+patching it away would answer the question by deleting it. So the number gets published per
+line, next to the 80% it claims, and the reasoning gets written down. If those corridors
+recover on their own, the shift was temporary and the record will say so.
+
+The next morning the nightly scorer ran out of memory. It had finished scoring the day and
+saved the results, then died building the small summary file the website will read — it was
+loading a week of full records to use seven fields of each. Nothing was lost, because the
+saved results go out before the summary is built; the only casualty was that the summary
+stayed one day old, and an alarm said so within a minute. That ordering was chosen
+deliberately and this is the night it earned its keep. The log, for the record, printed a
+complete and healthy report four minutes before the process was killed.
+
 Not built yet: the three web pages. A predictions page, a scoreboard, and the how-it-works
 page this document is the notes for.
+
+## 12. A different question: where should the slack go?
+
+Everything above predicts. There's a second question the same data answers, and it isn't a
+prediction at all: given how late this train has actually been, day after day, is the
+timetable's padding in the right places?
+
+Every timetable carries slack. The time allowed between two stops is more than the train
+needs, so that a small delay gets absorbed instead of passed down the line. How much slack
+sits between which pair of stops is a choice, and the total is fixed — you can't lengthen
+the journey, so giving one stretch more means taking it from another. That is an
+optimisation problem in the strict sense: something to minimise, quantities to choose, and
+constraints they must satisfy.
+
+I wrote it out as a **linear program**. That means the thing being minimised and every
+constraint are straight-line relationships in the quantities being chosen, which is the one
+case where a solver can find the genuinely best answer rather than a good one. The
+quantities are the slack on each stretch. The thing minimised is total passenger lateness
+across thirty real days of recorded delays. The constraints are that the total slack is
+unchanged, that no stretch goes below the fastest the train has actually been observed to
+run it, and that lateness carries forward from each stop to the next the way it really does.
+
+The interesting parts were not the solving. Two of them:
+
+**Lateness is "however late you were, but never negative" — a train that's early waits.**
+That is a bend in the line, and bent things are not linear programs. The standard move is to
+replace it with two straight-line rules — lateness is at least the arrival delay, and
+lateness is at least zero — and let the solver push it down onto the lower of the two. That
+works only because nothing in the problem rewards a *larger* lateness. I wrote the argument
+out to convince myself, and found my own version had a hole: it needs every stop downstream
+to count for something. Under one of the two ways of weighting stops it doesn't hold, and I
+had to state the condition properly rather than wave at it.
+
+**The first answer was worse than the timetable it was improving on.** Given thirty days and
+twenty-seven stretches to tune, it fitted those thirty days beautifully and did worse on new
+ones — the same overfitting a prediction model does, in a place I didn't expect it. The fix
+is to charge it for every second it moves anything: it now has to *earn* each departure from
+the existing schedule. Small charge, and it stops chasing noise. All five trains improve;
+three of five by an amount that survives resampling the days.
+
+And the finding I didn't go looking for. Weight only arrival at the final stop, and there is
+nothing to gain at all — on three of the five trains the timetable already delivers 0.0
+seconds of terminal lateness, essentially always. All of the available improvement is at the
+stops in the middle. Which is not a criticism of the timetable: terminal punctuality is what
+operators are measured on, so it's what the padding has been tuned for. The honest statement
+of the result isn't "the timetable is suboptimal." It's "the timetable optimises the thing
+it's judged on, and a passenger-weighted objective wants the padding somewhere else."
+
+It's a simulation, not a deployed feature — it replays what would have happened under
+different padding, which cannot be verified without actually running the trains. It is in
+the project because formulating a problem and solving it is a different skill from fitting a
+model to data, and the two sit side by side on the same railway.
 
 ---
 
 ## The thread through all of it
 
-Ten separate failures in this project shared a shape. None raised an error. Every one
+Eleven separate failures in this project shared a shape. None raised an error. Every one
 produced output that looked exactly like a correct result: arrival times identical to the
 schedule; 420 successful downloads that were all an internet provider's login page; an
 alarm with no subscribers; a 22-minute average error next to a 48-second median; a
@@ -403,10 +478,12 @@ harvester reporting "0 new codes" from a folder nothing had written to; a count 
 2,088 files reported as complete; a configuration fix that was inert while the file sat
 visibly in the repository; arrival times marked verified that belonged to other trains;
 a model that appeared to cover a quarter of severe delays, every one of them a wrong
-label matched by a wrong prediction; and a rebuild that reported success because the
-command that reported it was `tail`, not the program that had crashed.
+label matched by a wrong prediction; a rebuild that reported success because the command
+that reported it was `tail`, not the program that had crashed; and a nightly job that
+printed a complete, healthy report and then died four minutes later, leaving a frozen page
+that looked exactly like a working one.
 
-Each was caught the same way: taking a number and asking what it should have been. Three of
+Each was caught the same way: taking a number and asking what it should have been. Four of
 them I introduced myself, after the system was working, while writing up the others. The
 lesson isn't "be more careful." It's that a system which works and a system you can *tell*
 is working are different things, and most of the effort here went into the second.
