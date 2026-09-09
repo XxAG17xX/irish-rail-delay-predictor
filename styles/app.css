@@ -254,6 +254,20 @@
     background: var(--color-panel); border: 1px solid var(--color-rule); border-radius: 2px;
   }
 
+  /* ── footer links ───────────────────────────────────────────────────────── */
+
+  .social {
+    display: inline-flex; align-items: center; gap: .45rem;
+    /* 44px minimum, which is the touch-target floor on both mobile platforms. At the
+       comfortable-looking .4rem these came out 35px, which is a miss on a phone. */
+    min-height: 2.75rem;
+    padding: .4rem .9rem;
+    font-size: .85rem; color: var(--color-ink-2); text-decoration: none;
+    border: 1px solid var(--color-rule); border-radius: 2px;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .social:hover { color: var(--color-ink); border-color: var(--color-rail); background: var(--color-panel); }
+  .social svg { width: 1rem; height: 1rem; fill: currentColor; flex: none; }
   /* Drawn icons only, one stroke weight, never an emoji standing in for an icon. */
   .ico { width: 1.05rem; height: 1.05rem; stroke: currentColor; fill: none; stroke-width: 1.6;
          stroke-linecap: round; stroke-linejoin: round; vertical-align: -.18em; }
