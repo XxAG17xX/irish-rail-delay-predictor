@@ -492,7 +492,12 @@ def board(request: Request,
             "origin": rec.get("Origin", ""),
             "destination": rec.get("Destination", ""),
             "due_in_min": due(rec) if due(rec) < 999 else None,
+            # `scheduled` is this service's time AT THIS STATION. The time it leaves its
+            # origin is a different number and lives in Origintime; using the first for the
+            # second told a visitor a train bound for Cobh at 23:26 "starts at Cork at
+            # 23:26" when it had in fact left Cork at 23:00.
             "scheduled": board_clock(rec, "Scharrival", "Schdepart"),
+            "origin_time": (rec.get("Origintime") or "").strip(),
             "operator_eta": board_clock(rec, "Exparrival", "Expdepart"),
             "operator_late_min": rec.get("Late", ""),
             "scope": scope,

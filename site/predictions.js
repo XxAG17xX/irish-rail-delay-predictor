@@ -39,6 +39,7 @@ const DEFAULT_STATION = "KDARE"; // a through station: a terminus board is nearl
  * @property {string} destination
  * @property {number|null} due_in_min
  * @property {string} scheduled
+ * @property {string} origin_time
  * @property {string} operator_eta
  * @property {string} scope
  * @property {string} kind
@@ -145,14 +146,33 @@ function lateness(min) {
  * @param {Entry} t
  */
 function noPredictionReason(t) {
-  if (t.reason === "not_yet_departed" || t.operator_status === "No Information") {
-    return `Starts at ${t.origin || "its origin"} at ${hhmm(t.scheduled) || "a later time"}. ` +
-      "Nothing to predict from until it is moving.";
+  const where = t.origin || "its first stop";
+  switch (t.reason) {
+    case "not_yet_departed":
+      // Origin time, never `scheduled`: that one is this service's time at the station
+      // being looked at, which for an arrival is the end of the journey, not the start.
+      return t.origin_time
+        ? `Leaves ${where} at ${hhmm(t.origin_time)}, so it has not started yet.`
+        : `Has not left ${where} yet.`;
+    case "no_upstream_report":
+      return "On its way, but it has not reported at a stop yet.";
+    case "not_asked":
+      return "Further down the board than this page asks the model about.";
+    case "already_arrived":
+      return "Already arrived here.";
+    case "journey_inconsistent":
+      return "This service's reported times are out of order, so they are not trusted.";
+    case "lead_out_of_range":
+      return "Too far ahead for the model to answer.";
+    case "vantage_delay_out_of_range":
+      return "Its last reported time looks wrong, so it is not used.";
+    case "station_not_on_route":
+      return "The timetable and the route disagree for this service.";
+    case "upstream_unavailable":
+      return "Irish Rail did not answer for this service.";
+    default:
+      return "No prediction for this service.";
   }
-  if (t.reason === "no_upstream_report") return "Moving, but it has not reported at a stop yet.";
-  if (t.reason === "already_arrived") return "Already arrived.";
-  if (t.reason === "station_not_on_route") return "Timetable and route disagree for this service.";
-  return t.explanation || "No prediction for this service.";
 }
 
 /** @param {Entry} t */
@@ -253,7 +273,6 @@ function stopTime(s) {
 function journeyToggle(t) {
   const stops = t.journey ?? [];
   const id = `journey-${t.train}`;
-  const done = stops.filter((s) => s.arrived).length;
 
   const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   chevron.setAttribute("viewBox", "0 0 12 12");
@@ -283,16 +302,12 @@ function journeyToggle(t) {
     });
     item.style.setProperty("--i", String(i));
     item.append(
-      el("span", { text: s.name + (s.here ? " · you are here" : "") }),
+      el("span", { class: "pip" }, [el("i")]),
+      el("span", { class: "stop-name", text: s.name + (s.here ? " · you are here" : "") }),
       stopTime(s)
     );
     list.append(item);
   });
-  // The green overlay stops at the last station that has actually reported.
-  list.style.setProperty(
-    "--travelled",
-    stops.length > 1 ? `${(Math.max(0, done - 1) / (stops.length - 1)) * 100}%` : "0%"
-  );
 
   const inner = el("div", {}, [
     list,

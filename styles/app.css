@@ -275,36 +275,50 @@
   .jrny-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
   .jrny-toggle[aria-expanded="true"] { color: var(--color-ink-2); }
 
-  .jrny { position: relative; margin: .6rem 0 .5rem; padding-left: 1.25rem; list-style: none; }
-  /* The rail the whole route sits on, and over it the part already travelled. */
-  .jrny::before {
-    content: ""; position: absolute; left: .29rem; top: .7rem; bottom: .7rem;
-    width: 2px; background: var(--color-rail);
+  /* The marker and the line share one column, so they are on the same axis by construction
+     rather than by two sets of offsets that have to agree. The previous version positioned
+     each dot absolutely from its own left edge and drifted, worst on the larger "you are
+     here" marker, which is the sort of thing that reads as sloppy without being nameable. */
+  .jrny {
+    position: relative; margin: .7rem 0 .55rem; padding: 0;
+    max-width: 30rem; list-style: none;
   }
-  .jrny::after {
-    content: ""; position: absolute; left: .29rem; top: .7rem; width: 2px;
-    height: var(--travelled, 0%); background: var(--color-clear); opacity: .75;
-    transition: height .6s var(--ease-out-soft) .15s;
-  }
-
   .jrny li {
-    position: relative;
-    display: grid; grid-template-columns: 1fr auto; gap: 0 1rem;
-    align-items: baseline; padding: .28rem 0;
-    font-size: .84rem; color: var(--color-ink-3);
+    display: grid; grid-template-columns: 1.1rem 1fr auto;
+    column-gap: .8rem; align-items: baseline;
+    padding: .3rem 0; font-size: .84rem; color: var(--color-ink-3);
   }
-  .jrny li::before {
-    content: ""; position: absolute; left: -1.25rem; top: .55rem;
-    width: .52rem; height: .52rem; border-radius: 50%;
+  .pip { position: relative; align-self: stretch; display: flex; justify-content: center; }
+  /* The length of rail belonging to this row. */
+  .pip::before {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 50%;
+    width: 2px; margin-left: -1px; background: var(--color-rail);
+  }
+  .jrny li:first-child .pip::before { top: .68rem; }
+  .jrny li:last-child .pip::before { bottom: calc(100% - .68rem); }
+  /* Green as far as the last stop that actually reported: the row's own state draws it,
+     so there is no percentage to keep in step with the number of stops. */
+  .jrny li.done .pip::before { background: var(--color-clear); opacity: .8; }
+
+  .pip i {
+    position: relative; margin-top: .42rem;
+    width: .5rem; height: .5rem; border-radius: 50%;
     background: var(--color-panel); border: 2px solid var(--color-rail);
   }
   .jrny li.done { color: var(--color-ink-2); }
-  .jrny li.done::before { background: var(--color-clear); border-color: var(--color-clear); }
+  .jrny li.done .pip i { background: var(--color-clear); border-color: var(--color-clear); }
   .jrny li.here { color: var(--color-ink); font-weight: 600; }
-  .jrny li.here::before {
-    left: -1.34rem; top: .46rem; width: .72rem; height: .72rem;
+  .jrny li.here .pip i {
+    margin-top: .33rem; width: .68rem; height: .68rem;
     background: var(--color-void); border-color: var(--color-ink);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 14%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 16%, transparent);
+  }
+  /* A hairline from the name to its time, so the eye does not cross empty space. */
+  .jrny .stop-name { position: relative; overflow: hidden; white-space: nowrap; }
+  .jrny .stop-name::after {
+    content: ""; position: absolute; bottom: .34em; left: 0; right: 0;
+    border-bottom: 1px dotted var(--color-rule);
+    transform: translateX(calc(100% + .45rem));
   }
   .jrny .when { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .jrny .late { color: var(--color-caution); }
