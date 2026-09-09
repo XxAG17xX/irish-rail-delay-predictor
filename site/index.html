@@ -3,94 +3,252 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RailCast — Irish Rail delays, as a range</title>
-<meta name="description" content="A live delay predictor for Irish Rail that answers with an 80% range instead of a single time, and publishes how often it is right.">
-<link rel="stylesheet" href="style.css">
+<title>RailCast · Irish Rail delays, as a range</title>
+<meta name="description" content="A live Irish Rail delay predictor that answers with the span an arrival will fall inside four times in five, then publishes every night whether it did.">
+<meta name="theme-color" content="#0b0f10">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230b0f10'/><line x1='3' y1='17' x2='29' y2='17' stroke='%233b4a4d' stroke-width='2'/><circle cx='11' cy='17' r='4' fill='%2334d17c'/></svg>">
 </head>
 <body>
 
-<header class="site">
-  <div class="wrap">
-    <a class="brand" href="index.html">Rail<span>Cast</span></a>
-    <nav class="site">
-      <a href="predictions.html">Predictions</a>
-      <a href="accuracy.html">Accuracy</a>
-      <a href="how-it-works.html">How it works</a>
+<header class="sticky top-0 z-20 border-b border-rule bg-void/85 backdrop-blur-md">
+  <div class="mx-auto flex h-14 max-w-5xl items-center gap-6 px-6">
+    <a href="index.html" class="mr-auto font-display text-[1.05rem] font-extrabold tracking-tight no-underline">
+      <span class="lamp lamp-clear mr-2 align-middle"></span>RailCast
+    </a>
+    <nav class="flex gap-5 text-sm text-ink-2">
+      <a href="predictions.html" class="no-underline hover:text-ink">Board</a>
+      <a href="accuracy.html" class="no-underline hover:text-ink">Accuracy</a>
+      <a href="how-it-works.html" class="no-underline hover:text-ink">How it works</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap hero">
+<main class="mx-auto max-w-5xl px-6">
 
-  <h1>Irish Rail delays,<br>as a range.</h1>
+  <!-- ══ hero ══════════════════════════════════════════════════════════ -->
+  <section class="pt-12 pb-8 md:pt-20">
+    <h1 class="rise max-w-[13ch] text-hero font-extrabold">Not a time.<br>A <span class="text-clear">section of track</span>.</h1>
+    <p class="rise mt-5 max-w-xl text-lg leading-relaxed text-ink-2">
+      Irish Rail tells you a train is expected at 17:27. It does not tell you how sure it is.
+      RailCast answers with the span the arrival will actually fall inside four times in five,
+      then publishes every night whether it did.
+    </p>
 
-  <p class="lede">Station boards tell you a train is expected at 17:09. They don't tell you
-  how sure they are. RailCast answers <em>most likely 17:09, probably between 17:07 and
-  17:14</em> — and then publishes how often that range was right.</p>
+    <div class="rise panel mt-9 px-5 pt-6 pb-3">
+      <svg class="diagram" viewBox="0 0 900 190" role="img"
+           aria-label="A journey from Galway to Dublin Heuston. The train reported 18.2 minutes late at Geashill. The predicted arrival is 17:26, inside a range from 17:22 to 17:34, against a scheduled 17:09.">
+        <line class="tk-bed draw" x1="40" y1="112" x2="860" y2="112" pathLength="1"/>
+        <line class="tk-done draw" x1="40" y1="112" x2="300" y2="112" pathLength="1"/>
 
-  <div class="figures" id="headline">
-    <div class="figure">
-      <span class="n">26%</span>
-      <span class="label">closer than the operator's own estimate</span>
-      <span class="note">on matched predictions, scored nightly</span>
+        <g class="stroke-rail opacity-55" stroke-width="2">
+          <line x1="40"  y1="105" x2="40"  y2="119"/><line x1="180" y1="105" x2="180" y2="119"/>
+          <line x1="300" y1="105" x2="300" y2="119"/><line x1="450" y1="105" x2="450" y2="119"/>
+          <line x1="600" y1="105" x2="600" y2="119"/><line x1="860" y1="105" x2="860" y2="119"/>
+        </g>
+
+        <line id="band"  class="tk-band" x1="640" y1="112" x2="790" y2="112"/>
+        <line id="edgeL" class="tk-edge" x1="640" y1="98"  x2="640" y2="126"/>
+        <line id="edgeR" class="tk-edge" x1="790" y1="98"  x2="790" y2="126"/>
+
+        <g>
+          <circle class="stop rep" cx="40"  cy="112" r="5"/>
+          <circle class="stop rep" cx="180" cy="112" r="5"/>
+          <circle class="stop rep" cx="300" cy="112" r="5"/>
+          <circle class="stop"     cx="450" cy="112" r="5"/>
+          <circle class="stop"     cx="600" cy="112" r="5"/>
+          <circle class="stop"     cx="860" cy="112" r="6"/>
+        </g>
+
+        <g class="lbl" text-anchor="middle">
+          <text x="40"  y="140">GALWAY</text>
+          <text x="180" y="140" class="hide-sm">ATHLONE</text>
+          <text x="300" y="140">GEASHILL</text>
+          <text x="450" y="140" class="hide-sm">TULLAMORE</text>
+          <text x="600" y="140" class="hide-sm">PORTARLINGTON</text>
+          <text x="860" y="140">HEUSTON</text>
+        </g>
+
+        <text class="val warn" x="300" y="86" text-anchor="middle">18.2 min late</text>
+        <text class="val hot"  id="predT"  x="715" y="70" text-anchor="middle">17:26</text>
+        <text class="lbl"      id="rangeT" x="715" y="86" text-anchor="middle">17:22 to 17:34</text>
+        <text class="lbl hide-sm" x="860" y="86" text-anchor="middle">SCHED 17:09</text>
+
+        <g id="train">
+          <ellipse class="loco-glow" cx="0" cy="112" rx="16" ry="7"/>
+          <path class="loco" d="M-14,105 h20 l8,7 -8,7 h-20 a3,3 0 0 1 -3,-3 v-8 a3,3 0 0 1 3,-3 z"/>
+        </g>
+      </svg>
     </div>
-    <div class="figure">
-      <span class="n">80%</span>
-      <span class="label">is what the range claims</span>
-      <span class="note">measured every night against what happened</span>
-    </div>
-    <div class="figure">
-      <span class="n">5 min</span>
-      <span class="label">between updates</span>
-      <span class="note">predictions are logged before the train arrives</span>
-    </div>
-  </div>
 
-  <p class="prose"><strong>The honest limitation, up front:</strong> the ranges are
-  calibrated for ordinary lateness. On a real disruption — a train losing an hour in one
-  stretch — they miss every time, and the accuracy page says so with the number attached.</p>
+    <p class="mt-3 text-sm text-ink-3">
+      A real journey. The shaded section is where the arrival is expected to land 80% of the
+      time, and the marker is the single most likely moment inside it.
+    </p>
 
-  <div class="links">
-    <a href="predictions.html">
-      <b>Predictions →</b>
-      <span>Pick a train and a station, get a range.</span>
-    </a>
-    <a href="accuracy.html">
-      <b>Accuracy →</b>
-      <span>The scoreboard, split by line, including where it loses.</span>
-    </a>
-    <a href="how-it-works.html">
-      <b>How it works →</b>
-      <span>Where the data comes from, how it's measured, what it can't do.</span>
-    </a>
-  </div>
+    <div class="mt-7 flex flex-wrap gap-3">
+      <a href="predictions.html" class="btn no-underline">See a live board</a>
+      <a href="accuracy.html" class="btn btn-ghost no-underline">How good is it, really</a>
+    </div>
+  </section>
+
+  <!-- ══ the method, told by scrolling ═════════════════════════════════ -->
+  <section class="relative mt-20 mb-12" id="method">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.05fr] lg:gap-12">
+      <div class="sticky top-20 self-start">
+        <div class="panel px-5 py-6">
+          <svg class="diagram" viewBox="0 0 460 150" id="sd" role="img"
+               aria-label="A diagram that redraws as you read each step alongside it.">
+            <line class="tk-bed"  x1="30" y1="88" x2="430" y2="88"/>
+            <line class="tk-done" id="sd-done" x1="30" y1="88" x2="30" y2="88"/>
+            <line class="tk-band" id="sd-band" x1="300" y1="88" x2="300" y2="88"/>
+            <line class="tk-edge" id="sd-eL" x1="300" y1="76" x2="300" y2="100" opacity="0"/>
+            <line class="tk-edge" id="sd-eR" x1="300" y1="76" x2="300" y2="100" opacity="0"/>
+            <g id="sd-stops">
+              <circle class="stop" cx="30"  cy="88" r="4.5"/>
+              <circle class="stop" cx="110" cy="88" r="4.5"/>
+              <circle class="stop" cx="190" cy="88" r="4.5"/>
+              <circle class="stop" cx="290" cy="88" r="4.5"/>
+              <circle class="stop" cx="430" cy="88" r="5.5"/>
+            </g>
+            <text class="lbl" x="30"  y="112" text-anchor="middle">START</text>
+            <text class="lbl" x="430" y="112" text-anchor="middle">YOUR STOP</text>
+            <text class="val" id="sd-cap" x="230" y="42" text-anchor="middle"></text>
+            <g id="sd-train" opacity="0">
+              <ellipse class="loco-glow" cx="0" cy="88" rx="12" ry="6"/>
+              <path class="loco" d="M-10,83 h14 l6,5 -6,5 h-14 a2.5,2.5 0 0 1 -2.5,-2.5 v-5 a2.5,2.5 0 0 1 2.5,-2.5 z"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="relative flex flex-col">
+        <div class="rail-progress"><i></i></div>
+
+        <article class="step" data-step="0">
+          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">01</p>
+          <h3 class="mb-2 text-lg font-bold">It only answers about a train already moving</h3>
+          <p class="max-w-md text-ink-2">Every input describes a journey in progress. A service
+            that has not left its origin has reported nowhere, so there is nothing to reason
+            from. RailCast declines and says so, rather than producing a number that looks
+            like an answer.</p>
+        </article>
+
+        <article class="step" data-step="1">
+          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">02</p>
+          <h3 class="mb-2 text-lg font-bold">It reads how late the train already is</h3>
+          <p class="max-w-md text-ink-2">At each stop behind you the operator records an actual
+            arrival. The gap between that and the timetable is the strongest signal there is,
+            because lateness carries forward along a journey. Twelve inputs in total, and every
+            one of them exists for a service that started running yesterday.</p>
+        </article>
+
+        <article class="step" data-step="2">
+          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">03</p>
+          <h3 class="mb-2 text-lg font-bold">It answers with a range, not a time</h3>
+          <p class="max-w-md text-ink-2">Three models are trained rather than one, each learning
+            a different point of the distribution: the tenth percentile, the middle, the
+            ninetieth. The gap between the outer two is the 80% range. That is what a quantile
+            model buys you and an ordinary one does not.</p>
+        </article>
+
+        <article class="step" data-step="3">
+          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">04</p>
+          <h3 class="mb-2 text-lg font-bold">The further ahead you ask, the wider it gets</h3>
+          <p class="max-w-md text-ink-2">This is the honest part. Asking about the next stop is a
+            different problem from asking about one an hour away, and the range widens to say
+            so. A model whose intervals stayed the same width across the whole horizon would be
+            the suspicious one.</p>
+        </article>
+
+        <article class="step" data-step="4">
+          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">05</p>
+          <h3 class="mb-2 text-lg font-bold">Then the night scores it</h3>
+          <p class="max-w-md text-ink-2">Every prediction is written down before the outcome
+            exists. The next morning a job fetches what actually happened and marks each one
+            hit or miss. The arrival lands inside the range about three quarters of the time
+            against the 80% it claims, and that shortfall is
+            <a href="accuracy.html" class="text-clear underline underline-offset-2">published</a>
+            rather than tuned away.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ the interactive readout ═══════════════════════════════════════ -->
+  <section class="panel my-16 px-6 py-7" id="ask">
+    <h2 class="text-h2 font-extrabold">Ask further ahead</h2>
+    <p class="mt-2 mb-6 max-w-lg text-ink-2">Drag it. Every figure is measured from live scored
+      predictions, split by how far ahead the question was asked. The range on the diagram above
+      moves with it.</p>
+
+    <div class="mb-3 flex flex-wrap items-center gap-x-8 gap-y-2">
+      <label for="lead" class="flex-1 basis-64 text-sm text-ink-2">How far ahead you are asking</label>
+      <output id="leadOut" for="lead" class="font-display text-2xl font-extrabold tracking-tight">5 to 15 minutes</output>
+    </div>
+    <input type="range" id="lead" class="slider" min="0" max="4" step="1" value="1" aria-describedby="readout">
+
+    <div id="readout" class="mt-4 grid gap-px rounded-sm border border-rule bg-rule sm:grid-cols-3 lg:grid-cols-5">
+      <div class="bg-panel px-4 py-3"><b id="rMae" class="block text-lg font-semibold">82.9s</b><span class="mt-0.5 block text-xs leading-snug text-ink-3">average error</span></div>
+      <div class="bg-panel px-4 py-3"><b id="rOp" class="block text-lg font-semibold">109.2s</b><span class="mt-0.5 block text-xs leading-snug text-ink-3">the operator, same events</span></div>
+      <div class="bg-panel px-4 py-3"><b id="rBet" class="block text-lg font-semibold text-clear">+29.4%</b><span class="mt-0.5 block text-xs leading-snug text-ink-3">closer than the operator</span></div>
+      <div class="bg-panel px-4 py-3"><b id="rCov" class="block text-lg font-semibold">75.9%</b><span class="mt-0.5 block text-xs leading-snug text-ink-3">landed inside, against 80% claimed</span></div>
+      <div class="bg-panel px-4 py-3"><b id="rN" class="block text-lg font-semibold">24,465</b><span class="mt-0.5 block text-xs leading-snug text-ink-3">predictions scored</span></div>
+    </div>
+  </section>
+
+  <!-- ══ the honest limitation, stated on the front page ═══════════════ -->
+  <section class="my-16 grid gap-8 lg:grid-cols-[1.1fr_1fr]">
+    <div>
+      <h2 class="text-h2 font-extrabold">Where it fails</h2>
+      <p class="mt-3 text-ink-2">On a real disruption, a train losing an hour in a single
+        stretch, the range misses <b class="text-ink">every time</b>. Not sometimes. Coverage on
+        delays over an hour is zero, and it was zero for the previous model too.</p>
+      <p class="mt-3 text-ink-2">Nothing in "how late is it now, how far is left to go" can see
+        a disruption that has not started yet. Widening the range enough to catch it would mean
+        being wrong about ordinary days to hedge against rare ones. So it is stated here rather
+        than buried.</p>
+      <p class="mt-5">
+        <a href="how-it-works.html" class="btn btn-ghost no-underline">Read the whole method</a>
+      </p>
+    </div>
+    <div class="panel px-5 py-5">
+      <div class="flex items-start gap-3">
+        <span class="lamp lamp-danger mt-1.5"></span>
+        <div>
+          <p class="font-semibold">Sligo line, 2 September</p>
+          <p class="mt-1 text-sm leading-relaxed text-ink-2">Three trains, each two to seven
+            minutes late at every point the service was asked. Each then lost 75 to 89 minutes
+            between Mullingar and Edgeworthstown. Sixteen predictions, sixteen misses.</p>
+        </div>
+      </div>
+      <div class="mt-5 flex items-start gap-3">
+        <span class="lamp lamp-caution mt-1.5"></span>
+        <div>
+          <p class="font-semibold">Two corridors below the promise</p>
+          <p class="mt-1 text-sm leading-relaxed text-ink-2">The Cork and Kildare corridors are
+            covering nearer two times in three than four in five. They share track and the rest
+            of the network is unaffected, so it reads as the railway changing rather than the
+            model breaking. Published per line rather than blended away.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
 </main>
 
-<footer class="site">
-  <div class="wrap">
-    RailCast — a personal project, not affiliated with Iarnród Éireann. Data from the
-    public Irish Rail realtime feed.
+<footer class="border-t border-rule">
+  <div class="mx-auto max-w-5xl px-6 py-8 text-sm text-ink-3">
+    <p class="mb-1">RailCast is a personal project by Katik Gupta and is not affiliated with
+      Iarnr&oacute;d &Eacute;ireann. Data from the public Irish Rail realtime feed.</p>
+    <p><a href="how-it-works.html" class="underline underline-offset-2">How it works</a> ·
+       <a href="accuracy.html" class="underline underline-offset-2">Accuracy</a> ·
+       <a href="predictions.html" class="underline underline-offset-2">Board</a></p>
   </div>
 </footer>
 
-<script>
-// The headline numbers are written into the HTML so the page reads correctly with no JS
-// and no network; this replaces them with last night's if the rollup is reachable.
-fetch("accuracy.json", { cache: "no-store" })
-  .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .then((a) => {
-    const h = a.rolling.head_to_head;
-    const f = document.querySelectorAll("#headline .figure");
-    f[0].querySelector(".n").textContent = Math.round(h.improvement_pct) + "%";
-    f[0].querySelector(".note").textContent =
-      "on " + h.matched_events.toLocaleString("en-IE") + " matched predictions, last 7 days";
-    f[1].querySelector(".n").textContent = a.rolling.interval_coverage_pct.toFixed(1) + "%";
-    f[1].querySelector(".label").textContent = "of arrivals landed inside it";
-    f[1].querySelector(".note").textContent =
-      "against the " + a.rolling.interval_coverage_nominal_pct + "% it claims";
-  })
-  .catch(() => {});
-</script>
+<script type="module" src="index.js"></script>
 </body>
 </html>

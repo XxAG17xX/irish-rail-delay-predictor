@@ -3,196 +3,209 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Accuracy — RailCast</title>
-<meta name="description" content="Every prediction is scored against what actually happened, nightly, including where the model loses.">
-<link rel="stylesheet" href="style.css">
+<title>Accuracy · RailCast</title>
+<meta name="description" content="Every RailCast prediction is scored against what actually happened, every night, including the lines where it falls short of what it claims.">
+<meta name="theme-color" content="#0b0f10">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230b0f10'/><line x1='3' y1='17' x2='29' y2='17' stroke='%233b4a4d' stroke-width='2'/><circle cx='11' cy='17' r='4' fill='%2334d17c'/></svg>">
 </head>
 <body>
 
-<header class="site">
-  <div class="wrap">
-    <a class="brand" href="index.html">Rail<span>Cast</span></a>
-    <nav class="site">
-      <a href="predictions.html">Predictions</a>
-      <a href="accuracy.html" aria-current="page">Accuracy</a>
-      <a href="how-it-works.html">How it works</a>
+<header class="sticky top-0 z-20 border-b border-rule bg-void/85 backdrop-blur-md">
+  <div class="mx-auto flex h-14 max-w-5xl items-center gap-6 px-6">
+    <a href="index.html" class="mr-auto font-display text-[1.05rem] font-extrabold tracking-tight no-underline">
+      <span class="lamp lamp-clear mr-2 align-middle"></span>RailCast
+    </a>
+    <nav class="flex gap-5 text-sm text-ink-2">
+      <a href="predictions.html" class="no-underline hover:text-ink">Board</a>
+      <a href="accuracy.html" aria-current="page" class="text-clear no-underline">Accuracy</a>
+      <a href="how-it-works.html" class="no-underline hover:text-ink">How it works</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap">
+<main class="mx-auto max-w-5xl px-6 pt-10 pb-16">
 
-  <h1>Accuracy</h1>
-  <p class="lede">Every prediction is written down before the outcome exists, and scored
-  against what actually happened the following night. This page is that scoreboard,
-  including the parts where it loses.</p>
+  <h1 class="max-w-[18ch] text-4xl font-extrabold md:text-5xl">Marked every morning.</h1>
+  <p class="mt-4 max-w-2xl text-ink-2">Every prediction is written down before the outcome
+    exists. The next morning a job fetches what actually happened and marks each one. This page
+    is that scoreboard, and it includes the parts where the model loses.</p>
 
-  <p class="sub" id="freshness">Loading the latest scored window…</p>
+  <p id="freshness" class="mt-5 text-sm text-ink-3">Loading the latest scored window.</p>
 
-  <div id="fail" class="error" hidden>
-    Could not load <code>accuracy.json</code>. The nightly scorer publishes it; if this
-    persists, it has not run.
-  </div>
+  <p id="fail" hidden class="mt-5 text-caution">Could not load <code>accuracy.json</code>. The
+    nightly scorer publishes it; if this persists, it has not run.</p>
 
   <div id="content" hidden>
 
-    <h2>Rolling seven days</h2>
+    <!-- the headline, as a sentence rather than a wall of big numbers -->
+    <p id="headline" class="mt-8 max-w-3xl text-xl leading-relaxed"></p>
 
-    <div class="figures" id="headline"></div>
-
-    <div class="prose">
-      <p class="sub" id="window-note"></p>
+    <div class="panel mt-8 px-5 py-5">
+      <div class="flex items-start gap-3">
+        <span class="lamp lamp-out mt-1.5"></span>
+        <p class="max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">These are
+          scheduled samples, not visitor traffic.</b> Almost nobody visits this site, so a
+          scheduled job asks the live service a spread of questions every five minutes, one per
+          lead band, sampled across whatever is in service rather than favouring any route.
+          Every prediction below is real and was logged before the arrival happened. Almost none
+          of them is anyone's actual query.</p>
+      </div>
     </div>
 
-    <div class="caveat">
-      <p><strong>These are scheduled samples, not visitor traffic.</strong> Nobody visits
-      this site, so a scheduled job asks the live API a spread of questions every five
-      minutes — one per lead band, sampled across whatever is in service rather than
-      favouring any route. Every prediction below is a real one, logged with its model
-      version before the arrival happened. None of them is anyone's actual query.</p>
-    </div>
+    <!-- ══ by line ═══════════════════════════════════════════════════════ -->
+    <h2 class="mt-14 text-h2 font-extrabold">By line</h2>
+    <p class="mt-3 max-w-2xl text-ink-2">Blended into a single number this looks like a small
+      shortfall. Split by line it is two corridors sitting well below what the range claims
+      while the rest of the network is close to it. That is why it is published this way.</p>
 
-    <h2>Day by day</h2>
-
-    <p class="prose">Average error against the operator's own expected arrival time, on
-    <strong>matched events only</strong> — the same train, the same station, the same
-    moment, with both answers rounded to the minute so neither gets an unearned edge.</p>
-
-    <div id="chart-mae"></div>
-    <p class="legend">
-      <span class="swatch" style="background:var(--accent)"></span><b>RailCast</b>
-      &nbsp;&nbsp;
-      <span class="swatch" style="background:var(--ink-faint)"></span><b>Irish Rail's own estimate</b>
-    </p>
-
-    <div class="scroll">
-      <table id="daily">
+    <div class="mt-5 overflow-x-auto">
+      <table class="rec">
         <thead>
-          <tr><th>Date</th><th>Scored</th><th>Matched</th><th>RailCast</th>
-              <th>Operator</th><th>Better by</th><th>Coverage</th></tr>
+          <tr><th>Line</th><th>Scored</th><th>Error</th><th>vs operator</th><th>Coverage</th>
+              <th class="w-2/5">against 80% claimed</th></tr>
         </thead>
-        <tbody></tbody>
+        <tbody id="groups"></tbody>
       </table>
     </div>
+    <p class="mt-3 text-sm text-ink-3">The mark on each section of track is the 80% the range
+      claims. Amber is below the 70% at which the retraining policy requires investigation.
+      <span class="text-ink-2">Stations off the board sample</span> shows no operator comparison
+      because the poller archives only 30 stations, so there is no operator estimate on record to
+      compare against. Those predictions are still scored against the real arrival.</p>
 
-    <p class="sub">* fewer than 100 matched events that day — kept in the table with its
-    sample size, left out of the chart. The first two days are the generator starting up.
-    <strong>Scored</strong> counts every prediction with a real arrival to check against;
-    <strong>matched</strong> counts the subset where the operator also published an
-    estimate for the same train, station and moment, which is the only fair comparison.</p>
-
-    <h2>Do the ranges hold up?</h2>
-
-    <p class="prose">The 80% interval claims the true arrival falls inside it four times in
-    five. Measured, it does not — and where it falls short is not spread evenly, which is
-    the interesting part.</p>
-
-    <div id="chart-cov"></div>
-    <p class="legend">
-      <span class="swatch" style="background:var(--accent)"></span><b>measured coverage</b>
-      &nbsp;&nbsp;
-      <span class="swatch" style="background:var(--warn)"></span><b>the 80% it claims</b>
-    </p>
-
-    <h2>By line</h2>
-
-    <p class="prose">Blended into a single number this looks like a small shortfall. Split
-    by line it is two corridors sitting well below the promise while the rest of the
-    network is close to it. That is why it is published this way.</p>
-
-    <div class="scroll">
-      <table id="groups">
-        <thead>
-          <tr><th>Line</th><th>Scored</th><th>Error</th><th>vs operator</th>
-              <th>Coverage</th><th></th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="sub">▲ below the 70% threshold that triggers investigation. The mark on each
-    bar is the 80% the interval claims. <em>Stations off the board sample</em> shows
-    <em>no board</em> against the operator because the poller archives only 30 stations, so
-    there is no operator estimate on record to compare against — those predictions are
-    still scored against the real arrival, just not head-to-head.</p>
-
-    <div class="caveat">
-      <p><strong>The trigger fired, and nothing was patched.</strong> The rule was written
-      in advance: if rolling coverage falls below 70% on any line for a week, something has
-      to be done. On 8 September it fired on the Cork corridor and the Kildare line, six
-      weeks after the model was trained, while the DART and the Dublin hubs held. Those two
-      corridors share track.</p>
-      <p>The intervals on those lines could have been widened until the number returned to
-      80%. That would have produced a better-looking page and destroyed the evidence that
-      the railway changed. So the number is published per line instead, next to the 80% it
-      claims. If those corridors recover unaided, the shift was temporary — and that will
-      be said here too.</p>
-      <p style="margin-bottom:0"><a href="how-it-works.html">How it works</a> has the full
-      reasoning.</p>
+    <div class="panel mt-6 px-5 py-5">
+      <div class="flex items-start gap-3">
+        <span class="lamp lamp-caution mt-1.5"></span>
+        <div class="max-w-2xl">
+          <h3 class="text-base font-bold">The rule fired, and nothing was patched</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">It was written in advance: if
+            coverage on any line stays below 70% for a week, something has to be done. On 8
+            September it fired on the Cork corridor and the Kildare line, six weeks after the
+            model was trained, while the DART and the Dublin hubs held. Those two corridors share
+            track.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">The ranges on those lines could have
+            been widened until the number came back to 80%. That would have produced a better
+            looking page and destroyed the evidence that the railway changed. So the number is
+            published per line instead. If those corridors recover on their own, the shift was
+            temporary, and that will be said here too.</p>
+        </div>
+      </div>
     </div>
 
-    <h2>By how far ahead you ask</h2>
+    <!-- ══ day by day ════════════════════════════════════════════════════ -->
+    <h2 class="mt-14 text-h2 font-extrabold">Day by day</h2>
+    <p class="mt-3 max-w-2xl text-ink-2">Average error against the operator's own expected
+      arrival, on matched events only: the same train, the same station, the same moment, with
+      both answers rounded to the minute so neither gets an unearned edge.</p>
 
-    <p class="prose">Asking about the next stop is a different problem from asking about
-    one an hour away, and the numbers should show that. They do: error roughly triples
-    across the range, and coverage decays. A model whose intervals did <em>not</em> widen
-    with the horizon would be the suspicious one.</p>
+    <div class="panel mt-5 px-5 py-5">
+      <div id="chart-mae"></div>
+      <p class="mt-2 text-sm text-ink-2">
+        <span class="mr-1 inline-block h-0.5 w-4 align-middle bg-clear"></span>RailCast
+        <span class="ml-5 mr-1 inline-block h-0.5 w-4 align-middle bg-ink-3"></span>Irish Rail's own estimate
+      </p>
+    </div>
 
-    <div class="scroll">
-      <table id="bands">
+    <div class="panel mt-5 px-5 py-5">
+      <div id="chart-cov"></div>
+      <p class="mt-2 text-sm text-ink-2">
+        <span class="mr-1 inline-block h-0.5 w-4 align-middle bg-clear"></span>measured coverage
+        <span class="ml-5 mr-1 inline-block h-0.5 w-4 align-middle bg-caution"></span>the 80% it claims
+      </p>
+    </div>
+
+    <div class="mt-6 overflow-x-auto">
+      <table class="rec">
         <thead>
-          <tr><th>Asked</th><th>Scored</th><th>Error</th><th>Operator</th>
+          <tr><th>Date</th><th>Scored</th><th>Matched</th><th>RailCast</th><th>Operator</th>
               <th>Better by</th><th>Coverage</th></tr>
         </thead>
-        <tbody></tbody>
+        <tbody id="daily"></tbody>
+      </table>
+    </div>
+    <p class="mt-3 max-w-3xl text-sm text-ink-3">A dagger marks a day with fewer than 100 matched
+      events, which is noise rather than a trend; those days stay in the table with their sample
+      size and out of the chart. <b class="text-ink-2">Scored</b> counts every prediction with a
+      real arrival to check against. <b class="text-ink-2">Matched</b> counts the subset where the
+      operator also published an estimate for the same train, station and moment, which is the
+      only fair comparison.</p>
+
+    <!-- ══ by horizon ════════════════════════════════════════════════════ -->
+    <h2 class="mt-14 text-h2 font-extrabold">By how far ahead you ask</h2>
+    <p class="mt-3 max-w-2xl text-ink-2">Asking about the next stop is a different problem from
+      asking about one an hour away, and the numbers should show that. They do: the error roughly
+      triples across the range and coverage decays. A model whose ranges did not widen with the
+      horizon would be the suspicious one.</p>
+
+    <div class="mt-5 overflow-x-auto">
+      <table class="rec">
+        <thead>
+          <tr><th>Asked</th><th>Scored</th><th>Error</th><th>Operator</th><th>Better by</th>
+              <th>Coverage</th></tr>
+        </thead>
+        <tbody id="bands"></tbody>
       </table>
     </div>
 
-    <div class="caveat">
-      <p><strong>On real delays over an hour, coverage is 0%.</strong> Not low —
-      zero. It was zero for the previous model too, which appeared to cover a quarter of
-      them until the labels behind that figure turned out to belong to other trains.</p>
-      <p style="margin-bottom:0">When a train loses seventy-five minutes in one stretch, it
-      was two to seven minutes late at every moment the service was asked. Nothing in "how
-      late is it now, how far to go" can see that coming. The ranges are calibrated for
-      ordinary lateness, and a wider one would mean lying about ordinary days to hedge
-      against rare ones.</p>
+    <div class="panel mt-6 px-5 py-5">
+      <div class="flex items-start gap-3">
+        <span class="lamp lamp-danger mt-1.5"></span>
+        <div class="max-w-2xl">
+          <h3 class="text-base font-bold">On real delays over an hour, coverage is zero</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">Not low. Zero. It was zero for the
+            previous model too, which appeared to cover a quarter of them until the labels behind
+            that figure turned out to belong to other trains.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">When a train loses seventy five
+            minutes in one stretch, it was two to seven minutes late at every moment the service
+            was asked. Nothing in "how late is it now, how far is left to go" can see that
+            coming. The ranges are calibrated for ordinary lateness, and a wider one would mean
+            being wrong about ordinary days to hedge against rare ones.</p>
+        </div>
+      </div>
     </div>
 
-    <h2>How often it answers at all</h2>
+    <!-- ══ coverage ══════════════════════════════════════════════════════ -->
+    <h2 class="mt-14 text-h2 font-extrabold">How often it answers at all</h2>
+    <p class="mt-3 max-w-2xl text-ink-2">Accuracy without coverage is the misleading half of the
+      story. A system that answers rarely and well is not the same product as one that answers
+      often and well.</p>
 
-    <p class="prose">Accuracy without coverage is the misleading half of the story. A
-    system that answers rarely and well is not the same product as one that answers often
-    and well.</p>
+    <p id="coverage" class="mt-5 max-w-3xl text-lg leading-relaxed"></p>
 
-    <div class="figures" id="coverage"></div>
-
-    <div class="scroll">
-      <table id="states">
+    <div class="mt-5 overflow-x-auto">
+      <table class="rec">
         <thead><tr><th>Outcome</th><th>Predictions</th><th>Share</th></tr></thead>
-        <tbody></tbody>
+        <tbody id="states"></tbody>
       </table>
     </div>
-    <p class="sub">A prediction that could not be scored is reported here, not dropped.
-    <code>no_actual_arrival</code> means the operator never recorded an arrival for that
-    stop; <code>echo_suspect</code> means the recorded arrival was identical to the
-    scheduled time, which is the signature of a timetable echoed back as an observation.</p>
+    <p class="mt-3 max-w-3xl text-sm text-ink-3">A prediction that could not be scored is reported
+      here, not dropped. <i>No arrival recorded</i> means the operator never logged one for that
+      stop. <i>Arrival identical to the timetable</i> is the signature of a scheduled time echoed
+      back as though it were an observation, which is the data problem that shaped this whole
+      project.</p>
 
-    <h2>Since launch</h2>
-
-    <div class="figures" id="cumulative"></div>
-    <p class="sub" id="models"></p>
+    <!-- ══ since launch ══════════════════════════════════════════════════ -->
+    <h2 class="mt-14 text-h2 font-extrabold">Since launch</h2>
+    <p id="cumulative" class="mt-3 max-w-3xl text-lg leading-relaxed"></p>
+    <p id="models" class="mt-3 max-w-3xl text-sm text-ink-3"></p>
 
   </div>
 
 </main>
 
-<footer class="site">
-  <div class="wrap">
-    RailCast — a personal project, not affiliated with Iarnród Éireann. Data from the
-    public Irish Rail realtime feed.
+<footer class="border-t border-rule">
+  <div class="mx-auto max-w-5xl px-6 py-8 text-sm text-ink-3">
+    <p class="mb-1">RailCast is a personal project by Katik Gupta and is not affiliated with
+      Iarnr&oacute;d &Eacute;ireann. Data from the public Irish Rail realtime feed.</p>
+    <p>Nothing on this page is recomputed after the fact. The scorer can read the prediction log
+      and cannot write to it, and that is enforced by its AWS credentials rather than by
+      discipline.</p>
   </div>
 </footer>
 
-<script src="accuracy.js"></script>
+<script type="module" src="accuracy.js"></script>
 </body>
 </html>

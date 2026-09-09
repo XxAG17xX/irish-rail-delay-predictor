@@ -1,6 +1,16 @@
-/* Renders accuracy.json. The scorer writes that file nightly; this page never computes
-   a number of its own, so anything shown here is reproducible from the scored rows. */
+// @ts-check
+/**
+ * Renders accuracy.json, which the nightly scorer publishes. This page computes no number of
+ * its own, so everything shown here is reproducible from the scored rows on S3.
+ */
 
+import { el, int, need, pct, secs } from "./site.js";
+
+const NOMINAL = 80;
+/** Under about a hundred matched events a day is noise. Those days stay in the table. */
+const CHART_MIN_N = 100;
+
+/** @type {Record<string, string>} */
 const GROUP_NAMES = {
   dart: "DART",
   dublin_hubs: "Dublin hubs",
@@ -12,273 +22,326 @@ const GROUP_NAMES = {
   "(unpolled)": "Stations off the board sample",
 };
 
+/** @type {Record<string, string>} */
 const STATE_NAMES = {
   scored: "Scored against a real arrival",
-  no_actual_arrival: "No arrival was ever recorded",
-  echo_suspect: "Arrival identical to the timetable (echo_suspect)",
+  no_actual_arrival: "No arrival recorded by the operator",
+  echo_suspect: "Arrival identical to the timetable",
   journey_inconsistent: "Journey records internally inconsistent",
-  declined: "Declined — outside what the model will answer",
+  declined: "Declined, outside what the model will answer",
 };
 
-// Under about a hundred matched events a day is noise, not a trend: the first two days
-// carry 1 and 13. They stay in the table with their sample size and out of the chart.
-const CHART_MIN_N = 100;
+const BAND_ORDER = ["0-5 min", "5-15 min", "15-30 min", "30-60 min", "60+ min"];
 
-const NOMINAL = 80;
-
-const fmtInt = (n) => (n == null ? "—" : n.toLocaleString("en-IE"));
-const fmtSec = (n) => (n == null ? "—" : Math.round(n) + "s");
-const fmtPct = (n, d = 1) => (n == null ? "—" : n.toFixed(d) + "%");
-const el = (tag, attrs = {}, kids = []) => {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "class") n.className = v;
-    else if (k === "html") n.innerHTML = v;
-    else if (k === "text") n.textContent = v;
-    else n.setAttribute(k, v);
-  }
-  for (const kid of kids) n.appendChild(kid);
-  return n;
-};
-
+/** @param {string} iso */
 function shortDate(iso) {
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-IE", { day: "numeric", month: "short" });
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-IE", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
-function figure(parent, value, label, note) {
-  const f = el("div", { class: "figure" }, [
-    el("span", { class: "n", text: value }),
-    el("span", { class: "label", text: label }),
-  ]);
-  if (note) f.appendChild(el("span", { class: "note", text: note }));
-  parent.appendChild(f);
+/* ── charts: hand drawn, because two line charts do not justify a library ── */
+
+const SVG = "http://www.w3.org/2000/svg";
+
+/**
+ * @param {string} tag
+ * @param {Record<string, string|number>} attrs
+ */
+function s(tag, attrs) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  return node;
 }
 
-/* ---- charts: hand-drawn SVG, because two line charts do not justify a library ---- */
+/**
+ * @param {HTMLElement} host
+ * @param {object} opts
+ * @param {string[]} opts.labels
+ * @param {{values: (number|null)[], alt?: boolean}[]} opts.series
+ * @param {number} opts.yMin
+ * @param {number} opts.yMax
+ * @param {number[]} opts.yTicks
+ * @param {(v: number) => string} opts.yFmt
+ * @param {number} [opts.rule] a horizontal reference line, used for the claimed 80%
+ * @param {string} opts.label accessible description
+ */
+function lineChart(host, opts) {
+  const W = 620, H = 200, L = 42, R = 8, T = 12, B = 26;
+  /** @param {number} i */
+  const x = (i) => L + (i * (W - L - R)) / Math.max(1, opts.labels.length - 1);
+  /** @param {number} v */
+  const y = (v) => T + ((opts.yMax - v) * (H - T - B)) / (opts.yMax - opts.yMin);
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-const svgEl = (tag, attrs) => {
-  const n = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-  return n;
-};
-
-function lineChart(host, { labels, series, yMin, yMax, yTicks, yFmt, rule }) {
-  const W = 600, H = 210, L = 44, R = 8, T = 12, B = 28;
-  const x = (i) => L + (i * (W - L - R)) / Math.max(1, labels.length - 1);
-  const y = (v) => T + ((yMax - v) * (H - T - B)) / (yMax - yMin);
-
-  const svg = svgEl("svg", {
-    class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img",
-    "aria-label": host.dataset.alt || "chart",
+  const svg = s("svg", {
+    class: "diagram",
+    viewBox: `0 0 ${W} ${H}`,
+    role: "img",
+    "aria-label": opts.label,
   });
 
-  for (const t of yTicks) {
-    svg.appendChild(svgEl("line", { class: "grid", x1: L, x2: W - R, y1: y(t), y2: y(t) }));
-    const lab = svgEl("text", { class: "axis", x: L - 6, y: y(t) + 3, "text-anchor": "end" });
-    lab.textContent = yFmt(t);
-    svg.appendChild(lab);
+  for (const t of opts.yTicks) {
+    svg.append(s("line", { class: "stroke-rule", "stroke-width": 1, x1: L, x2: W - R, y1: y(t), y2: y(t) }));
+    const lab = s("text", { class: "lbl", x: L - 6, y: y(t) + 3, "text-anchor": "end" });
+    lab.textContent = opts.yFmt(t);
+    svg.append(lab);
   }
 
-  if (rule != null) {
-    svg.appendChild(svgEl("line", { class: "nominal", x1: L, x2: W - R, y1: y(rule), y2: y(rule) }));
+  if (opts.rule != null) {
+    svg.append(
+      s("line", {
+        class: "stroke-caution",
+        "stroke-width": 1,
+        "stroke-dasharray": "3 3",
+        x1: L, x2: W - R, y1: y(opts.rule), y2: y(opts.rule),
+      })
+    );
   }
 
-  for (const s of series) {
-    const d = s.values
+  for (const series of opts.series) {
+    const points = series.values
       .map((v, i) => (v == null ? null : `${x(i)},${y(v)}`))
-      .filter(Boolean)
-      .join(" L ");
-    svg.appendChild(svgEl("path", { class: "line" + (s.alt ? " alt" : ""), d: "M " + d }));
-    if (!s.alt) {
-      s.values.forEach((v, i) => {
-        if (v != null) svg.appendChild(svgEl("circle", { class: "dot", cx: x(i), cy: y(v), r: 2.5 }));
+      .filter((p) => p !== null);
+    if (points.length === 0) continue;
+    svg.append(
+      s("path", {
+        class: series.alt ? "stroke-ink-3" : "stroke-clear",
+        fill: "none",
+        "stroke-width": 2,
+        "stroke-dasharray": series.alt ? "4 3" : "none",
+        d: "M " + points.join(" L "),
+      })
+    );
+    if (!series.alt) {
+      series.values.forEach((v, i) => {
+        if (v != null) svg.append(s("circle", { class: "fill-clear", cx: x(i), cy: y(v), r: 2.5 }));
       });
     }
   }
 
-  // Every label overlaps on a narrow screen, so only the ends and a middle one are drawn.
-  const show = new Set([0, Math.floor((labels.length - 1) / 2), labels.length - 1]);
-  labels.forEach((lab, i) => {
-    if (!show.has(i)) return;
-    const t = svgEl("text", {
-      class: "axis", x: x(i), y: H - 8,
-      "text-anchor": i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle",
+  // Every label overlaps on a narrow screen, so only the ends and the middle are drawn.
+  const last = opts.labels.length - 1;
+  for (const i of new Set([0, Math.floor(last / 2), last])) {
+    const label = opts.labels[i];
+    if (label == null) continue;
+    const t = s("text", {
+      class: "lbl",
+      x: x(i),
+      y: H - 8,
+      "text-anchor": i === 0 ? "start" : i === last ? "end" : "middle",
     });
-    t.textContent = lab;
-    svg.appendChild(t);
-  });
+    t.textContent = label;
+    svg.append(t);
+  }
 
   host.replaceChildren(svg);
 }
 
-/* ---- render ---- */
+/* ── render ─────────────────────────────────────────────────────────────── */
 
+/** @param {any} a the parsed accuracy.json */
 function render(a) {
   const r = a.rolling;
+  const versions = Object.keys(a.model_versions);
+  const serving = versions[versions.length - 1] ?? "unknown";
 
   const generated = new Date(a.generated_at);
-  document.getElementById("freshness").innerHTML =
-    "Last scored " +
-    generated.toLocaleString("en-IE", { dateStyle: "medium", timeStyle: "short" }) +
-    " · window " + shortDate(a.window_dates[0]) + " – " +
-    shortDate(a.window_dates[a.window_dates.length - 1]) +
-    " · model <code>" + Object.keys(a.model_versions).slice(-1)[0] + "</code>";
+  need("freshness").replaceChildren(
+    el("span", {
+      text:
+        "Last scored " +
+        generated.toLocaleString("en-IE", { dateStyle: "medium", timeStyle: "short" }) +
+        " · window " +
+        shortDate(a.window_dates[0]) +
+        " to " +
+        shortDate(a.window_dates[a.window_dates.length - 1]) +
+        " · model ",
+    }),
+    el("code", { class: "text-ink-2", text: serving })
+  );
 
-  const head = document.getElementById("headline");
-  figure(head, fmtPct(r.head_to_head.improvement_pct, 1), "better than the operator",
-         "on " + fmtInt(r.head_to_head.matched_events) + " matched events");
-  figure(head, fmtSec(r.head_to_head.model_mae_sec), "average error",
-         "operator: " + fmtSec(r.head_to_head.operator_mae_sec));
-  figure(head, fmtSec(r.accuracy.medae_sec), "median error",
-         "half of all answers are closer than this");
-  figure(head, fmtPct(r.interval_coverage_pct, 1), "of arrivals inside the range",
-         "the range claims " + r.interval_coverage_nominal_pct + "%");
+  need("headline").replaceChildren(
+    el("span", { text: "Over the seven days to " }),
+    el("b", { text: shortDate(a.window_dates[a.window_dates.length - 1]) }),
+    el("span", { text: ", RailCast was " }),
+    el("b", { class: "text-clear", text: pct(r.head_to_head.improvement_pct) }),
+    el("span", { text: " closer than the operator's own estimate on " }),
+    el("b", { text: int(r.head_to_head.matched_events) }),
+    el("span", {
+      text:
+        " matched predictions, " +
+        `${secs(r.head_to_head.model_mae_sec)} of average error against ${secs(r.head_to_head.operator_mae_sec)}. ` +
+        "The arrival landed inside the range ",
+    }),
+    el("b", { class: r.interval_coverage_pct < NOMINAL ? "text-caution" : "text-clear",
+              text: pct(r.interval_coverage_pct) }),
+    el("span", {
+      text: ` of the time, against the ${r.interval_coverage_nominal_pct}% it claims, across ` +
+        `${int(r.accuracy.n)} scored predictions.`,
+    })
+  );
 
-  document.getElementById("window-note").textContent =
-    fmtInt(r.accuracy.n) + " predictions scored over " + a.window_days +
-    " days. Average error is the mean absolute difference between the predicted arrival " +
-    "and the real one; the median is lower because a small number of large misses pull " +
-    "the mean up.";
+  /* by line */
+  const groups = Object.entries(r.by_station_group).sort(
+    (p, q) => /** @type {any} */ (q[1]).accuracy.n - /** @type {any} */ (p[1]).accuracy.n
+  );
+  need("groups").replaceChildren(
+    ...groups.map(([key, raw]) => {
+      const g = /** @type {any} */ (raw);
+      const cov = g.interval_coverage_pct;
+      const low = cov < 70;
+      const track = el("div", { class: "sec" }, [
+        el("i", { class: low ? "warn" : "", style: `width:${cov}%` }),
+        el("u", { style: `left:${NOMINAL}%` }),
+      ]);
+      return el("tr", {}, [
+        el("td", { text: GROUP_NAMES[key] ?? key }),
+        el("td", { text: int(g.accuracy.n) }),
+        el("td", { text: secs(g.accuracy.mae_sec) }),
+        el("td", {
+          class: g.head_to_head ? (g.head_to_head.improvement_pct >= 0 ? "over" : "under") : "",
+          text: g.head_to_head
+            ? (g.head_to_head.improvement_pct >= 0 ? "+" : "") + pct(g.head_to_head.improvement_pct)
+            : "no board",
+        }),
+        el("td", { class: low ? "under" : "", text: pct(cov) }),
+        el("td", {}, [track]),
+      ]);
+    })
+  );
 
-  // Daily table and the two charts.
+  /* day by day */
+  /** @type {any[]} */
   const daily = a.daily;
-  const tbody = document.querySelector("#daily tbody");
-  tbody.replaceChildren(...daily.slice().reverse().map((d) => {
-    const thin = d.matched_events < CHART_MIN_N;
-    const tr = el("tr", {}, [
-      el("td", { text: shortDate(d.date) + (thin ? " *" : "") }),
-      el("td", { text: fmtInt(d.scored_n) }),
-      el("td", { text: fmtInt(d.matched_events) }),
-      el("td", { text: fmtSec(d.model_mae_sec) }),
-      el("td", { text: fmtSec(d.operator_mae_sec) }),
-      el("td", {
-        class: d.improvement_pct >= 0 ? "good" : "bad",
-        text: (d.improvement_pct >= 0 ? "+" : "") + fmtPct(d.improvement_pct, 1),
-      }),
-      el("td", { text: fmtPct(d.interval_coverage_pct, 1) }),
-    ]);
-    return tr;
-  }));
+  need("daily").replaceChildren(
+    ...[...daily].reverse().map((d) =>
+      el("tr", {}, [
+        el("td", { text: shortDate(d.date) + (d.matched_events < CHART_MIN_N ? " †" : "") }),
+        el("td", { text: int(d.scored_n) }),
+        el("td", { text: int(d.matched_events) }),
+        el("td", { text: secs(d.model_mae_sec) }),
+        el("td", { text: secs(d.operator_mae_sec) }),
+        el("td", {
+          class: d.improvement_pct >= 0 ? "over" : "under",
+          text: (d.improvement_pct >= 0 ? "+" : "") + pct(d.improvement_pct),
+        }),
+        el("td", { text: pct(d.interval_coverage_pct) }),
+      ])
+    )
+  );
 
   const solid = daily.filter((d) => d.matched_events >= CHART_MIN_N);
   const labels = solid.map((d) => shortDate(d.date));
+  const worst = Math.max(...solid.flatMap((d) => [d.model_mae_sec, d.operator_mae_sec]));
+  const top = Math.ceil(worst / 20) * 20 + 20;
 
-  const maes = solid.flatMap((d) => [d.model_mae_sec, d.operator_mae_sec]);
-  const top = Math.ceil(Math.max(...maes) / 20) * 20 + 20;
-  lineChart(document.getElementById("chart-mae"), {
+  lineChart(/** @type {HTMLElement} */ (need("chart-mae")), {
     labels,
     series: [
       { values: solid.map((d) => d.operator_mae_sec), alt: true },
       { values: solid.map((d) => d.model_mae_sec) },
     ],
-    yMin: 0, yMax: top,
-    yTicks: [0, top / 2, top].map((v) => Math.round(v)),
+    yMin: 0,
+    yMax: top,
+    yTicks: [0, Math.round(top / 2), top],
     yFmt: (v) => v + "s",
+    label: "Daily average error, RailCast against the operator's own estimate.",
   });
 
-  lineChart(document.getElementById("chart-cov"), {
+  lineChart(/** @type {HTMLElement} */ (need("chart-cov")), {
     labels,
     series: [{ values: solid.map((d) => d.interval_coverage_pct) }],
-    yMin: 50, yMax: 90, yTicks: [50, 60, 70, 80, 90],
+    yMin: 50,
+    yMax: 90,
+    yTicks: [50, 60, 70, 80, 90],
     yFmt: (v) => v + "%",
     rule: NOMINAL,
+    label: "Daily interval coverage against the 80% the range claims.",
   });
 
-  // By line. Sorted by sample size so the thin groups sit at the bottom where they belong.
-  const groups = Object.entries(r.by_station_group)
-    .sort((p, q) => q[1].accuracy.n - p[1].accuracy.n);
-  document.querySelector("#groups tbody").replaceChildren(...groups.map(([key, g]) => {
-    const cov = g.interval_coverage_pct;
-    const bar = el("div", { class: "bar" });
-    bar.appendChild(el("i", { class: cov < 70 ? "low" : "", style: `width:${cov}%` }));
-    bar.appendChild(el("u", { style: `left:${NOMINAL}%` }));
-    const h2h = g.head_to_head;
-    const tr = el("tr", { class: cov < 70 ? "flag" : "" }, [
-      el("td", { text: GROUP_NAMES[key] || key }),
-      el("td", { text: fmtInt(g.accuracy.n) }),
-      el("td", { text: fmtSec(g.accuracy.mae_sec) }),
-      el("td", {
-        class: h2h ? (h2h.improvement_pct >= 0 ? "good" : "bad") : "",
-        text: h2h ? (h2h.improvement_pct >= 0 ? "+" : "") + fmtPct(h2h.improvement_pct, 1) : "no board",
-      }),
-      el("td", { text: fmtPct(cov, 1) }),
-    ]);
-    tr.appendChild(el("td", { style: "width:40%" }, [bar]));
-    return tr;
-  }));
-
-  // By lead band, in time order rather than the alphabetical order JSON keys arrive in.
-  const bandOrder = ["0-5 min", "5-15 min", "15-30 min", "30-60 min", "60+ min"];
-  document.querySelector("#bands tbody").replaceChildren(
-    ...bandOrder.filter((b) => r.by_lead_band[b]).map((b) => {
+  /* by horizon */
+  need("bands").replaceChildren(
+    ...BAND_ORDER.filter((b) => r.by_lead_band[b]).map((b) => {
       const g = r.by_lead_band[b];
       return el("tr", {}, [
-        el("td", { text: b.replace("-", "–") + " ahead" }),
-        el("td", { text: fmtInt(g.accuracy.n) }),
-        el("td", { text: fmtSec(g.accuracy.mae_sec) }),
-        el("td", { text: fmtSec(g.head_to_head.operator_mae_sec) }),
+        el("td", { text: b.replace("-", " to ").replace("+", " or more") + " ahead" }),
+        el("td", { text: int(g.accuracy.n) }),
+        el("td", { text: secs(g.accuracy.mae_sec) }),
+        el("td", { text: secs(g.head_to_head.operator_mae_sec) }),
         el("td", {
-          class: g.head_to_head.improvement_pct >= 0 ? "good" : "bad",
-          text: (g.head_to_head.improvement_pct >= 0 ? "+" : "") +
-                fmtPct(g.head_to_head.improvement_pct, 1),
+          class: g.head_to_head.improvement_pct >= 0 ? "over" : "under",
+          text: (g.head_to_head.improvement_pct >= 0 ? "+" : "") + pct(g.head_to_head.improvement_pct),
         }),
-        el("td", { text: fmtPct(g.interval_coverage_pct, 1) }),
+        el("td", { class: g.interval_coverage_pct < 70 ? "under" : "", text: pct(g.interval_coverage_pct) }),
       ]);
     })
   );
 
-  // Coverage: asked-and-answered, plus what happened to everything that was scored.
-  const cov = document.getElementById("coverage");
-  figure(cov, fmtPct(r.coverage.in_service_pct, 1), "of questions answered",
-         "given the train is actually in service");
-  figure(cov, fmtInt(r.coverage.answered), "predictions made", "in seven days");
-  figure(cov, fmtInt(r.coverage.declined), "declined",
-         "no upstream report, or outside the envelope");
+  /* coverage */
+  need("coverage").replaceChildren(
+    el("span", { text: "Given a train actually in service, the model answered " }),
+    el("b", { class: "text-clear", text: pct(r.coverage.in_service_pct) }),
+    el("span", {
+      text:
+        ` of the time over the week: ${int(r.coverage.answered)} predictions made and ` +
+        `${int(r.coverage.declined)} declined for want of an upstream report or for falling ` +
+        "outside what the model will answer.",
+    })
+  );
 
-  const states = Object.entries(r.score_states).sort((p, q) => q[1] - p[1]);
-  const total = states.reduce((s, [, n]) => s + n, 0);
-  document.querySelector("#states tbody").replaceChildren(...states.map(([k, n]) =>
-    el("tr", {}, [
-      el("td", { text: STATE_NAMES[k] || k }),
-      el("td", { text: fmtInt(n) }),
-      el("td", { text: fmtPct((100 * n) / total, 1) }),
-    ])
-  ));
+  /** @type {[string, number][]} */
+  const states = Object.entries(r.score_states).map(([k, v]) => [k, Number(v)]);
+  states.sort((p, q) => q[1] - p[1]);
+  const total = states.reduce((sum, [, n]) => sum + n, 0);
+  need("states").replaceChildren(
+    ...states.map(([k, n]) =>
+      el("tr", {}, [
+        el("td", { text: STATE_NAMES[k] ?? k }),
+        el("td", { text: int(n) }),
+        el("td", { text: pct((100 * n) / total) }),
+      ])
+    )
+  );
 
+  /* since launch */
   const c = a.cumulative;
-  const cum = document.getElementById("cumulative");
-  figure(cum, fmtPct(c.head_to_head.improvement_pct, 1), "better than the operator",
-         "over " + c.days + " days of live scoring");
-  figure(cum, fmtInt(c.accuracy.n), "predictions scored",
-         fmtInt(c.head_to_head.matched_events) + " of them matched");
-  figure(cum, fmtSec(c.accuracy.mae_sec), "average error",
-         "operator: " + fmtSec(c.head_to_head.operator_mae_sec));
-  figure(cum, fmtPct(c.interval_coverage.interval_coverage_pct, 1), "inside the range",
-         "against " + NOMINAL + "% claimed");
+  need("cumulative").replaceChildren(
+    el("span", { text: "Across " }),
+    el("b", { text: String(c.days) }),
+    el("span", { text: " days of live scoring: " }),
+    el("b", { text: int(c.accuracy.n) }),
+    el("span", { text: " predictions scored, " }),
+    el("b", { text: int(c.head_to_head.matched_events) }),
+    el("span", { text: " of them matched against the operator, and " }),
+    el("b", { class: "text-clear", text: pct(c.head_to_head.improvement_pct) }),
+    el("span", {
+      text:
+        ` closer overall. Coverage across the whole period is ${pct(c.interval_coverage.interval_coverage_pct)} ` +
+        `against the ${NOMINAL}% claimed.`,
+    })
+  );
 
-  document.getElementById("models").textContent =
-    "Predictions in this total come from " + Object.keys(a.model_versions).length +
-    " model versions: " +
+  need("models").textContent =
+    `Predictions in that total come from ${versions.length} model ` +
+    `${versions.length === 1 ? "version" : "versions"}: ` +
     Object.entries(a.model_versions)
-      .map(([v, n]) => v + " (" + fmtInt(n) + ")")
+      .map(([v, n]) => `${v} (${int(Number(n))})`)
       .join(", ") +
-    ". A version change is a deploy, never a retroactive recomputation — nothing here is " +
-    "regenerated after the fact.";
+    ". A version change is a deploy, never a retroactive recomputation.";
 
-  document.getElementById("content").hidden = false;
+  need("content").hidden = false;
 }
 
 fetch("accuracy.json", { cache: "no-store" })
   .then((res) => {
-    if (!res.ok) throw new Error(res.status);
+    if (!res.ok) throw new Error(String(res.status));
     return res.json();
   })
   .then(render)
   .catch((err) => {
-    document.getElementById("freshness").hidden = true;
-    const box = document.getElementById("fail");
+    need("freshness").hidden = true;
+    const box = need("fail");
     box.hidden = false;
-    box.appendChild(el("span", { text: " (" + err.message + ")" }));
+    box.append(el("span", { text: ` (${err instanceof Error ? err.message : String(err)})` }));
   });

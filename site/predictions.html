@@ -3,60 +3,78 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Predictions — RailCast</title>
-<meta name="description" content="Pick a station and see the trains due there, each with an 80% arrival range.">
-<link rel="stylesheet" href="style.css">
+<title>Board · RailCast</title>
+<meta name="description" content="Trains due at an Irish Rail station in the next ninety minutes, each with the range its arrival is expected to fall inside.">
+<meta name="theme-color" content="#0b0f10">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230b0f10'/><line x1='3' y1='17' x2='29' y2='17' stroke='%233b4a4d' stroke-width='2'/><circle cx='11' cy='17' r='4' fill='%2334d17c'/></svg>">
 </head>
 <body>
 
-<header class="site">
-  <div class="wrap">
-    <a class="brand" href="index.html">Rail<span>Cast</span></a>
-    <nav class="site">
-      <a href="predictions.html" aria-current="page">Predictions</a>
-      <a href="accuracy.html">Accuracy</a>
-      <a href="how-it-works.html">How it works</a>
+<header class="sticky top-0 z-20 border-b border-rule bg-void/85 backdrop-blur-md">
+  <div class="mx-auto flex h-14 max-w-5xl items-center gap-6 px-6">
+    <a href="index.html" class="mr-auto font-display text-[1.05rem] font-extrabold tracking-tight no-underline">
+      <span class="lamp lamp-clear mr-2 align-middle"></span>RailCast
+    </a>
+    <nav class="flex gap-5 text-sm text-ink-2">
+      <a href="predictions.html" aria-current="page" class="text-clear no-underline">Board</a>
+      <a href="accuracy.html" class="no-underline hover:text-ink">Accuracy</a>
+      <a href="how-it-works.html" class="no-underline hover:text-ink">How it works</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap">
+<main class="mx-auto max-w-5xl px-6 pt-10 pb-16">
 
-  <h1>Predictions</h1>
-  <p class="lede">Trains due at a station in the next ninety minutes, each with a range
-  rather than a single time. Every answer below is being logged as you read it, and scored
-  against what actually happens tonight.</p>
+  <h1 class="max-w-[16ch] text-4xl font-extrabold md:text-5xl">What is due, and how sure.</h1>
+  <p class="mt-4 max-w-xl text-ink-2">Trains arriving at a station in the next ninety minutes.
+    Where the service can answer, it gives the range the arrival is expected to fall inside four
+    times in five. Where it cannot, it says why instead of guessing.</p>
 
-  <form id="picker" class="picker">
-    <label for="station">Station</label>
-    <select id="station" name="station"></select>
-    <button type="submit" id="go">Show board</button>
+  <form id="picker" class="mt-7 flex flex-wrap items-end gap-3">
+    <div>
+      <label for="station" class="mb-1.5 block text-sm text-ink-2">Station</label>
+      <select id="station" class="field w-64 max-w-full"></select>
+    </div>
+    <button type="submit" class="btn">Show board</button>
   </form>
 
-  <p class="sub" id="status">Loading stations…</p>
+  <p id="status" class="mt-5 text-sm text-ink-3">Loading stations.</p>
 
-  <div id="board"></div>
+  <div id="board" class="mt-5"></div>
 
-  <div class="caveat" id="explainer" hidden>
-    <p><strong>Why some trains have no range.</strong> The model reads how late a train
-    already is at the stops behind you. A train that has not left its origin has reported
-    nowhere, so there is nothing to reason from and it declines rather than guessing —
-    which is most of what you see at a terminus like Heuston, and much less at a
-    through-station like Kildare.</p>
-    <p style="margin-bottom:0">This is the coverage story on
-    <a href="accuracy.html">the accuracy page</a>, in the place a visitor actually meets
-    it.</p>
-  </div>
+  <section id="explainer" hidden class="panel mt-10 px-5 py-5">
+    <div class="flex items-start gap-3">
+      <span class="lamp lamp-out mt-1.5"></span>
+      <div>
+        <h2 class="text-base font-bold">Why some services have no range</h2>
+        <p class="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">The model reads how late
+          a train already is at the stops behind you. A service that has not left its origin has
+          reported nowhere, so there is nothing to reason from. That is most of what you see at
+          a terminus like Heuston, where nearly everything on the board is a departure, and much
+          less at a through station like Kildare.</p>
+        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-ink-2">This is the coverage
+          limitation from the <a href="accuracy.html" class="text-clear underline underline-offset-2">accuracy
+          page</a>, in the place a passenger actually meets it. Listing those services and
+          marking them is deliberate: dropping them would make the coverage figure look better
+          than the thing you are standing in front of.</p>
+      </div>
+    </div>
+  </section>
 
 </main>
 
-<footer class="site">
-  <div class="wrap">
-    RailCast — a personal project, not affiliated with Iarnród Éireann. Data from the
-    public Irish Rail realtime feed.
+<footer class="border-t border-rule">
+  <div class="mx-auto max-w-5xl px-6 py-8 text-sm text-ink-3">
+    <p class="mb-1">RailCast is a personal project by Katik Gupta and is not affiliated with
+      Iarnr&oacute;d &Eacute;ireann. Data from the public Irish Rail realtime feed.</p>
+    <p>Every prediction on this page is logged the moment it is made, before the arrival
+      happens, and scored the following night.</p>
   </div>
 </footer>
 
-<script src="predictions.js"></script>
+<script type="module" src="predictions.js"></script>
 </body>
 </html>

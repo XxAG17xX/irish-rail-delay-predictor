@@ -1,0 +1,24 @@
+{
+  "// why": [
+    "TypeScript in checkJs mode: types live in JSDoc, the browser gets the same plain",
+    "JavaScript, and `tsc --noEmit` is a check rather than a compiler. That keeps the",
+    "deploy a file copy (D41) while still catching the class of bug a static site",
+    "actually has, which is a typo in a property name reaching production silently."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["site/**/*.js"],
+  "exclude": ["node_modules", ".agents", ".venv", "site/app.css"]
+}
