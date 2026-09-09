@@ -4,7 +4,17 @@
  * scripts/dev_site.py forwards it the same way locally, so there is no environment branch.
  */
 
-import { el, flap, hhmm, need } from "./site.js";
+import { el, flap, hhmm, need, notice } from "./site.js";
+
+/** Thrown by `get` so the caller can tell a refusal from an outage. */
+class ApiError extends Error {
+  /** @param {string} message @param {number} status @param {number} retryAfter */
+  constructor(message, status, retryAfter) {
+    super(message);
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
 
 const API = "/api";
 const LIMIT = 6;
@@ -71,13 +81,16 @@ function remember(code) {
 async function get(path) {
   const res = await fetch(API + path, { cache: "no-store" });
   if (!res.ok) {
-    let detail = String(res.status);
+    let detail = `HTTP ${res.status}`;
     try {
       detail = (await res.json()).detail ?? detail;
     } catch {
       /* a non-JSON error body is still an error; the status carries enough */
     }
-    throw new Error(detail);
+    // Retry-After is the server saying when it will listen again. Believe it, and fall
+    // back to something polite rather than retrying immediately if it is missing.
+    const header = Number(res.headers.get("Retry-After"));
+    throw new ApiError(detail, res.status, Number.isFinite(header) && header > 0 ? header : 20);
   }
   return res.json();
 }
@@ -173,13 +186,47 @@ async function showBoard(code) {
     need("explainer").hidden = false;
   } catch (err) {
     status.textContent = "";
-    board.replaceChildren(
-      el("p", {
-        class: "text-caution",
-        text: `Could not load the board: ${err instanceof Error ? err.message : String(err)}`,
-      })
-    );
+    showFailure(err, code);
   }
+}
+
+/** Whatever countdown is currently running, so a second failure does not stack timers. */
+let stopCountdown = () => {};
+
+/**
+ * Say what happened, in the page, with a number attached. A board that simply stays empty
+ * is the same failure the whole project is about: something went wrong and nothing said so.
+ * @param {unknown} err
+ * @param {string} code
+ */
+function showFailure(err, code) {
+  const board = need("board");
+  stopCountdown();
+
+  if (err instanceof ApiError && err.status === 429) {
+    stopCountdown = notice(board, {
+      level: "caution",
+      title: "Too many requests, so this one was refused",
+      body:
+        "Each board asks Irish Rail's free feed about every train on it, so this service " +
+        "limits how often it will do that. The limit exists to be a good guest on someone " +
+        "else's API rather than to keep you out.",
+      countdown: err.retryAfter,
+      onExpiry: () => void showBoard(code),
+    });
+    return;
+  }
+
+  const offline = !navigator.onLine;
+  stopCountdown = notice(board, {
+    level: "danger",
+    title: offline ? "You appear to be offline" : "The prediction service did not answer",
+    body: offline
+      ? "The board needs a connection, because every prediction on it is made live rather than cached."
+      : `${err instanceof Error ? err.message : String(err)}. Irish Rail's feed may be down, ` +
+        "which happens, or the service may be starting up after a period of no traffic.",
+    action: { label: "Try again", action: () => void showBoard(code) },
+  });
 }
 
 /* ── start ──────────────────────────────────────────────────────────────── */
@@ -201,12 +248,8 @@ get("/stations")
     return showBoard(select.value);
   })
   .catch((err) => {
-    need("status").replaceChildren(
-      el("span", {
-        class: "text-caution",
-        text: `The prediction service is not reachable (${err instanceof Error ? err.message : String(err)}).`,
-      })
-    );
+    need("status").textContent = "";
+    showFailure(err, remembered());
   });
 
 need("picker").addEventListener("submit", (ev) => {

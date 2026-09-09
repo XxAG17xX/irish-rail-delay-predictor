@@ -64,6 +64,10 @@ export function flap(host, time, turn = [3, 4]) {
   host.replaceChildren(
     ...[...time].map((ch, i) => {
       const s = el("span", { text: ch });
+      if (ch === ":") {
+        s.classList.add("sep");
+        return s;
+      }
       if (!reducedMotion && turn.includes(i)) {
         s.classList.add("turn");
         s.style.animationDelay = i * 90 + "ms";
@@ -71,6 +75,58 @@ export function flap(host, time, turn = [3, 4]) {
       return s;
     })
   );
+}
+
+/**
+ * A dismissible notice in the page, used for the states a visitor otherwise meets as
+ * silence: the service refusing them, or being unreachable. `countdown` seconds, when
+ * given, ticks down in the text and calls `onExpiry` when it reaches zero.
+ *
+ * @param {HTMLElement} host
+ * @param {object} opts
+ * @param {"caution"|"danger"} opts.level
+ * @param {string} opts.title
+ * @param {string} opts.body
+ * @param {number} [opts.countdown]
+ * @param {() => void} [opts.onExpiry]
+ * @param {{label: string, action: () => void}} [opts.action]
+ */
+export function notice(host, opts) {
+  const lamp = el("span", { class: `lamp lamp-${opts.level} mt-1.5 shrink-0` });
+  const heading = el("p", { class: "font-semibold", text: opts.title });
+  const body = el("p", { class: "mt-1.5 max-w-xl text-sm leading-relaxed text-ink-2", text: opts.body });
+  const column = el("div", {}, [heading, body]);
+  const panel = el("div", { class: "panel px-5 py-4", role: "status", "aria-live": "polite" }, [
+    el("div", { class: "flex items-start gap-3" }, [lamp, column]),
+  ]);
+  host.replaceChildren(panel);
+
+  let timer = 0;
+  if (opts.countdown != null) {
+    let left = opts.countdown;
+    const line = el("p", { class: "mt-2 text-sm text-caution" });
+    column.append(line);
+    const tick = () => {
+      line.textContent =
+        left > 0 ? `Trying again in ${left} second${left === 1 ? "" : "s"}.` : "Trying again now.";
+      if (left-- <= 0) {
+        clearInterval(timer);
+        opts.onExpiry?.();
+      }
+    };
+    tick();
+    timer = setInterval(tick, 1000);
+  }
+
+  if (opts.action) {
+    const button = el("button", { class: "btn btn-ghost mt-3", type: "button", text: opts.action.label });
+    button.addEventListener("click", () => {
+      clearInterval(timer);
+      opts.action?.action();
+    });
+    column.append(button);
+  }
+  return () => clearInterval(timer);
 }
 
 /**

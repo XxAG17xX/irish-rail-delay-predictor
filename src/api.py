@@ -48,7 +48,7 @@ from pathlib import Path
 import lightgbm as lgb
 import numpy as np
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -69,6 +69,7 @@ from feedtime import (MAX_LEAD_SEC, MIN_VANTAGE_DELAY_SEC, board_scope,  # noqa:
 from poll_live import (DUBLIN, USER_AGENT, Failure, extract_station_records,  # noqa: E402
                        fetch, in_dublin, load_station_config)
 from prediction_log import LogWriteFailed, PredictionLog  # noqa: E402
+from ratelimit import Limiter, client_key  # noqa: E402
 
 NS = "{http://api.irishrail.ie/realtime/}"
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", HERE / "model"))
@@ -155,6 +156,38 @@ def hhmmss(seconds):
 
 app = FastAPI(title="rail-delay", version="0.1",
               description="Irish Rail delay prediction with intervals, not point estimates.")
+
+# Rate limits, in requests the caller may make before waiting. The numbers are set from
+# what each endpoint costs upstream rather than from a round figure.
+#
+#   /board   fans out to as many as `limit` movement requests plus the board itself, so it
+#            is the expensive one. Three in a burst then one every twenty seconds is far
+#            more than a person reading a board needs, and stops a loop dead.
+#   /predict is one movement request. Ten in a burst, one every three seconds after that.
+#
+# The shared budget is the one Irish Rail actually feels: whatever the mix of callers, this
+# container will not start more than one endpoint request a second against the feed, and
+# the Pacer already holds each of those to 2/s inside the request.
+BOARD_LIMITER = Limiter(rate=1 / 20, burst=3, shared_rate=1.0, shared_burst=20)
+PREDICT_LIMITER = Limiter(rate=1 / 3, burst=10, shared_rate=2.0, shared_burst=40)
+
+
+def enforce(limiter, request):
+    """Refuse with a 429 and a Retry-After when the caller is over its budget.
+
+    A refusal says how long to wait. A client told to wait does not poll; a client refused
+    with no number polls immediately and makes the thing it is being protected from worse.
+    """
+    key = client_key(request.client.host if request.client else "",
+                     request.headers.get("x-forwarded-for"))
+    wait = limiter.check(key)
+    if wait:
+        seconds = max(1, int(wait + 0.999))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many requests. Try again in {seconds} seconds.",
+            headers={"Retry-After": str(seconds), "Cache-Control": "no-store"},
+        )
 
 _state = {}
 
@@ -335,8 +368,10 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
 
 
 @app.get("/predict")
-def predict(train: str = Query(..., description="Train code, e.g. A220"),
+def predict(request: Request,
+            train: str = Query(..., description="Train code, e.g. A220"),
             station: str = Query(..., description="Location code, e.g. THRLS")):
+    enforce(PREDICT_LIMITER, request)
     return _respond(predict_row(state(), train, station))
 
 
@@ -366,7 +401,8 @@ def alias_map(known):
 
 
 @app.get("/board")
-def board(station: str = Query(..., description="Station code, e.g. THRLS"),
+def board(request: Request,
+          station: str = Query(..., description="Station code, e.g. THRLS"),
           limit: int = Query(6, ge=1, le=10, description="Trains to predict for")):
     """What is due at one station, each entry with a prediction or a reason there is none.
 
@@ -375,7 +411,11 @@ def board(station: str = Query(..., description="Station code, e.g. THRLS"),
     have not left their origin are listed but never fetched — the product cannot answer
     for them (board_scope), and spending a request to be told so would halve how many
     real trains fit inside the 30-second timeout.
+
+    Rate limited before anything else happens: this is the endpoint that costs Irish Rail
+    something, so a refusal must be cheap.
     """
+    enforce(BOARD_LIMITER, request)
     st = state()
     code = station.strip().upper()
     if code not in st["stations"]:

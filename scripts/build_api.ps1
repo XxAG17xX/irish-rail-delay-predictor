@@ -43,7 +43,7 @@ New-Item -ItemType Directory -Force -Path $build | Out-Null
 # --- modules api.py transitively imports
 $modules = @(
     "api.py", "generate.py", "features.py", "feedtime.py", "prediction_log.py",
-    "poll_live.py", "backfill.py", "hostlock.py", "sinks.py"
+    "poll_live.py", "backfill.py", "hostlock.py", "sinks.py", "ratelimit.py"
 )
 foreach ($m in $modules) {
     $src = Join-Path $root "src\$m"

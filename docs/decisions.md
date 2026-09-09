@@ -2998,3 +2998,68 @@ nothing to a reader who has not done this before, and a rule nobody understands 
 gets deleted the first time it is inconvenient.
 
 **Date.** 2026-09-09
+
+---
+
+## D67 — The public API gets a rate limit, and a refusal that says how long to wait
+
+**Why this matters:** the service was open to anyone with a loop, and each board view costs
+Irish Rail seven requests to a free feed whose operators asked for politeness and have no way
+to complain. Now it refuses, and it tells you when to come back rather than leaving a blank
+page.
+
+**In plain terms.** Anyone could have pointed a script at the board and made it ask Irish Rail
+for data as fast as it could. That would have run up a bill and been rude to someone else's
+free service. There is now a limit, and when you hit it the page says so, counts down, and
+tries again by itself.
+
+**What was actually exposed.** The Function URL is `AuthType: NONE` and nothing throttled it.
+One `/board` call fans out to as many as seven requests against the feed and writes an object
+to S3 per prediction. CloudFront hides the Function URL from the page source, which is
+obscurity and was never a control; the URL stays directly reachable by anyone who has it.
+
+**The limits, set from cost rather than from a round number.**
+
+| Endpoint | Burst | Sustained | Why |
+|---|---|---|---|
+| `/board` | 3 | 1 per 20s | up to 7 upstream requests each; far more than a person reading a board needs |
+| `/predict` | 10 | 1 per 3s | one upstream request each |
+| shared, per container | 20 | 1/s | what Irish Rail actually feels, whatever the mix of callers |
+
+**The ceiling, stated rather than hidden.** This is an **in-process** token bucket. Its state
+lives in one warm Lambda container, so a caller spread across concurrent containers gets
+several buckets. That is a real limit and the trade is deliberate: it costs nothing, adds no
+service, and cannot itself fail, and the account's concurrency cap of 10 bounds the worst case
+at roughly ten times the per-container rate rather than at infinity. The shared bucket is the
+part that protects the upstream feed regardless of how many distinct callers are involved. A
+determined attacker with many addresses gets through; the upgrade path is AWS WAF rate rules
+on the distribution at about six dollars a month, and it is recorded here rather than pretended
+away.
+
+`X-Forwarded-For` is trusted for the first hop because CloudFront's origin request policy
+forwards it, and a caller hitting the Function URL directly can put anything there. That makes
+the per-caller bucket honest about ordinary traffic and useless against deliberate evasion,
+which is exactly what the shared bucket covers.
+
+**A refusal is a number, not a silence.** The 429 carries `Retry-After`, and the page renders
+a notice with a live countdown that retries by itself when it reaches zero. A client told when
+to come back does not poll; a client refused with no number polls immediately and makes the
+problem worse. The notice also says *why* the limit exists, because "be a good guest on
+someone else's API" is a better answer than an error code.
+
+**Found while testing rather than reasoned about.** The first self-check failed: a bucket
+stamped from `time.monotonic()` and then queried with an injected clock of `0.0` computed a
+hugely negative elapsed time, drained its own tokens and refused everyone. Two fixes, both
+worth keeping: elapsed time is clamped at zero, and the shared bucket is created on first use
+so it shares whatever clock the caller passes.
+
+**Also in this change.** The split flap on the board was reading as clipped: the seam sat at
+the exact vertical centre of a cell tight enough that the line crossed the numerals' waist.
+Symmetric padding, an explicit line-height and a softer seam fix it, and the colon is no longer
+given a flap of its own because a real board separates hours from minutes with a fixed mark.
+Measured after the fix: 4.8px of headroom above and below the ink, on both sides.
+
+**Verified live.** Through the distribution: three board requests answered, the fourth refused
+with `Retry-After: 17`, and the header survives CloudFront.
+
+**Date.** 2026-09-09

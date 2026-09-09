@@ -150,16 +150,29 @@
 
   /* ── split flap ─────────────────────────────────────────────────────────── */
 
-  .flap { display: inline-flex; gap: 2px; perspective: 320px; }
+  .flap { display: inline-flex; align-items: stretch; gap: 3px; perspective: 320px; }
   .flap span {
-    display: inline-block; background: #0d1314; border: 1px solid var(--color-rule);
-    border-radius: 2px; padding: .12rem .3rem; font-weight: 700; font-size: 1.1rem;
+    display: inline-block; min-width: 1.05em; text-align: center;
+    background: #0d1314; border: 1px solid var(--color-rule); border-radius: 3px;
+    /* Explicit line-height and symmetric padding. The digits were reading as clipped
+       because the seam sat at the exact vertical centre of a cell tight enough that the
+       line crossed the numeral's waist rather than the gap between two flaps. */
+    padding: .3rem .28rem;
+    line-height: 1;
+    font-weight: 700; font-size: 1.15rem;
     position: relative;
   }
   .flap span::after {
-    content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
-    background: var(--color-void); opacity: .8;
+    content: ""; position: absolute; left: 1px; right: 1px; top: 50%; height: 1px;
+    background: var(--color-void); opacity: .45;
   }
+  /* The colon is not a flap. Real boards separate hours from minutes with a fixed mark,
+     and giving it a cell made the display read as five tiles rather than a time. */
+  .flap .sep {
+    background: none; border: 0; min-width: 0; padding: .3rem .05rem;
+    color: var(--color-ink-3); font-weight: 600;
+  }
+  .flap .sep::after { display: none; }
   .flap span.turn { animation: flap .42s cubic-bezier(.3,.9,.25,1) both; }
   @keyframes flap { from { transform: rotateX(-92deg); filter: brightness(.35); } }
 
