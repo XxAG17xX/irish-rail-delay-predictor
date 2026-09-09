@@ -310,6 +310,18 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
     target = stops[ti]
     base["scheduled_arrival"] = target["sched_text"] or None
     base["station_name"] = target["name"]
+
+    # A stop with no scheduled arrival cannot be predicted against: the model predicts a
+    # delay, and a delay needs a timetable to be late against. This happens at a train's
+    # ORIGIN, which carries a scheduled departure and no arrival, and it reaches here
+    # whenever a board still lists a service that has just left the station being asked
+    # about. Guarded here rather than only at the lead calculation below, which is where
+    # `sched` was already known to be optional: further down `sched + q50` assumed it was
+    # not, and raised TypeError all the way out as a 500.
+    if target["sched"] is None:
+        return {**base, "reason": "no_scheduled_arrival",
+                "explanation": f"{train} has no scheduled arrival at {station}; it starts "
+                               f"its journey there."}
     # Recorded rather than left for the scorer to reconstruct. `sched` here is unwrapped
     # across midnight; `scheduled_arrival` is the raw wall clock, so a 23:50 prediction
     # about a 00:20 arrival reconstructs as a lead of minus 23 hours. Compute it once
@@ -390,16 +402,22 @@ CALLS_AS = {"O": "starts here", "S": "stops here", "D": "ends here",
             "T": "passes through", "C": "stops here"}
 
 
-def board_clock(rec, *fields):
-    """First of `fields` carrying a real time, or "".
+def board_clock(rec, kind, *fields):
+    """The time this service is at this station, choosing the field by `kind`.
 
-    The board writes 00:00, not empty, for whichever half of the arrival/departure pair
-    does not apply -- arrival at an origin, departure at a destination -- so a plain `or`
-    chain returns midnight for every terminus on the board.
+    The board carries an arrival and a departure for every row and writes 00:00 into
+    whichever one does not apply: arrival at an origin, departure at a destination. The
+    obvious reading of that is "00:00 means absent", and it is wrong. A train reaching
+    Kildare at midnight reports 00:00 as its real scheduled arrival, and skipping it threw
+    away a true time and left the stop blank.
+
+    `LocationType` says which field applies, so it is used instead of guessing from the
+    value. The remaining fields are a fallback for a genuinely empty one, never for 00:00.
     """
-    for f in fields:
+    order = fields[::-1] if kind == "O" else fields
+    for f in order:
         v = (rec.get(f) or "").strip()
-        if v and v != "00:00":
+        if v:
             return v
     return ""
 
@@ -420,9 +438,12 @@ def calling_pattern(stops, here_codes):
         # DC427 among the stations makes the route look wrong to anyone who knows it.
         if s.get("type") == "T" and s["loc"] not in here:
             continue
-        sched = (s.get("sched_text") or "").strip()
-        if sched in ("", "00:00", "00:00:00"):
-            sched = (s.get("sched_dep_text") or "").strip()
+        # Same rule as board_clock, and for the same reason: the stop's own type says
+        # which time applies, so a genuine 00:00 arrival survives instead of being read
+        # as a field that does not apply.
+        arrival = (s.get("sched_text") or "").strip()
+        departure = (s.get("sched_dep_text") or "").strip()
+        sched = (departure or arrival) if s.get("type") == "O" else (arrival or departure)
         out.append({
             "code": s["loc"],
             "name": s["name"] or s["loc"],
@@ -496,9 +517,11 @@ def board(request: Request,
             # origin is a different number and lives in Origintime; using the first for the
             # second told a visitor a train bound for Cobh at 23:26 "starts at Cork at
             # 23:26" when it had in fact left Cork at 23:00.
-            "scheduled": board_clock(rec, "Scharrival", "Schdepart"),
+            "scheduled": board_clock(rec, rec.get("Locationtype", ""),
+                                     "Scharrival", "Schdepart"),
             "origin_time": (rec.get("Origintime") or "").strip(),
-            "operator_eta": board_clock(rec, "Exparrival", "Expdepart"),
+            "operator_eta": board_clock(rec, rec.get("Locationtype", ""),
+                                        "Exparrival", "Expdepart"),
             "operator_late_min": rec.get("Late", ""),
             "scope": scope,
             "last_location": rec.get("Lastlocation", ""),
@@ -617,13 +640,41 @@ if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
 
 
 def _self_check():
-    """No network, no model: the two board helpers that are easy to get quietly wrong."""
-    assert board_clock({"Exparrival": "00:00", "Expdepart": "17:20"},
-                       "Exparrival", "Expdepart") == "17:20", "00:00 must not win"
-    assert board_clock({"Exparrival": "17:05", "Expdepart": "17:07"},
-                       "Exparrival", "Expdepart") == "17:05", "first real field wins"
-    assert board_clock({"Exparrival": " ", "Expdepart": ""},
-                       "Exparrival", "Expdepart") == "", "nothing real means empty"
+    """No network, no model: the board helpers that are easy to get quietly wrong."""
+    # At an origin the arrival is the field that does not apply, so the departure wins.
+    assert board_clock({"Exparrival": "00:00", "Expdepart": "17:20"}, "O",
+                       "Exparrival", "Expdepart") == "17:20", "an origin departs"
+    # Anywhere else the arrival wins, and a midnight arrival is a real time. This is the
+    # regression that matters: reading 00:00 as "absent" blanked the last stop of every
+    # service that arrives at midnight.
+    assert board_clock({"Exparrival": "00:00", "Expdepart": ""}, "D",
+                       "Exparrival", "Expdepart") == "00:00", "00:00 can be a real arrival"
+    assert board_clock({"Exparrival": "17:05", "Expdepart": "17:07"}, "S",
+                       "Exparrival", "Expdepart") == "17:05", "a stop uses its arrival"
+    # A genuinely empty field still falls through to the other one.
+    assert board_clock({"Exparrival": " ", "Expdepart": "17:07"}, "S",
+                       "Exparrival", "Expdepart") == "17:07", "empty falls through"
+    assert board_clock({"Exparrival": " ", "Expdepart": ""}, "S",
+                       "Exparrival", "Expdepart") == "", "nothing at all means empty"
+
+    # calling_pattern applies the same rule, drops timing points, and marks this station.
+    stops = [
+        {"loc": "HSTON", "name": "Dublin Heuston", "type": "O", "sched_text": "00:00",
+         "sched_dep_text": "23:10", "arr": None, "delay": None},
+        {"loc": "DC427", "name": "", "type": "T", "sched_text": "23:14",
+         "sched_dep_text": "", "arr": None, "delay": None},
+        {"loc": "SALNS", "name": "Sallins", "type": "S", "sched_text": "23:42",
+         "sched_dep_text": "23:43", "arr": 85320, "delay": 60},
+        {"loc": "KDARE", "name": "Kildare", "type": "D", "sched_text": "00:00",
+         "sched_dep_text": "", "arr": None, "delay": None},
+    ]
+    pattern = calling_pattern(stops, ["KDARE"])
+    assert [p["code"] for p in pattern] == ["HSTON", "SALNS", "KDARE"], "timing points dropped"
+    assert pattern[0]["scheduled"] == "23:10", "an origin shows its departure"
+    assert pattern[2]["scheduled"] == "00:00", "a midnight arrival is kept, not blanked"
+    assert [p["here"] for p in pattern] == [False, False, True], "this station is marked"
+    assert pattern[1]["arrived"] == "23:42" and pattern[1]["delay_min"] == 1.0
+    assert calling_pattern([], ["KDARE"]) == [], "no journey means no route"
 
     known = {"ADMTN": "Adamstown", "ADAMF": "Adamstown", "ADAMS": "Adamstown",
              "KDARE": "Kildare"}

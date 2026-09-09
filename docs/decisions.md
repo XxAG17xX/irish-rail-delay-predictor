@@ -3120,3 +3120,49 @@ the repository or in GitHub's secrets, which is what closes the open item CLAUDE
 since the templates were written.
 
 **Date.** 2026-09-10
+
+---
+
+## D69 — 00:00 is a real time, and reading it as "not applicable" blanked a stop
+
+**Why this matters:** a train arriving at midnight had its arrival time thrown away, because
+the code treated 00:00 as the feed's way of saying "this field does not apply". It is both.
+
+**In plain terms.** Every station board row carries an arrival time and a departure time. For
+a train that starts at that station there is no arrival, so the feed writes 00:00 there. The
+code took 00:00 to mean "empty" everywhere, which works until a train genuinely arrives at
+midnight and its real time gets discarded.
+
+**Found by testing three stations rather than one.** D226, Dublin Heuston to Kildare,
+scheduled into Kildare at 00:00. The route drew every stop except the last, which showed no
+time at all. Nothing raised, and on any board before about 23:00 the bug is invisible.
+
+**The fix is to stop guessing from the value.** `LocationType` already says which field
+applies: `O` origin uses the departure, everything else uses the arrival, and the other field
+is a fallback only when the chosen one is genuinely empty. No sentinel, no collision.
+
+```
+board_clock(rec, kind, *fields)          # kind comes from LocationType
+calling_pattern(...)                     # same rule per stop
+```
+
+**This is the echo problem in a different costume** (D20-D23). There, a scheduled time was
+being served as though it were an observation, and the tell was an exact match that is
+*usually* wrong and sometimes right. Here a sentinel is being served as though it were a
+value, and the tell is a time that is *usually* absent and sometimes real. Both are cases
+where the same bytes mean two different things and only context separates them, and in both
+the wrong answer was the one that looked obviously correct.
+
+**A second crash, found in the same pass.** `/board?station=<a train's own origin>` returned
+a 500: `predict_row` guarded `target["sched"] is None` when computing the lead, then used
+`sched + q50` unguarded further down and raised `TypeError`. It reaches that state whenever a
+board still lists a service that has just left the station being asked about. It now declines
+with `no_scheduled_arrival` and the page says "this is where the train starts, so there is no
+arrival to predict". This was not introduced by the route work; it was reachable from
+`/predict` all along and nothing had asked for that combination.
+
+**Both are covered by `api.py`'s self-check now**, including an explicit assertion that a
+00:00 arrival survives, so reintroducing the shortcut fails the build rather than a board at
+midnight.
+
+**Date.** 2026-09-10

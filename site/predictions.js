@@ -160,6 +160,10 @@ function noPredictionReason(t) {
       return "Further down the board than this page asks the model about.";
     case "already_arrived":
       return "Already arrived here.";
+    case "no_scheduled_arrival":
+      return "This is where the train starts, so there is no arrival to predict.";
+    case "not_in_service":
+      return "Not running today, according to the feed.";
     case "journey_inconsistent":
       return "This service's reported times are out of order, so they are not trusted.";
     case "lead_out_of_range":
