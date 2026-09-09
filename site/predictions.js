@@ -97,59 +97,83 @@ async function get(path) {
 
 /* ── rendering ──────────────────────────────────────────────────────────── */
 
+/**
+ * One labelled time. Every time on the board says whose it is, because the first version
+ * put the operator's number and RailCast's number in the same box and nothing distinguished
+ * them, which made the whole board unreadable to anyone seeing it for the first time.
+ * @param {string} label
+ * @param {Node|string} value
+ * @param {string} [tone]
+ */
+function timeCell(label, value, tone = "text-ink-2") {
+  return el("div", { class: "text-right" }, [
+    el("span", { class: "block text-[0.66rem] uppercase tracking-wider text-ink-3", text: label }),
+    el("div", { class: `mt-0.5 ${tone}` }, [typeof value === "string" ? el("span", { text: value }) : value]),
+  ]);
+}
+
+/**
+ * How late the train was when it last reported, said in words rather than a signed number.
+ * A raw "-4.5 min down" is a sentence nobody reads correctly at a glance.
+ * @param {number|null|undefined} min
+ */
+function lateness(min) {
+  if (min == null) return "";
+  if (min <= -0.5) return `${Math.abs(min).toFixed(1)} min early`;
+  if (min < 0.5) return "on time";
+  return `${min.toFixed(1)} min late`;
+}
+
 /** @param {Entry} t */
 function row(t) {
-  const when = el("div", { class: "text-right" });
+  const times = el("div", { class: "flex items-start justify-end gap-4 sm:gap-6" });
 
-  if (t.scheduled) {
-    when.append(
-      el("span", {
-        class: "mr-2 text-[0.82rem] text-ink-3" + (t.prediction ? " line-through" : ""),
-        text: hhmm(t.scheduled),
-      })
-    );
-  }
-
-  const face = el("span", { class: "flap" });
-  when.append(face);
-  flap(face, hhmm(t.prediction ? t.prediction.predicted : t.operator_eta || t.scheduled));
+  times.append(timeCell("Timetable", hhmm(t.scheduled) || "–", "text-ink-3 text-[0.95rem]"));
+  times.append(
+    timeCell("Irish Rail", hhmm(t.operator_eta) || "–", "text-ink-2 text-[0.95rem]")
+  );
 
   if (t.prediction) {
-    const [lo, hi] = t.prediction.interval_80pct;
-    when.append(
-      el("span", {
-        class: "mt-1 block text-xs text-clear",
-        text: `range ${hhmm(lo)} to ${hhmm(hi)}`,
-      })
-    );
+    const face = el("span", { class: "flap" });
+    flap(face, hhmm(t.prediction.predicted));
+    times.append(timeCell("RailCast", face, ""));
   } else {
-    when.append(
-      el("span", {
-        class: "mt-1 block text-xs text-ink-3",
-        text: t.reason === "not_yet_departed" ? "no prediction, nothing reported yet" : "no prediction",
-      })
-    );
+    times.append(timeCell("RailCast", "–", "text-ink-3 text-[0.95rem]"));
   }
 
-  const seen = t.prediction && t.prediction.current_delay_min != null
-    ? `${t.prediction.current_delay_min.toFixed(1)} min down at ${t.prediction.vantage_name || t.prediction.vantage_location}`
-    : t.explanation || "";
+  const where = t.prediction?.vantage_name || t.prediction?.vantage_location;
+  const seen =
+    t.prediction && t.prediction.current_delay_min != null
+      ? `${lateness(t.prediction.current_delay_min)} at ${where}`
+      : "";
 
-  return el(
-    "div",
-    { class: "grid grid-cols-[3.4rem_1fr_auto] items-center gap-3 border-b border-rule px-1 py-3 last:border-b-0" },
-    [
-      el("span", { class: "font-bold tracking-wide", text: t.train }),
-      el("span", { class: "text-[0.94rem] text-ink-2" }, [
-        el("span", { text: t.destination || "–" }),
-        el("small", {
-          class: "mt-0.5 block text-xs text-ink-3",
-          text: [t.origin ? `from ${t.origin}` : "", seen].filter(Boolean).join(" · "),
+  const detail = el("p", { class: "mt-2 text-xs text-ink-3" });
+  if (t.prediction) {
+    const [lo, hi] = t.prediction.interval_80pct;
+    detail.append(
+      el("span", {
+        class: "text-clear",
+        text: `RailCast expects ${hhmm(lo)} to ${hhmm(hi)}, four times in five`,
+      }),
+      el("span", { text: seen ? ` · last reported ${seen}` : "" })
+    );
+  } else {
+    detail.append(el("span", { text: t.explanation || "No prediction for this service." }));
+  }
+
+  return el("div", { class: "border-b border-rule py-3.5 last:border-b-0" }, [
+    el("div", { class: "flex flex-wrap items-start justify-between gap-x-4 gap-y-2" }, [
+      el("div", { class: "min-w-0" }, [
+        el("span", { class: "font-bold tracking-wide", text: t.train }),
+        el("span", {
+          class: "ml-2 text-[0.94rem] text-ink-2",
+          text: [t.origin, t.destination].filter(Boolean).join(" to "),
         }),
       ]),
-      when,
-    ]
-  );
+      times,
+    ]),
+    detail,
+  ]);
 }
 
 /** @param {string} code */
@@ -158,6 +182,9 @@ async function showBoard(code) {
   const board = need("board");
   status.textContent = "Asking the model about each train. This takes a few seconds.";
   board.replaceChildren();
+  // The long "how to read a row" panel gives way to the compact legend once there is a real
+  // board to read; leaving both would push the answer below the fold.
+  need("intro").hidden = true;
 
   try {
     /** @type {Board} */
@@ -233,6 +260,9 @@ function showFailure(err, code) {
 
 const select = /** @type {HTMLSelectElement} */ (need("station"));
 
+// The station list is a cached static file. Loading a BOARD is not: it asks Irish Rail
+// about every train on it, so it happens when a visitor asks for one and never merely
+// because a page was opened. Someone who lands here and leaves costs the feed nothing.
 get("/stations")
   .then((data) => {
     /** @type {{code: string, name: string, polled: boolean}[]} */
@@ -245,7 +275,8 @@ get("/stations")
     select.replaceChildren(watched, rest);
     select.value = remembered();
     if (!select.value && stations[0]) select.value = stations[0].code;
-    return showBoard(select.value);
+    need("status").textContent = "Pick a station and press Show board.";
+    need("intro").hidden = false;
   })
   .catch((err) => {
     need("status").textContent = "";

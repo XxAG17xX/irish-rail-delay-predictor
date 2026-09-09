@@ -144,7 +144,10 @@
     content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px;
     background: var(--color-rule);
   }
-  .sec i { position: absolute; top: 2px; height: 6px; background: var(--color-clear); }
+  /* `left: 0` is load-bearing. Without it the absolutely positioned fill sits at its static
+     position and its right edge pushes the scroll container 250px wider than the table,
+     which scrolled the line names off the screen with nothing looking broken. */
+  .sec i { position: absolute; left: 0; top: 2px; height: 6px; background: var(--color-clear); }
   .sec i.warn { background: var(--color-caution); }
   .sec u { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--color-ink); }
 

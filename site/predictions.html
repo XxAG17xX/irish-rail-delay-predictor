@@ -29,9 +29,10 @@
 <main class="mx-auto max-w-5xl px-6 pt-10 pb-16">
 
   <h1 class="max-w-[16ch] text-4xl font-extrabold md:text-5xl">What is due, and how sure.</h1>
-  <p class="mt-4 max-w-xl text-ink-2">Trains arriving at a station in the next ninety minutes.
-    Where the service can answer, it gives the range the arrival is expected to fall inside four
-    times in five. Where it cannot, it says why instead of guessing.</p>
+  <p class="mt-4 max-w-2xl text-ink-2">Pick the station you are travelling to. You get everything
+    due there in the next ninety minutes, and for each service, three times side by side: what the
+    timetable says, what Irish Rail currently expects, and what RailCast expects together with the
+    range it is willing to stand behind.</p>
 
   <form id="picker" class="mt-7 flex flex-wrap items-end gap-3">
     <div>
@@ -43,25 +44,93 @@
 
   <p id="status" class="mt-5 text-sm text-ink-3">Loading stations.</p>
 
-  <div id="board" class="mt-5"></div>
+  <!-- Shown until a board is asked for. A visitor who never presses the button costs Irish
+       Rail nothing, and gets told how to read the thing before they see it. -->
+  <section id="intro" hidden class="mt-6 grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+    <div class="panel px-5 py-5">
+      <h2 class="text-base font-bold">How to read a row</h2>
+      <div class="mt-4 border-b border-rule pb-3.5">
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div class="min-w-0">
+            <span class="font-bold tracking-wide">A223</span>
+            <span class="ml-2 text-[0.94rem] text-ink-2">Cork to Dublin Heuston</span>
+          </div>
+          <div class="flex items-start justify-end gap-4 sm:gap-6">
+            <div class="text-right">
+              <span class="block text-[0.66rem] uppercase tracking-wider text-ink-3">Timetable</span>
+              <div class="mt-0.5 text-ink-3 text-[0.95rem]">19:04</div>
+            </div>
+            <div class="text-right">
+              <span class="block text-[0.66rem] uppercase tracking-wider text-ink-3">Irish Rail</span>
+              <div class="mt-0.5 text-ink-2 text-[0.95rem]">19:08</div>
+            </div>
+            <div class="text-right">
+              <span class="block text-[0.66rem] uppercase tracking-wider text-ink-3">RailCast</span>
+              <div class="mt-0.5">
+                <span class="flap"><span>1</span><span>9</span><span class="sep">:</span><span>0</span><span>8</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-ink-3">
+          <span class="text-clear">RailCast expects 19:07 to 19:10, four times in five</span>
+          <span> · last reported 5.0 min late at Park West and Cherry Orchard</span>
+        </p>
+      </div>
+      <ul class="mt-4 space-y-2 text-sm text-ink-2">
+        <li><b class="text-ink">Timetable</b> is the published arrival time. It never changes.</li>
+        <li><b class="text-ink">Irish Rail</b> is the operator's own current estimate, the number
+          you would read on the real departure board.</li>
+        <li><b class="text-ink">RailCast</b> is this model's estimate, shown on flaps because it
+          is the only number on the page this site is responsible for. Under it is the range the
+          arrival should fall inside four times in five, and where the train last reported.</li>
+      </ul>
+      <p class="mt-4 text-sm text-ink-2">The board shows trains that have <b class="text-ink">not
+        arrived yet</b>. Nothing here is a prediction made after the fact: every one is logged the
+        moment it is made and
+        <a href="accuracy.html" class="text-clear underline underline-offset-2">marked the
+        following morning</a>.</p>
+    </div>
 
-  <section id="explainer" hidden class="panel mt-10 px-5 py-5">
-    <div class="flex items-start gap-3">
-      <span class="lamp lamp-out mt-1.5"></span>
-      <div>
-        <h2 class="text-base font-bold">Why some services have no range</h2>
-        <p class="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">The model reads how late
-          a train already is at the stops behind you. A service that has not left its origin has
-          reported nowhere, so there is nothing to reason from. That is most of what you see at
-          a terminus like Heuston, where nearly everything on the board is a departure, and much
-          less at a through station like Kildare.</p>
-        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-ink-2">This is the coverage
-          limitation from the <a href="accuracy.html" class="text-clear underline underline-offset-2">accuracy
-          page</a>, in the place a passenger actually meets it. Listing those services and
-          marking them is deliberate: dropping them would make the coverage figure look better
-          than the thing you are standing in front of.</p>
+    <div class="panel px-5 py-5">
+      <div class="flex items-start gap-3">
+        <span class="lamp lamp-out mt-1.5 shrink-0"></span>
+        <div>
+          <h2 class="text-base font-bold">A dash instead of a prediction</h2>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">Many rows will show a dash under
+            RailCast. That is the honest answer, not a failure: the model reads how late a train
+            already is at the stops behind you, so a service that has not left its origin has
+            reported nowhere and there is nothing to reason from.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">Expect a lot of dashes at a terminus
+            like Heuston, where nearly every service on the board is a departure that has not
+            started, and far fewer at a through station like Kildare or Portarlington.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">Those services are listed rather than
+            hidden. Dropping them would make the coverage figure look better than the board you
+            are actually standing in front of.</p>
+        </div>
       </div>
     </div>
+  </section>
+
+  <div id="board" class="mt-5"></div>
+
+  <!-- Replaces the intro once a board is on screen: the same facts, compressed, so the
+       legend stays reachable without pushing the board down the page. -->
+  <section id="explainer" hidden class="mt-8">
+    <p class="max-w-3xl text-sm leading-relaxed text-ink-2">
+      <b class="text-ink">Timetable</b> is the published time.
+      <b class="text-ink">Irish Rail</b> is the operator's own estimate.
+      <b class="text-ink">RailCast</b>, on the flaps, is this model's, with the range it expects
+      the arrival to fall inside four times in five.
+      A dash under RailCast means the service has not reported anywhere yet, so there is nothing
+      to predict from. Those rows are listed rather than hidden, because dropping them would make
+      the <a href="accuracy.html" class="text-clear underline underline-offset-2">coverage
+      figure</a> look better than the board in front of you.
+    </p>
+    <p class="mt-3 max-w-3xl text-sm leading-relaxed text-ink-3">Every prediction here was logged
+      the moment it was made, before the train arrived, and is marked against the real arrival the
+      following morning. To be a good guest on Irish Rail's free feed, boards are limited to a few
+      per minute; if you hit that, the page will say so and count down.</p>
   </section>
 
 </main>

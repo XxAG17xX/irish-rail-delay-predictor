@@ -199,6 +199,9 @@ function render(a) {
       const mark = el("u");
       mark.style.left = `${NOMINAL}%`;
       const track = el("div", { class: "sec" }, [fill, mark]);
+      // The drawn track is the widest column and the least essential: the same figure sits
+      // beside it as a percentage. Hiding it below md keeps the line name, which is the
+      // column a reader needs most, from being the one that scrolls off the screen.
       return el("tr", {}, [
         el("td", { text: GROUP_NAMES[key] ?? key }),
         el("td", { text: int(g.accuracy.n) }),
@@ -210,7 +213,7 @@ function render(a) {
             : "no board",
         }),
         el("td", { class: low ? "under" : "", text: pct(cov) }),
-        el("td", {}, [track]),
+        el("td", { class: "hidden md:table-cell w-[34%]" }, [track]),
       ]);
     })
   );
