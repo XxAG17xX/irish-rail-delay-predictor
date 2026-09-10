@@ -3314,3 +3314,60 @@ id-based one cannot. `infra/github-oidc.yaml` now takes `GitHubOwnerId` and `Git
 and carries a comment saying where to look if it ever drifts again.
 
 **Date.** 2026-09-10
+
+---
+
+## D73 — Pre-registration: what the test week will be asked, written before it is opened
+
+**Why this matters:** this data can be looked at exactly once, so the questions and the way
+the answers will be reported are fixed here, before anyone sees a number. This entry is
+committed before the command is run, and the git timestamps are the evidence of that.
+
+**In plain terms.** In June the data was cut three ways: one part to learn from, one part to
+check every decision against, and one week sealed and never opened. That sealed week is about
+to be opened. Deciding afterwards what counts as a good result is how people fool themselves,
+so it is decided now.
+
+**What the test week is, and why validation is not enough.** Every choice in this project was
+checked against 13-19 July: which features to use, dropping `horizon_observed_stops`, the
+`journey_consistent` filter, the retrain, the gate thresholds. Each look leaks a little of
+that week into the model. After dozens of decisions, the validation figure partly measures
+"how well was this tuned to that particular week". The test week has had none of that.
+
+**The one question it can settle that nothing else can.** Validation says interval coverage is
+**80.2%**. Live September says **75.1%**. Two explanations, and they have opposite meanings:
+
+- the railway changed in September, which the coverage trigger firing on two shared-track
+  corridors (D64) already supports; or
+- the 80.2% was optimistic, tuned into existence against validation.
+
+The test week is July data the model has never seen. **If test coverage is near 80%, the model
+was genuinely calibrated and September is a different railway. If it is near 75%, the
+validation figure was flattering itself.** Either answer is worth publishing and they cannot
+both be true.
+
+**What it cannot do, stated now so it is not quietly dropped later.** There is **no operator
+comparison available for 20-26 July.** `ExpectedArrival` exists only live and cannot be
+backfilled; capture began 2026-07-28 for one day and properly from mid-August. The published
+27% head-to-head came from 1-2 August. So the test week measures this model against the
+timetable and against persistence, and says nothing new about Irish Rail's own estimate.
+
+**Fixed in advance:**
+
+1. **Model:** the serving artifact `20260903T173007Z-5ebf03f`, loaded, not retrained. One run.
+2. **Data:** `data/examples/split=test`, 221,365 rows over 7 dates, exactly as built for the
+   retrain, so the comparison against the validation figure is like for like.
+3. **Command:** `python src\train_quantile.py --load 20260903T173007Z-5ebf03f --eval-split test`.
+   Nothing bespoke, so the methodology cannot be chosen to suit the answer.
+4. **Reported, whatever they are:** MAE, median absolute error and bias; interval coverage
+   against the nominal 80%; both split by lead band and by station group; and the persistence
+   baseline (D26) for reference.
+5. **No pass mark.** There is no threshold at which this is declared a success. The number is
+   the number and it goes on the accuracy page and in the next decision entry either way.
+6. **One run.** No retuning, no second pass with a different filter, no model change in
+   response. If the result is disappointing, that is the finding.
+
+**The comparison that will be drawn**, also fixed now: test MAE against the validation 59.7s,
+and test coverage against the validation 80.19% and the live 75.1%.
+
+**Date.** 2026-09-10, written before the run.

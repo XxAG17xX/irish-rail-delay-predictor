@@ -190,6 +190,8 @@ jobs:
             https://${{ env.SITE_DOMAIN }}/
             https://${{ env.SITE_DOMAIN }}/accuracy.html
             https://${{ env.SITE_DOMAIN }}/how-it-works.html
+          # Reports are kept as a GitHub run artifact only. temporaryPublicStorage would
+          # also push them to a public Google URL, which is redundant when the artifact
+          # exists and puts screenshots of the site on someone else's storage.
           uploadArtifacts: true
-          temporaryPublicStorage: true
           configPath: ./.lighthouserc.json
