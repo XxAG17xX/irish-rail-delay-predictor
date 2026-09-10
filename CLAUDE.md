@@ -143,19 +143,15 @@ this on the accuracy page beside the coverage figure.
 Everything the scope lock asked for is built, deployed and running. What is left, in the
 order it is worth doing:
 
-1. **Self-host the two webfonts.** Performance sits at 0.75 against a 0.9 target, and the
-   render-blocking request to `fonts.googleapis.com` is the likely cause. It also removes a
-   third party that currently sees every visitor's IP.
-2. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Counter-
-   intuitive but correct: reserved concurrency is refused below an account limit of 100, so
-   raising the limit is what makes a hard cap possible. Today a flood on the public endpoint
-   could starve the poller and scorer of concurrency, which costs collected data rather than
-   money.
-2. **Make a failed prediction-log write visible.** `api.py` catches `LogWriteFailed` and
-   returns 503, which Lambda counts as a success, so `Errors` stays at zero. D39 requires log
-   trouble to be visible as API trouble and it still is not. Listed below as an open item and
-   still true.
-3. Split `requirements.txt`, which now mixes runtime with lint tooling.
+1. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Needs a
+   support request, so it is the one item nobody else can do. Counter-intuitive but correct:
+   reserved concurrency is refused below an account limit of 100, so raising the limit is
+   what makes a hard cap possible. Today a flood on the public endpoint could starve the
+   poller and the scorer of concurrency, which costs collected data rather than money.
+2. Split `requirements.txt`, which mixes runtime deps with lint tooling.
+
+Done and recorded, so do not redo: the test week (D74), self-hosted fonts and a
+`'self'`-only CSP (D75), and the prediction-log alarm gap (D76).
 
 **Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
 hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6
