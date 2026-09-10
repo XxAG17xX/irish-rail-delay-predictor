@@ -121,12 +121,17 @@ temp directory and run the build scripts.
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 `requests` for ingestion, `pyarrow` for the Parquet stage, `lightgbm` and `numpy` for the
-model, and `tzdata` because Windows ships no system timezone database and the poller
-evaluates its schedule in `Europe/Dublin`.
+model, `uvicorn` to serve the API locally, and `tzdata` because Windows ships no system
+timezone database and the poller evaluates its schedule in `Europe/Dublin`.
+
+`requirements-dev.txt` is that list plus `cfn-lint`, and it pulls in `requirements.txt`
+itself. Install `requirements.txt` alone if you only want to run and train. The two
+narrower files the build scripts package for Lambda, `requirements-lambda.txt` and
+`requirements-api.txt`, are deliberately smaller again.
 
 ## Running
 

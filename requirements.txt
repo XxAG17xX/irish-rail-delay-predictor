@@ -1,26 +1,56 @@
+# Everything needed to run and train locally: the poller, the API, the trainer and the
+# analysis scripts. Nothing in here is a development tool -- those live in
+# requirements-dev.txt, which installs this file too.
+#
+# The split exists because cfn-lint dragged in sympy, mpmath, networkx and regex, and a
+# reader could not tell what the project actually imports from what a linter needed. Same
+# reasoning as requirements-lambda.txt and requirements-api.txt, which are narrower still:
+# neither of those ships boto3 (the Lambda runtime provides it) and neither ships uvicorn
+# (Mangum replaces it in Lambda).
+#
+# Pins are exact. numpy, scipy and lightgbm decide the numbers a retrain produces, so an
+# unpinned upgrade is a silent change to the model.
+
+# Directly imported by src/ and scripts/
 boto3==1.43.72
-botocore==1.43.72
-certifi==2026.7.22
-cfn-lint==1.55.1
-charset-normalizer==3.4.9
-idna==3.18
-jmespath==1.1.0
-jsonpatch==1.33
-jsonpointer==3.1.1
+fastapi==0.141.1
 lightgbm==4.7.0
-mpmath==1.3.0
-narwhals==2.24.0
-networkx==3.6.1
+mangum==0.22.0
 numpy==2.5.1
 pyarrow==25.0.0
-python-dateutil==2.9.0.post0
-PyYAML==6.0.3
-regex==2026.7.19
 requests==2.34.2
-s3transfer==0.19.2
 scipy==1.18.0
-six==1.17.0
-sympy==1.14.0
-typing_extensions==4.16.0
+
+# uvicorn is how the API runs locally: `uvicorn api:app --app-dir src`. Not a dev tool in
+# the linter sense -- it serves the project's own code -- and not in the Lambda package,
+# where Mangum is the adapter instead.
+uvicorn==0.52.4
+
+# tzdata is a data package, not a library. Windows has no system zoneinfo database, so
+# zoneinfo("Europe/Dublin") fails without it. Pinned so local and Lambda resolve Irish
+# time from identical data (D36).
 tzdata==2026.3
+
+# Pulled in by the above. Listed with versions so a fresh clone reproduces this
+# environment rather than whatever pip resolves that day.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+botocore==1.43.72
+certifi==2026.7.22
+charset-normalizer==3.4.9
+click==8.4.2
+colorama==0.4.6
+h11==0.16.0
+idna==3.18
+jmespath==1.1.0
+narwhals==2.24.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-dateutil==2.9.0.post0
+s3transfer==0.19.2
+six==1.17.0
+starlette==1.6.0
+typing_extensions==4.16.0
+typing-inspection==0.4.4
 urllib3==2.7.0

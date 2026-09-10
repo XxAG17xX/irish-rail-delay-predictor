@@ -3529,3 +3529,47 @@ as Mangum does, the exception propagates out of the call. The self-check also as
 now fails the build.
 
 **Date.** 2026-09-10
+
+
+## D77 — One requirements file could not say what the project uses
+
+**Why this matters.** Someone reading `requirements.txt` should be able to tell what the
+project depends on. Ours said the project used a computer algebra system. It does not.
+
+**What was wrong.** `requirements.txt` was a `pip freeze`, and a freeze cannot tell a
+dependency of the project from a dependency of a tool. `cfn-lint` validates the
+CloudFormation templates and never runs in production, but it drags in `sympy`, `mpmath`,
+`networkx`, `regex`, `jsonpatch` and `jsonpointer` — six of the twenty-six lines, none of
+them imported anywhere in `src/` or `scripts/`.
+
+**The worse half, found while fixing the first.** The file was also two months stale.
+`fastapi`, `mangum`, `pydantic`, `starlette`, `anyio` and `uvicorn` were installed here and
+imported by `src/api.py`, and none of them were listed. A fresh clone following the README
+got an environment that could not run the API. Nothing caught it because nothing in CI
+installs `requirements.txt` — the pipeline installs `requirements-api.txt`, which was
+correct all along. **A file no automation reads is a file nothing tests**, and this one had
+been wrong since the API was written.
+
+**The split.** `requirements.txt` is what the project's own code needs to run and train.
+`requirements-dev.txt` begins with `-r requirements.txt` and adds cfn-lint and its six, so
+one command still sets a laptop up and the layering is visible in the file rather than
+inferred. That leaves four files, narrowest last: dev → runtime → the two Lambda packages,
+each smaller than the one before for a reason stated at the top of it.
+
+**How ownership was decided, since guessing is what created the mess.** Walked the installed
+distributions' `Requires-Dist` metadata and took the reachable closure from the runtime roots
+and from cfn-lint separately. Twenty-six packages reach only from runtime, eight only from
+cfn-lint, `typing_extensions` from both (it goes in the runtime file and dev inherits it).
+Nothing was orphaned. Checked afterwards that the two files together equal `pip freeze`
+exactly, in both directions.
+
+**Why the transitives are still pinned rather than left to resolve.** `numpy`, `scipy` and
+`lightgbm` decide the numbers a retrain produces. An unpinned upgrade is a silent change to
+the model, and the champion/challenger gate would attribute it to the model rather than to
+pip.
+
+**The convention that replaces `pip freeze`.** Add a new package to the right file by hand.
+That is more work than pasting a freeze and it is the point: the person adding the package
+is the only one who knows which file it belongs in.
+
+**Date.** 2026-09-10

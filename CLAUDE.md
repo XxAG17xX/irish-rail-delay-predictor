@@ -148,10 +148,12 @@ order it is worth doing:
    reserved concurrency is refused below an account limit of 100, so raising the limit is
    what makes a hard cap possible. Today a flood on the public endpoint could starve the
    poller and the scorer of concurrency, which costs collected data rather than money.
-2. Split `requirements.txt`, which mixes runtime deps with lint tooling.
+
+That is the whole list, and it is the one item nobody but me can do.
 
 Done and recorded, so do not redo: the test week (D74), self-hosted fonts and a
-`'self'`-only CSP (D75), and the prediction-log alarm gap (D76).
+`'self'`-only CSP (D75), the prediction-log alarm gap (D76), and the requirements split
+(D77).
 
 **Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
 hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6
@@ -173,8 +175,11 @@ Open items that will not announce themselves:
   somewhere live — which is the point: "0 new codes" from a dead folder is
   indistinguishable from a network with no new services. Not ported to S3 on purpose;
   nothing in the live path reads `codes.json` and live mode still works.
-- `requirements.txt` now mixes runtime deps with lint tooling (cfn-lint pulled in sympy,
-  networkx). Worth splitting the way `requirements-lambda.txt` already does.
+- ~~`requirements.txt` mixes runtime deps with lint tooling.~~ **Split 2026-09-10 (D77).**
+  `requirements-dev.txt` holds cfn-lint and the six packages only it needs, and starts with
+  `-r requirements.txt`, so `pip install -r requirements-dev.txt` still sets up everything
+  in one command. The old file was also two months stale — it predated FastAPI, so a fresh
+  clone could not run the API at all. Both files together now match `pip freeze` exactly.
 - **CloudFormation cannot confirm an email subscription, so it reports success on a dead
   alarm channel.** This has now happened twice: the poller's topic on 27 August, and the
   scorer's, whose subscription CFN created at 2026-08-27 20:14 UTC and which AWS reaped
@@ -547,7 +552,13 @@ inference:
 - `.gitattributes`: `* text=auto eol=lf`
 - Secrets in `.env`, never committed
 - Commit small and often — the history is itself evidence of the work
-- `requirements.txt` kept current via `pip freeze`
+- **Four requirements files, narrowest last.** `requirements-dev.txt` (everything, for a
+  laptop) → `requirements.txt` (run and train) → `requirements-api.txt` and
+  `requirements-lambda.txt` (what each Lambda actually packages). Pins are exact
+  everywhere: numpy, scipy and lightgbm decide the numbers a retrain produces. After
+  installing something, add it to the right file by hand rather than pasting `pip freeze`
+  over the top — a freeze cannot tell a linter's dependency from the project's, which is
+  how the old single file ended up carrying sympy (D77).
 - **Comment the non-obvious only.** A comment that restates the next line is noise. Keep
   the ones naming a trap, a ceiling, or a rejected alternative. Reasoning belongs in
   `docs/decisions.md`, not repeated in the source.
