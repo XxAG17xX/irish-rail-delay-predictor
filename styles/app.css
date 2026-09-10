@@ -15,10 +15,15 @@
   --color-panel:   #131a1c;
   --color-panel-2: #182123;
   --color-rule:    #263133;
-  --color-rail:    #3b4a4d;
+  /* The drawn track carries meaning rather than decoration, so it is held to the 3:1
+     non-text bar. It was 2.08:1 and genuinely dim. */
+  --color-rail:    #54696d;
   --color-ink:     #e4ecea;
   --color-ink-2:   #93a5a3;
-  --color-ink-3:   #62777a;
+  /* Labels, footnotes and table headers. Was #62777a at 4.07:1 on the page ground and
+     3.72:1 on a panel, which failed WCAG AA for normal text on every page and is what
+     Lighthouse caught. Checked by scripts\contrast.py, which reads these tokens. */
+  --color-ink-3:   #748a8d;
   --color-clear:   #34d17c;
   --color-caution: #f2b53c;
   --color-danger:  #e85a4a;

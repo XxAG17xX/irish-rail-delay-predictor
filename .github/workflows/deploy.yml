@@ -85,6 +85,12 @@ jobs:
           python src/api.py
           python src/generate.py
 
+      # Lighthouse checks contrast too, but the audit job runs after the deploy job, so a
+      # failing colour reaches the live site and is reported afterwards. This reads the same
+      # tokens and fails here instead. It found the palette shipping labels at 4.07:1.
+      - name: Colour contrast
+        run: python scripts/contrast.py
+
       - name: Upload the built site
         uses: actions/upload-artifact@v4
         with:
