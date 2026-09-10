@@ -468,10 +468,10 @@ a journey. Seasonality and holiday effects are third-order polish.
 - **Never provision** a NAT Gateway (~€33/mo), an Application Load Balancer (~€18/mo), or
   a 24/7 RDS instance. Reason: these bill hourly regardless of traffic and will exhaust
   the credits for no benefit at this scale.
-- Deploys are manual `sam deploy` runs from the laptop, using the `rail-delay-deploy` IAM
-  user's keys held in the local AWS CLI config. GitHub Actions with OIDC was the plan once
-  the templates were known-good; there is no workflow yet. No long-lived access keys in
-  the repo.
+- **The site deploys itself from GitHub Actions using OIDC** (D68, D72). No long-lived
+  access keys anywhere: not in the repo, not in GitHub's secrets. Stack and API deploys are
+  still manual `sam deploy` runs from the laptop, using the `rail-delay-deploy` IAM user's
+  keys in the local AWS CLI config.
 - A budget alarm must exist before anything is deployed.
 - **The API package needs three things a normal `pip install` will not give you**, all
   found the hard way and all encoded in `scripts/build_api.ps1`: two `--platform` tags
