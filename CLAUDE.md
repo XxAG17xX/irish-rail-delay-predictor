@@ -143,11 +143,22 @@ this on the accuracy page beside the coverage figure.
 Everything the scope lock asked for is built, deployed and running. What is left, in the
 order it is worth doing:
 
-1. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Needs a
-   support request, so it is the one item nobody else can do. Counter-intuitive but correct:
-   reserved concurrency is refused below an account limit of 100, so raising the limit is
-   what makes a hard cap possible. Today a flood on the public endpoint could starve the
-   poller and the scorer of concurrency, which costs collected data rather than money.
+1. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Counter-
+   intuitive but correct: reserved concurrency is refused below an account limit of 100, so
+   raising the limit is what makes a hard cap possible. Today all four functions share an
+   account limit of **10**, so a flood on the public endpoint could starve the poller and the
+   scorer of concurrency — which costs collected data, not money.
+
+   ```powershell
+   aws service-quotas request-service-quota-increase --service-code lambda `
+     --quota-code L-B99A9384 --desired-value 1000 --region eu-west-1
+   ```
+
+   Then set `ReservedConcurrentExecutions: 5` on `ApiFunction` in `infra/api.yaml` and
+   redeploy. That is the cap that matters: it holds the public endpoint to five containers
+   however hard it is hit, and 5 of 1000 leaves far more than the 100 unreserved AWS insists
+   on. Check progress with `aws service-quotas list-requested-service-quota-change-history-by-quota
+   --service-code lambda --quota-code L-B99A9384 --region eu-west-1`.
 
 That is the whole list, and it is the one item nobody but me can do.
 
