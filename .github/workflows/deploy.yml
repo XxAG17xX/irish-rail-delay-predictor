@@ -29,6 +29,14 @@ permissions:
 env:
   AWS_REGION: eu-west-1
   SITE_STACK: rail-delay-site
+  # Written here rather than read from a repository variable. Neither is a secret: a role
+  # ARN is an identifier and the trust policy is what grants anything, and the site domain
+  # is on every page. Both come from CloudFormation outputs and change only when a stack is
+  # recreated. A variable added an invisible place for the value to be wrong, and the
+  # failure it produced was "Not authorized to perform sts:AssumeRoleWithWebIdentity",
+  # which names neither the value nor the variable.
+  DEPLOY_ROLE_ARN: arn:aws:iam::707865775405:role/rail-delay-ci-github-deploy
+  SITE_DOMAIN: dc9icf7494up8.cloudfront.net
 
 jobs:
   check:
@@ -115,17 +123,19 @@ jobs:
           echo "repository : ${{ github.repository }}"
           echo "ref        : ${{ github.ref }}"
           echo "expected sub: repo:${{ github.repository }}:ref:${{ github.ref }}"
-          echo "role arn    : '${{ vars.AWS_DEPLOY_ROLE_ARN }}'"
-          if [ -z "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ]; then
-            echo "::error::AWS_DEPLOY_ROLE_ARN is empty. It must be a repository VARIABLE, not a secret."
-            exit 1
-          fi
+          echo "role arn    : '${{ env.DEPLOY_ROLE_ARN }}'"
+          echo "repo var    : '${{ vars.AWS_DEPLOY_ROLE_ARN }}'   (unused; kept only to show whether it differs)"
 
       - name: Assume the deploy role
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          # The action's default, stated rather than assumed: it is one half of the trust
+          # condition in infra/github-oidc.yaml, and a silent default is a poor place for
+          # half of a security control to live.
+          audience: sts.amazonaws.com
+          role-session-name: railcast-deploy
 
       # One query per output. A single filtered query returns the values in the order the
       # template declares them, not the order the filter names them, so reading two values
@@ -171,9 +181,9 @@ jobs:
         uses: treosh/lighthouse-ci-action@v12
         with:
           urls: |
-            https://${{ vars.SITE_DOMAIN }}/
-            https://${{ vars.SITE_DOMAIN }}/accuracy.html
-            https://${{ vars.SITE_DOMAIN }}/how-it-works.html
+            https://${{ env.SITE_DOMAIN }}/
+            https://${{ env.SITE_DOMAIN }}/accuracy.html
+            https://${{ env.SITE_DOMAIN }}/how-it-works.html
           uploadArtifacts: true
           temporaryPublicStorage: true
           configPath: ./.lighthouserc.json
