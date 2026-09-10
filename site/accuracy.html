@@ -55,6 +55,53 @@
       </div>
     </div>
 
+    <!-- The sealed week. Static, not from accuracy.json: it is a one-off measurement on
+         fixed historical data and will never change. -->
+    <h2 class="mt-14 text-h2 font-extrabold">The week nobody looked at</h2>
+    <p class="mt-3 max-w-2xl text-ink-2">Everything above is live. This is different, and it is
+      the strongest number here.</p>
+    <p class="mt-3 max-w-2xl text-ink-2">In June the data was cut three ways: one part to learn
+      from, one part to check every decision against, and one week sealed and never opened.
+      Every choice made since was tested against the middle one, and each of those looks leaks
+      a little into the result. The sealed week had none of that done to it. It was opened on
+      10 September 2026, once, against a plan written down beforehand.</p>
+
+    <div class="mt-5 overflow-x-auto">
+      <table class="rec">
+        <thead>
+          <tr><th></th><th>Checked against</th><th>Sealed week</th><th>Live now</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Average error</td><td>59.7s</td><td class="over">58.3s</td><td>86.2s</td></tr>
+          <tr><td>Median error</td><td>29.0s</td><td class="over">29.1s</td><td>48s</td></tr>
+          <tr><td>Inside the range</td><td>80.2%</td><td class="over">80.0%</td><td class="under">75.1%</td></tr>
+          <tr><td>Predictions</td><td>217,653</td><td>217,290</td><td>88,576</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel mt-6 px-5 py-5">
+      <div class="flex items-start gap-3">
+        <span class="lamp lamp-clear mt-1.5 shrink-0"></span>
+        <div class="max-w-2xl">
+          <h3 class="text-base font-bold">Why this settles something</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">The range claims 80%. On data the
+            model had never seen it delivered <b class="text-ink">80.0%</b>, and the misses split
+            10.4% below the low bound against 9.6% above, where 10 and 10 is perfect. A model can
+            reach 80% with badly lopsided tails. This one does not.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">That matters because coverage is
+            running at 75.1% live. There were two possible explanations: the model was never as
+            calibrated as claimed, or the railway changed after it was trained. The sealed week
+            rules out the first, which leaves the second.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-3">It also beats the naive predictor
+            that assumes the current delay simply carries forward by 32.1%, and the known
+            weakness reappears unchanged: coverage falls to 73.3% when asked more than an hour
+            ahead. No operator comparison is possible for that week, because their estimate
+            exists only live and cannot be recovered afterwards.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ by line ═══════════════════════════════════════════════════════ -->
     <h2 class="mt-14 text-h2 font-extrabold">By line</h2>
     <p class="mt-3 max-w-2xl text-ink-2">Blended into a single number this looks like a small

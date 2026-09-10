@@ -48,8 +48,13 @@ The offline phase is complete. Do not redo it.
   13–19 July. Twelve features, all computable at prediction time (`src/features.py`).
   Versioned artifacts under `data/models/{version}/` with a `LATEST` pointer; save with
   `python src\train_quantile.py --save`, load with `--load latest`. See D31–D35.
-- **The test week (20–26 July) has never been opened** and stays closed until the end,
-  per decisions.md D25. Every number quoted anywhere is validation, not test.
+- **The test week (20–26 July) was opened once on 2026-09-10**, against a plan committed
+  beforehand (D73). Result in D74: MAE **58.3s**, median 29.1s, interval coverage **80.0%**
+  against a claimed 80.0%, on 217,290 unseen predictions, 32.1% better than persistence, and
+  misses split 10.4% / 9.6% against 10 / 10 expected. Test beat validation (59.7s), so the
+  calibration was genuine and the live 75.1% is distribution shift rather than an optimistic
+  figure. **D25 is discharged and the week cannot be used again.** Raw output kept verbatim in
+  `docs/test-week-2026-09-10.txt`.
 - **Head-to-head vs the operator's own `ExpectedArrival`:** 80.1s vs 109.7s MAE across
   **9,077 comparisons over 2,654 distinct events** — a 27% improvement. This is the
   headline claim and every future change must not silently break it.
@@ -138,24 +143,19 @@ this on the accuracy page beside the coverage figure.
 Everything the scope lock asked for is built, deployed and running. What is left, in the
 order it is worth doing:
 
-1. **Open the test week.** 20-26 July has never been looked at (D25), and it is the only
-   number in this project that is neither training nor validation. Opening it and publishing
-   the result is the last honest act available, and it can only be done once. It is also the
-   only remaining thing that changes what the site *claims* rather than how it looks. Do it
-   before the deadline or it never happens.
-2. **Self-host the two webfonts.** Performance sits at 0.75 against a 0.9 target, and the
+1. **Self-host the two webfonts.** Performance sits at 0.75 against a 0.9 target, and the
    render-blocking request to `fonts.googleapis.com` is the likely cause. It also removes a
    third party that currently sees every visitor's IP.
-3. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Counter-
+2. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Counter-
    intuitive but correct: reserved concurrency is refused below an account limit of 100, so
    raising the limit is what makes a hard cap possible. Today a flood on the public endpoint
    could starve the poller and scorer of concurrency, which costs collected data rather than
    money.
-4. **Make a failed prediction-log write visible.** `api.py` catches `LogWriteFailed` and
+3. **Make a failed prediction-log write visible.** `api.py` catches `LogWriteFailed` and
    returns 503, which Lambda counts as a success, so `Errors` stays at zero. D39 requires log
    trouble to be visible as API trouble and it still is not. Listed below as an open item and
    still true.
-5. Split `requirements.txt`, which now mixes runtime with lint tooling.
+4. Split `requirements.txt`, which now mixes runtime with lint tooling.
 
 **Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
 hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6
