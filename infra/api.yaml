@@ -185,8 +185,12 @@ Resources:
       Endpoint: !Ref AlarmEmail
       TopicArn: !Ref AlarmTopic
 
-  # Fires on a failed prediction-log write too, since those return 503 by design (D39):
-  # an unlogged prediction is not served, so log trouble must be visible as API trouble.
+  # Fires on a failed prediction-log write too, and from 2026-09-10 that is finally true.
+  # It was written here as though it always had been, and it was not: the code returned a
+  # tidy 503, which is a *successful* invocation, so this metric stayed at zero and a broken
+  # prediction log was invisible for two months (D76). `PredictionNotLogged` now escapes the
+  # handler so Lambda records a real error. A comment asserting a property is not the same
+  # as the property holding.
   ApiErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

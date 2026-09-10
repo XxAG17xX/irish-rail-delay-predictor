@@ -3486,3 +3486,46 @@ change when the file does, and 75 KB every five minutes for a site nobody visits
 a content-hashing step.
 
 **Date.** 2026-09-10
+
+## D76 — A failed prediction log was invisible for two months, and a comment said it was not
+
+**Why this matters:** if the prediction log ever failed, the service correctly refused to
+serve the prediction and then told nobody. The alarm meant to catch it could not fire, and
+the CloudFormation template carried a comment asserting that it did.
+
+**In plain terms.** Every prediction is written down before the train arrives; that record is
+what makes the accuracy page checkable. If writing it fails, the service must not pretend
+otherwise. It already refused to answer. What it did not do was raise the alarm.
+
+**The mechanism, which is a general trap worth remembering.** `api.py` caught `LogWriteFailed`
+and raised `HTTPException(503)`. FastAPI turns that into a 503 response, the function returns
+normally, and **Lambda counts the invocation as a success**. `AWS/Lambda Errors` stays at zero,
+so `ApiErrorsAlarm` never fires. A handled error is not an error as far as the platform is
+concerned, and every dashboard would have shown a green service quietly serving nothing.
+
+`infra/api.yaml` said, above that very alarm:
+
+> Fires on a failed prediction-log write too, since those return 503 by design (D39)
+
+The comment described the intent. The code implemented the opposite, and the comment made it
+look checked. **This is theme row 3 in a new costume**: `CREATE_COMPLETE` on an alarm topic
+nobody had confirmed, and now a comment asserting a property that never held.
+
+**The fix, which costs nothing.** `PredictionNotLogged` is a plain `RuntimeError` and is
+allowed to escape the handler. Lambda then records a genuine error and the existing free
+`AWS/Lambda Errors` metric catches it, so no new metric and no new alarm were needed. The
+caller gets a 502 rather than a tidy 503, and the reason goes to a structured log line. That
+is the right trade: this fires only when the service cannot honour its own leakage guarantee,
+and a clean error message is worth less than the alarm.
+
+**Why not a custom metric.** There are already **11 custom metrics against a free tier of 10**,
+so one is billing at $0.30/month and a twelfth would have made it two. CLAUDE.md claimed 8,
+which was stale. Reusing a free platform metric was both cheaper and simpler.
+
+**Verified, not reasoned.** The load-bearing claim is that the exception escapes the ASGI app
+rather than being swallowed into a 500. Driving the app directly with an ASGI scope, exactly
+as Mangum does, the exception propagates out of the call. The self-check also asserts
+`PredictionNotLogged` is not an `HTTPException` subclass, so turning it back into a tidy 503
+now fails the build.
+
+**Date.** 2026-09-10

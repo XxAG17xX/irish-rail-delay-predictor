@@ -653,15 +653,34 @@ def stations():
 _PRIVATE = ("train_code", "station_code", "train_date", "outcome")
 
 
+class PredictionNotLogged(RuntimeError):
+    """A prediction was produced and could not be written down.
+
+    Deliberately NOT an HTTPException. A returned 503 is a *successful* Lambda invocation:
+    the function ran, produced a response, and the `Errors` metric stays at zero, so
+    `ApiErrorsAlarm` never fires and a broken prediction log is invisible. D39 requires log
+    trouble to be visible as API trouble, and for two months it was not.
+
+    Letting this escape the handler makes Lambda record a genuine error, which the existing
+    free `AWS/Lambda Errors` metric already watches. The caller gets a 502 instead of a tidy
+    503 and the reason goes to the log line below, which is the right trade: the one case
+    this fires in is the one where the service cannot honour its own leakage guarantee.
+    """
+
+
 def _log(rows):
-    """A prediction that could not be logged is not served (D39). Raises 503 if it cannot."""
+    """A prediction that could not be logged is not served (D39)."""
     st = state()
     if st["log"] is None or not rows:
         return
     try:
         st["log"].write([dict(r) for r in rows])
     except LogWriteFailed as e:
-        raise HTTPException(status_code=503, detail=f"prediction not logged: {e}")
+        # Structured, because this is the line an operator reads to find out what broke;
+        # the 502 the caller sees carries no detail by design.
+        print(json.dumps({"level": "ERROR", "event": "prediction_log_write_failed",
+                          "rows": len(rows), "detail": str(e)}))
+        raise PredictionNotLogged(f"prediction not logged: {e}") from e
 
 
 def _respond(row):
@@ -712,6 +731,33 @@ def _self_check():
     assert [p["here"] for p in pattern] == [False, False, True], "this station is marked"
     assert pattern[1]["arrived"] == "23:42" and pattern[1]["delay_min"] == 1.0
     assert calling_pattern([], ["KDARE"]) == [], "no journey means no route"
+
+    # A failed prediction-log write must escape as a real error, not a returned 503. A 503
+    # is a *successful* Lambda invocation, so `Errors` stays at zero and ApiErrorsAlarm
+    # never fires. This is the regression guard for D39: turning PredictionNotLogged back
+    # into an HTTPException would restore two months of silence.
+    assert not issubclass(PredictionNotLogged, HTTPException), \
+        "PredictionNotLogged must not be an HTTPException, or the invocation succeeds"
+
+    class _FailingLog:
+        def write(self, rows):
+            raise LogWriteFailed("s3 refused the put")
+
+    _state.clear()
+    _state.update(log=_FailingLog())
+    try:
+        _log([{"train": "A220"}])
+    except PredictionNotLogged as exc:
+        assert "s3 refused the put" in str(exc), "the cause must survive into the message"
+    else:
+        raise AssertionError("_log swallowed a failed write")
+
+    # No rows, and no configured log at all, are both no-ops rather than errors.
+    _log([])
+    _state.clear()
+    _state.update(log=None)
+    _log([{"train": "A220"}])
+    _state.clear()
 
     known = {"ADMTN": "Adamstown", "ADAMF": "Adamstown", "ADAMS": "Adamstown",
              "KDARE": "Kildare"}

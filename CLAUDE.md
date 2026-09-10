@@ -190,10 +190,12 @@ Open items that will not announce themselves:
   system checks that an alarm has a live subscriber; verify with
   `aws sns list-subscriptions-by-topic --topic-arn <arn>` rather than assuming a deploy
   that succeeded gave you working alerting.
-- **The API's error alarm does not fire on a failed prediction-log write.** `api.py`
-  catches `LogWriteFailed` and returns 503, which Lambda counts as a *successful*
-  invocation, so the `Errors` metric stays at zero. D39 requires log trouble to be
-  visible as API trouble, and it currently is not.
+- ~~The API's error alarm does not fire on a failed prediction-log write.~~ **Fixed
+  2026-09-10 (D76).** It caught `LogWriteFailed` and returned 503, which Lambda counts as a
+  *successful* invocation, so `Errors` stayed at zero and the alarm could not fire.
+  `PredictionNotLogged` now escapes the handler, Lambda records a real error, and the
+  existing free `Errors` metric catches it. No new metric was needed. The template carried a
+  comment claiming this already worked; it did not.
 - **The generator's rules changed at 2026-09-03 17:25 UTC and again at 17:53** (D58):
   leads beyond four hours, inconsistent journeys, and vantages more than 30 minutes
   *early* are declined, and `vantage_auto` is logged. Scores before and after are not
@@ -485,9 +487,12 @@ of five-minute polling is ~20,500 PUTs and ~123 MB. That comes to about **$0.10/
 effectively all of it S3 PUT requests — Lambda, CloudWatch, SNS and Budgets all sit inside
 their permanent free tiers. In INR that is roughly ₹12 including GST.
 
-Two thresholds worth watching, because they move quietly: the deployment uses **8 of the
-10 free CloudWatch custom metrics** and **5 of the 10 free alarms**. Past those it is
-$0.30 per metric and $0.10 per alarm per month. The per-cycle object batching is what
+Two thresholds worth watching, because they move quietly, and **both have already moved**.
+Counted on 2026-09-10: **11 custom metrics against a free tier of 10**, so one is already
+billing at $0.30/month, and **9 of the 10 free alarms**. This file said 8 and 5 for weeks.
+Past the free tier it is $0.30 per metric and $0.10 per alarm per month. Count them with
+`aws cloudwatch list-metrics --namespace RailDelay` and `aws cloudwatch describe-alarms`
+rather than trusting this paragraph, which is exactly how it went stale. The per-cycle object batching is what
 keeps PUTs at 20,500 rather than 210,000; see the S3 write batching note above.
 
 **Note, not a rule — S3 write batching.** If the poller is rewritten for AWS anyway,
