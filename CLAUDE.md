@@ -151,11 +151,11 @@ order it is worth doing:
    raising the limit is what makes a hard cap possible. Today a flood on the public endpoint
    could starve the poller and scorer of concurrency, which costs collected data rather than
    money.
-3. **Make a failed prediction-log write visible.** `api.py` catches `LogWriteFailed` and
+2. **Make a failed prediction-log write visible.** `api.py` catches `LogWriteFailed` and
    returns 503, which Lambda counts as a success, so `Errors` stays at zero. D39 requires log
    trouble to be visible as API trouble and it still is not. Listed below as an open item and
    still true.
-4. Split `requirements.txt`, which now mixes runtime with lint tooling.
+3. Split `requirements.txt`, which now mixes runtime with lint tooling.
 
 **Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
 hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6

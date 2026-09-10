@@ -3429,3 +3429,60 @@ Quantile rearrangement touched 0.839% of rows (1,824 of 217,290), in line with w
 recorded on validation.
 
 **Date.** 2026-09-10, run once, against the plan committed at 13:02 the same day.
+
+---
+
+## D75 — The fonts move in-house, and the site stops talking to anyone else
+
+**Why this matters:** the last third party is gone. The page now makes no cross-origin
+request of any kind, so nothing about a visitor reaches anyone but this distribution.
+
+**In plain terms.** The two typefaces were being fetched from Google every time somebody
+opened the site, which told Google who was visiting and made the page wait for their server
+before it could draw. They are now files on our own server.
+
+**Two reasons, and the second is the one that mattered.**
+
+- **Performance.** A stylesheet from `fonts.googleapis.com` is render-blocking: the browser
+  will not paint until it arrives, and it in turn triggers a second connection to
+  `fonts.gstatic.com` for the files. Lighthouse held performance at **0.75** against a 0.9
+  target and this was the likeliest cause.
+- **Every visitor's IP address reached Google** for no benefit to the visitor. On a site whose
+  whole argument is being straight about what it does, that is a poor detail to leave in.
+
+**Cost of the change: 109 KB**, both faces, less than one board response. Variable fonts, so
+one file per family covers every weight the site uses: Bricolage Grotesque 400-800, Archivo
+400-700.
+
+**Latin subset only, checked rather than assumed.** The latin range covers U+0000-00FF, which
+includes the ó and É in "Iarnród Éireann". Neither latin-ext nor vietnamese is needed, and
+they are two thirds of what a naive download would have pulled.
+
+**Licensing is not optional.** Both are SIL Open Font License 1.1, which permits self-hosting
+and **requires the licence to travel with the font**. `site/fonts/OFL-*.txt` ships with them,
+and the copyright lines are named in `styles/app.css`.
+
+**The content security policy tightened as a result.** Every directive is now `'self'` or
+`'none'`:
+
+```
+default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self';
+img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none';
+frame-ancestors 'none'
+```
+
+Previously `style-src` had to allow `fonts.googleapis.com` and `font-src` had to allow
+`fonts.gstatic.com`. Removing a dependency is what let the policy get stricter, which is the
+usual direction: the tightest policy is the one with the fewest things to permit.
+
+**Verified rather than assumed.** Loaded the page and counted: **zero external requests**,
+both faces reporting `status: loaded` at the right weight ranges, the display face resolving
+to Bricolage Grotesque. Live through CloudFront both files return `200 font/woff2`, the served
+HTML contains no reference to either Google host, and the header carries the policy above.
+
+**One thing deliberately not done.** The fonts are synced with the same `max-age=300` as
+everything else, though their contents never change. A long cache would need the filename to
+change when the file does, and 75 KB every five minutes for a site nobody visits is not worth
+a content-hashing step.
+
+**Date.** 2026-09-10

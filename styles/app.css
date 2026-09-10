@@ -8,6 +8,43 @@
 
 @source "../site/**/*.{html,js}";
 
+/* ── the two faces, served from this origin ─────────────────────────────────
+   Both are variable, latin subset only, taken from Google Fonts and served out of
+   site/fonts/ rather than fonts.gstatic.com. Two reasons, and the second is the one that
+   mattered: the render-blocking stylesheet from fonts.googleapis.com was holding
+   Lighthouse performance at 0.75, and every visitor's IP address was reaching a third
+   party for no benefit to them. 109 KB for both, less than one board response.
+
+   The latin range covers U+0000-00FF, so the accented characters in "Iarnrod Eireann" are
+   included and neither latin-ext nor vietnamese is needed.
+
+   Both are under the SIL Open Font License 1.1, which requires the licence to travel with
+   the font: site/fonts/OFL-*.txt.
+     Bricolage Grotesque  Copyright 2022 The Bricolage Grotesque Project Authors
+     Archivo              Copyright 2020 The Archivo Project Authors                    */
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("fonts/bricolage-grotesque.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+                 U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: Archivo;
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/archivo.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+                 U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme {
   /* The signal box palette. Saturated colour is reserved for signal state, so green,
      amber and red mean something on this site and are never used decoratively. */

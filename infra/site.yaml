@@ -134,16 +134,20 @@ Resources:
             Override: true
           ContentSecurityPolicy:
             Override: true
-            # script-src is 'self' with no 'unsafe-inline': there is not one inline script
-            # on the site, so the strictest form costs nothing. style-src is equally strict
-            # because the page-local stylesheet was folded into app.css and the two bar
-            # widths are set through the CSSOM rather than as style attributes.
-            # connect-src 'self' covers /api, which is same-origin through this distribution.
+            # Every directive is now 'self' or 'none'. The fonts were the last third party
+            # and are served from this origin, so the page makes no cross-origin request of
+            # any kind: nothing about a visitor reaches anyone but this distribution.
+            #
+            # script-src carries no 'unsafe-inline' because there is not one inline script
+            # on the site, and style-src is equally strict because the page-local stylesheet
+            # was folded into app.css and the two bar widths are set through the CSSOM
+            # rather than as style attributes. connect-src covers /api, which is same-origin
+            # through this distribution.
             ContentSecurityPolicy: >-
               default-src 'none';
               script-src 'self';
-              style-src 'self' https://fonts.googleapis.com;
-              font-src https://fonts.gstatic.com;
+              style-src 'self';
+              font-src 'self';
               img-src 'self' data:;
               connect-src 'self';
               base-uri 'none';
