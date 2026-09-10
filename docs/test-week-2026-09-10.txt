@@ -1,0 +1,122 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! OPENING THE TEST WEEK — decisions.md D25 says once, at the end.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+loaded artifact 20260903T173007Z-5ebf03f
+  trained 2026-09-03T17:30:07+00:00 on split(s) train, 465,018 examples
+  git 5ebf03f (dirty tree)
+  recorded metrics: {'coverage_pct': 80.191, 'eval_rows': 217653, 'eval_split': 'val', 'mae_sec': 59.661, 'medae_sec': 29.018, 'median_interval_width_sec': 151.9}
+
+========================================================================
+POINT PREDICTION — lgbm q0.50 vs persistence, split 'test'
+========================================================================
+
+  overall  (n=217290)
+  predictor                n       MAE     medAE      bias
+  -------------------------------------------------------
+  persistence         217290      85.8      48.0     -18.1
+  lgbm q0.50          217290      58.3      29.1     -10.5
+  -> model MAE 32.1% better than persistence
+
+  by horizon (observed stops ahead):
+
+    horizon 1  (n=67928)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          67928      53.9      24.0      -4.0
+    lgbm q0.50           67928      28.0      13.7      -3.5
+    -> model MAE 48.0% better than persistence
+
+    horizon 3  (n=60349)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          60349      80.2      48.0     -14.1
+    lgbm q0.50           60349      53.0      29.5      -9.2
+    -> model MAE 34.0% better than persistence
+
+    horizon 5  (n=53226)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          53226     102.5      66.0     -23.8
+    lgbm q0.50           53226      72.2      42.9     -12.0
+    -> model MAE 29.6% better than persistence
+
+    horizon 10  (n=35787)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          35787     131.0      78.0     -43.3
+    lgbm q0.50           35787     104.2      62.6     -23.6
+    -> model MAE 20.5% better than persistence
+
+  by scheduled time from vantage to target:
+
+    0-5 min  (n=58073)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          58073      43.5      24.0     -12.3
+    lgbm q0.50           58073      23.3      12.3      -5.0
+    -> model MAE 46.4% better than persistence
+
+    5-15 min  (n=88200)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          88200      73.8      48.0     -13.9
+    lgbm q0.50           88200      50.2      29.8      -8.8
+    -> model MAE 31.9% better than persistence
+
+    15-30 min  (n=52299)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          52299     116.1      72.0     -24.4
+    lgbm q0.50           52299      83.6      51.7     -16.3
+    -> model MAE 28.0% better than persistence
+
+    30-60 min  (n=14957)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence          14957     173.7     120.0     -30.7
+    lgbm q0.50           14957     120.3      78.5     -12.8
+    -> model MAE 30.7% better than persistence
+
+    60+ min  (n=3761)
+    predictor                n       MAE     medAE      bias
+    -------------------------------------------------------
+    persistence           3761     250.9     168.0     -69.3
+    lgbm q0.50            3761     189.2     118.6     -42.7
+    -> model MAE 24.6% better than persistence
+
+========================================================================
+INTERVAL COVERAGE — target is 80% inside the 10-90 range
+========================================================================
+
+  subset                   n   coverage   target   med width
+  ----------------------------------------------------------
+  overall             217290      80.0%    80.0%        151s
+  horizon 1            67928      80.5%    80.0%         65s
+  horizon 3            60349      79.8%    80.0%        138s
+  horizon 5            53226      80.2%    80.0%        203s
+  horizon 10           35787      79.2%    80.0%        280s
+  0-5 min              58073      80.8%    80.0%         55s
+  5-15 min             88200      79.9%    80.0%        136s
+  15-30 min            52299      80.1%    80.0%        243s
+  30-60 min            14957      78.2%    80.0%        337s
+  60+ min               3761      73.3%    80.0%        444s
+
+  misses below q0.10: 10.4%  (expected 10.0%)   above q0.90: 9.6%  (expected 10.0%)
+  quantile rearrangement: 1824 of 217290 rows (0.839%) were non-monotonic before sorting; all rows now satisfy q0.10 <= q0.50 <= q0.90.
+
+========================================================================
+FEATURE IMPORTANCE (gain, q0.50 model)
+========================================================================
+  current_delay_sec           58.44%
+  target_location             18.57%
+  vantage_location            12.94%
+  horizon_sched_sec            3.17%
+  horizon_route_stops          2.63%
+  TrainDestination             1.82%
+  TrainOrigin                  0.85%
+  vantage_minute_of_day        0.69%
+  prev_delay_sec               0.47%
+  prev2_delay_sec              0.28%
+  day_of_week                  0.11%
+  vantage_hour                 0.04%

@@ -3371,3 +3371,61 @@ timetable and against persistence, and says nothing new about Irish Rail's own e
 and test coverage against the validation 80.19% and the live 75.1%.
 
 **Date.** 2026-09-10, written before the run.
+
+---
+
+## D74 — The test week says the calibration was real, so the live shortfall is the railway
+
+**Why this matters:** the sealed week says interval coverage is **80.0%** against a claimed
+80.0%, on 217,290 predictions the model had never seen. The validation figure was not
+flattering itself, which means the 75.1% seen live in September is the railway changing
+rather than the model being worse than advertised.
+
+**In plain terms.** A week of July data was locked away in June and never looked at. Opening
+it now is the only honest test of whether the model is as good as it was claimed to be. It is,
+almost exactly.
+
+**Discharges D25.** The test week is open. It cannot be used again.
+
+**The result, against the two numbers D73 fixed in advance:**
+
+| | validation (13-19 Jul) | **test (20-26 Jul)** | live (Sept) |
+|---|---|---|---|
+| MAE | 59.7s | **58.3s** | 86.2s |
+| median error | 29.0s | **29.1s** | 48s |
+| interval coverage | 80.19% | **80.0%** | 75.1% |
+| n | 217,653 | **217,290** | 88,576 |
+
+**Test is marginally better than validation, not worse.** That is the opposite of the
+overfitting signature, and it is the answer to the question D73 posed: coverage of 80.0% on
+unseen data means the 80.2% was genuine, so **the live 75.1% is distribution shift**. D64
+argued that from the shape of the evidence, two shared-track corridors moving while the rest
+of the network held. This confirms it from a direction D64 could not reach.
+
+**The calibration is better than "80% overall" suggests.** The misses split
+**10.4% below the low bound and 9.6% above the high bound**, against 10% and 10% expected. A
+model can hit 80% coverage with badly lopsided tails; this one does not.
+
+**Against the honest floor.** 32.1% better than persistence, which is the naive predictor that
+assumes the current delay simply carries forward (D26). It ranges from 48.0% better at one
+stop ahead to 20.5% better at ten.
+
+**The known limitation reappears, unchanged.** Coverage decays with horizon exactly as D28
+recorded: 80.5% at the next stop, 80.1% at 15-30 minutes, 78.2% at 30-60, and **73.3% beyond
+an hour**, where the median interval is already 444s wide. The live figures show the same
+shape. This is a property of the approach, measured twice now on independent data.
+
+**What it does not say.** There is no operator comparison here, for the reason D73 recorded in
+advance: `ExpectedArrival` cannot be backfilled and none exists for that week. The 27%
+head-to-head remains a live-data claim from August onward and is untouched by this.
+
+**Incidental, and consistent with the design rule.** Feature importance on the q0.50 model:
+`current_delay_sec` 58.4%, `target_location` 18.6%, `vantage_location` 12.9%, everything else
+under 4%. The dominant feature is the delay already accumulated, as CLAUDE.md predicted before
+any model was trained. Station identity carries real weight, which is situation rather than
+train identity and so stays inside the feature rule.
+
+Quantile rearrangement touched 0.839% of rows (1,824 of 217,290), in line with what D27
+recorded on validation.
+
+**Date.** 2026-09-10, run once, against the plan committed at 13:02 the same day.
