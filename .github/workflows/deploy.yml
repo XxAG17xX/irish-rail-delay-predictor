@@ -105,6 +105,22 @@ jobs:
           name: site
           path: site
 
+      # "Not authorized to perform sts:AssumeRoleWithWebIdentity" is returned both when the
+      # subject claim does not match the trust policy and when the role ARN does not exist,
+      # and it names neither. This prints the three things that have to agree, so the next
+      # failure is diagnosable from the log instead of from a theory. None of it is secret:
+      # a role ARN is an identifier, and the repository and ref are already public.
+      - name: What this job will present to AWS
+        run: |
+          echo "repository : ${{ github.repository }}"
+          echo "ref        : ${{ github.ref }}"
+          echo "expected sub: repo:${{ github.repository }}:ref:${{ github.ref }}"
+          echo "role arn    : '${{ vars.AWS_DEPLOY_ROLE_ARN }}'"
+          if [ -z "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ]; then
+            echo "::error::AWS_DEPLOY_ROLE_ARN is empty. It must be a repository VARIABLE, not a secret."
+            exit 1
+          fi
+
       - name: Assume the deploy role
         uses: aws-actions/configure-aws-credentials@v4
         with:
