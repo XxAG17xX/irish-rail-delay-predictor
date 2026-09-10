@@ -17,7 +17,19 @@ AWSTemplateFormatVersion: "2010-09-09"
 Parameters:
   GitHubRepo:
     Type: String
-    Description: owner/repo, exactly as it appears in the GitHub URL.
+    Description: >-
+      owner/repo, exactly as it appears in the GitHub URL. Used for readability only; the
+      trust condition below is built from the numeric ids, not from this.
+  GitHubOwnerId:
+    Type: String
+    Description: >-
+      The owner's numeric id. Get it from
+      https://api.github.com/repos/<owner>/<repo> as `owner.id`.
+  GitHubRepoId:
+    Type: String
+    Description: >-
+      The repository's numeric id, `id` in the same response. See the note on the trust
+      condition for why the ids are what the subject is actually built from.
   SiteStackName:
     Type: String
     Default: rail-delay-site
@@ -67,9 +79,28 @@ Resources:
                 # The audience. Without it the role would accept tokens minted for other
                 # services.
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # The repository AND the branch. This single line is what stops any other
-                # repository on GitHub, and any other branch of this one, from deploying.
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/${Branch}
+                # The repository AND the branch, which is what stops any other repository on
+                # GitHub, and any other branch of this one, from deploying.
+                #
+                # NOTE THE FORMAT, because every guide and every example shows the other one.
+                # This account's tokens carry an ID-bearing subject:
+                #
+                #   repo:<owner>@<ownerId>/<repo>@<repoId>:ref:refs/heads/<branch>
+                #
+                # not the familiar `repo:<owner>/<repo>:ref:...`. Trusting the name-only form
+                # produced "Not authorized to perform sts:AssumeRoleWithWebIdentity" on every
+                # run, which names neither the claim nor the mismatch. The subject that was
+                # actually presented is in CloudTrail, under
+                # `userIdentity.userName` on the failed AssumeRoleWithWebIdentity event, and
+                # that is the fastest way to settle this if it ever drifts again.
+                #
+                # It is also the better condition to hold: ids are immutable, so renaming the
+                # repository or the account, or deleting it and someone else recreating the
+                # same name, no longer satisfies this trust.
+                token.actions.githubusercontent.com:sub: !Sub
+                  - repo:${Owner}@${GitHubOwnerId}/${Repo}@${GitHubRepoId}:ref:refs/heads/${Branch}
+                  - Owner: !Select [0, !Split ["/", !Ref GitHubRepo]]
+                    Repo: !Select [1, !Split ["/", !Ref GitHubRepo]]
       Policies:
         - PolicyName: publish-the-site
           PolicyDocument:

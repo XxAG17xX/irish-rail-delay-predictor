@@ -3264,3 +3264,53 @@ $1 and noticing at $15. Nine of the ten free alarms are now in use.
   means a service and a cost for a problem that has not happened.
 
 **Date.** 2026-09-10
+
+---
+
+## D72 — The OIDC subject carries numeric ids, and CloudTrail is the only thing that says so
+
+**Why this matters:** four pushes failed with an error that named nothing, and the cause was
+that GitHub sends a subject claim in a format no guide shows.
+
+**In plain terms.** GitHub proves who it is to AWS with a short signed statement. AWS was told
+to trust the statement "this is repo owner/name on branch main". GitHub was actually sending
+"this is repo owner@96655551/name@1312268073 on branch main". The two never matched, and the
+error said only "not authorized".
+
+**What was sent, verbatim, from CloudTrail:**
+
+```
+repo:XxAG17xX@96655551/irish-rail-delay-predictor@1312268073:ref:refs/heads/main
+```
+
+**What was trusted:**
+
+```
+repo:XxAG17xX/irish-rail-delay-predictor:ref:refs/heads/main
+```
+
+The numbers are the owner id and the repository id. Confirmed independently by reconstructing
+the string from `owner.id` and `id` in `api.github.com/repos/<owner>/<repo>`: it matches the
+CloudTrail record character for character.
+
+**Why it took four attempts, which is the part worth keeping.** The message
+"Not authorized to perform sts:AssumeRoleWithWebIdentity" is returned for a mismatched
+subject, a mismatched audience, a role that does not exist, and an SCP denial, and it
+distinguishes none of them. So each failure was consistent with several theories and confirmed
+none, and three plausible ones were tried and discarded in turn: an `environment:` key that
+changes the subject, a positionally-swapped pair of stack outputs, and a repository variable
+holding a wrong ARN. Each was a real defect and fixing it changed nothing here.
+
+**What ended it was asking the other side what it had received.** CloudTrail logs failed
+`AssumeRoleWithWebIdentity` calls with the presented subject in `userIdentity.userName`. One
+query, and the answer was unambiguous. The lesson is the project's own: **when an error names
+no value, go and find the value.** Reasoning about which of four causes it might be was never
+going to converge, and did not.
+
+**The fix is also better than what it replaces.** Ids are immutable. The name-based condition
+would have kept trusting the repository after a rename, and would have started trusting a
+different repository if this one were deleted and someone else claimed the name. The
+id-based one cannot. `infra/github-oidc.yaml` now takes `GitHubOwnerId` and `GitHubRepoId`,
+and carries a comment saying where to look if it ever drifts again.
+
+**Date.** 2026-09-10
