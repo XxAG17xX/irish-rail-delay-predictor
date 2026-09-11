@@ -1,106 +1,225 @@
 # Decision log
 
-One entry per significant design choice: what was decided, what else was on the table,
-why it lost, and when. The point is to be able to defend every choice later without
-re-deriving the reasoning.
+Seventy-eight entries, one per significant design choice in RailCast: what was decided,
+what else was on the table, why it lost, and the date. The file is append-only. An entry is
+never edited to reflect a changed mind, because the value of a dated record is that it was
+written as the work happened; a later entry supersedes it and both say so. A wrong *number*
+is different and is corrected in place with a dated note.
 
-Append new entries at the bottom. Do not edit an old entry to reflect a changed mind —
-add a new entry that supersedes it, and note the supersession in both. Correcting a wrong
-*number* is different and is done in place, with a dated correction note (see D49).
+A decision log exists because the reasoning behind a choice is the part that rots first.
+Code says what a system does and commit messages say what changed. Neither says what the
+alternatives were or why the obvious option lost, which is the question asked six months
+later by whoever has to change it.
 
-**Every entry opens with a one-line "Why this matters" that a non-specialist would follow,
-before any technical detail.** The reason is in CLAUDE.md: the person who has to defend
-this project in an interview is the constraint on it, not the code. An entry that only
-makes sense to a reader who already understands it has failed at the one job it has.
-D49-D53 carry these; earlier entries do not yet, and retrofitting them is a pending pass.
+Three conventions worth knowing before reading:
 
-Entries D1–D10 were written on 2026-07-25 and cover decisions made up to that point, a
-few of which were settled slightly earlier in the same week. Dates from D11 on are the
-date the decision was actually made.
+- Entries from **D49** onward open with a one-line **"Why this matters"** in ordinary
+  words, before any technical detail. Earlier entries do not, and retrofitting them is
+  outstanding.
+- Code comments in this repo point at entry numbers rather than repeating the argument. A
+  comment reading `see D52` means the reasoning is here, in full, once.
+- Nobody reads this file end to end and nobody is meant to. **Start here** is ten entries
+  that stand alone; the index below covers all seventy-eight, one line each.
+- **Dates mean different things either side of D11.** D1 to D10 were written together on
+  2026-07-25 and cover decisions made up to that point, a few settled slightly earlier the
+  same week. From D11 on, the date is the day the decision was actually made.
 
-## Index
+## Start here
 
-Grouped by area, newest thinking usually last within each group. A gap in a group is
-worth noticing: three entries (D46-D48) were written weeks late because the reasoning
-sat in code comments and nobody looked for the hole.
+Ten entries worth a stranger's time.
 
-**Collection and politeness** 
-- [D1](#d1--archive-raw-responses-before-parsing) Archive raw responses before parsing
-- [D2](#d2--archive-the-live-getcurrenttrainsxml-snapshots-too) Archive the live `getCurrentTrainsXML` snapshots too
-- [D3](#d3--save-empty-responses-plus-a-per-day-manifest) Save empty responses, plus a per-day manifest
-- [D5](#d5--date-major-iteration-oldest-first) Date-major iteration, oldest first
-- [D6](#d6--serial-pacer-not-a-token-bucket) Serial pacer, not a token bucket
-- [D7](#d7--adaptive-pacing-aimd-not-a-fixed-rate) Adaptive pacing (AIMD), not a fixed rate
-- [D8](#d8--three-retry-classes-handled-differently) Three retry classes, handled differently
-- [D9](#d9--byte-level-body-guard-before-writing) Byte-level body guard before writing
-- [D11](#d11--fetch-every-code-every-date-do-not-skip-on-the-weekday-set) Fetch every code × every date; do not skip on the weekday set
-- [D12](#d12--monotonic-clock-for-every-interval-and-duration) Monotonic clock for every interval and duration
-- [D13](#d13--full-jitter-on-backoff-not-plain-exponential) Full jitter on backoff, not plain exponential
-- [D14](#d14--failures-go-to-an-append-only-log-not-an-exception) Failures go to an append-only log, not an exception
-- [D15](#d15--train-codes-are-allowlist-sanitised-before-becoming-filenames) Train codes are allowlist-sanitised before becoming filenames
-- [D16](#d16--dates-for-the-api-are-built-from-an-explicit-month-table) Dates for the API are built from an explicit month table
-- [D29](#d29--poll-live-covers-30-stratified-stations-not-all-171) poll_live covers 30 stratified stations, not all 171
-- [D30](#d30--an-exclusive-host-lock-because-a-docstring-is-not-a-control) An exclusive host lock, because a docstring is not a control
+**[D20](#d20--echo-detection-by-line-name-tried-appeared-to-work-abandoned) to [D23](#d23--flag-non-auto-records-do-not-drop-them), the label-quality reversal.** Irish Rail document about ten lines
+whose stations return scheduled times in place of observed ones, and flagging records by
+line name reproduced that documentation almost exactly, which is what stopped anyone
+questioning it. Splitting the same records by the feed's own `AutoArrival` field reversed
+the direction: the aggregate gap was composition, a Simpson's paradox. D23 settles what
+follows: flag every suspect record, drop none at ingestion, report both ways.
 
-**Storage, parsing and correctness** 
-- [D4](#d4--atomic-writes-for-every-file) Atomic writes for every file
-- [D10](#d10--record-day-of-week-per-harvested-code) Record day-of-week per harvested code
-- [D17](#d17--analysis-lives-in-scripts-and-is-strictly-read-only) Analysis lives in `scripts/` and is strictly read-only
-- [D18](#d18--read-the-gzip-isize-trailer-instead-of-decompressing) Read the gzip ISIZE trailer instead of decompressing
-- [D19](#d19--seeded-sampling-and-structural-nulls-excluded-from-comparison) Seeded sampling, and structural nulls excluded from comparison
-- [D22](#d22--times-are-quantised-to-6-seconds-spike-ratios-must-account-for-it) Times are quantised to 6 seconds; spike ratios must account for it
-- [D37](#d37--cfn-lint-validates-shape-not-service-rules-check-quotas-and-units-before-deploying) cfn-lint validates shape, not service rules; check quotas and units before deploying
-- [D40](#d40--no-database-s3-and-parquet-instead) No database. S3 and Parquet instead
-- [D44](#d44--packaging-lightgbm-for-lambda-three-problems-a-normal-pip-install-hides) Packaging lightgbm for Lambda: three problems a normal pip install hides
+**[D25](#d25--three-way-temporal-split-the-test-week-opens-once), [D73](#d73--pre-registration-what-the-test-week-will-be-asked-written-before-it-is-opened) and [D74](#d74--the-test-week-says-the-calibration-was-real-so-the-live-shortfall-is-the-railway), the sealed test week.** A week of July was cut out in
+June and never looked at. D73 is the pre-registration, committed before the command
+ran: model, data, exact command, what would be reported whatever it said, no pass mark.
+D74 is the result, opened once: coverage **80.0%** against a claimed 80.0% on
+**217,290** unseen predictions, MAE **58.3s**, **32.1%** better than persistence. Test came
+out slightly better than validation, the opposite of the overfitting signature, so the
+75.0% seen live is the railway changing rather than a model that was never as good as advertised.
 
-**Data quality and the echo problem** 
-- [D20](#d20--echo-detection-by-line-name-tried-appeared-to-work-abandoned) Echo detection by line name: tried, appeared to work, abandoned
-- [D21](#d21--autoarrival-is-the-echo-signal) `AutoArrival` is the echo signal
-- [D23](#d23--flag-non-auto-records-do-not-drop-them) Flag non-auto records, do not drop them
-- [D56](#d56--a-third-class-of-bad-label-machine-captured-arrivals-attributed-to-the-wrong-train) A third class of bad label: machine-captured arrivals attributed to the wrong train
-- [D48](#d48--line-keywords-are-matched-on-word-boundaries-not-substrings) Line keywords are matched on word boundaries, not substrings
+**[D46](#d46--how-the-head-to-head-against-the-operator-is-kept-fair), how the head-to-head is kept fair.** The headline claim is that the model beats
+the operator's own `ExpectedArrival`. This entry names the four ways that comparison could
+have flattered it and closes each: only what was knowable at the instant the operator
+spoke, no feature that cannot exist at prediction time, the operator's minute precision
+matched rather than exploited, and one comparison per event and lead band rather than
+treating repeated polls as independent. Where two variants existed, the published number is
+the less flattering one.
 
-**Modelling and evaluation** 
-- [D24](#d24--training-examples-at-fixed-horizons-of-1-3-5-and-10-observed-stops) Training examples at fixed horizons of 1, 3, 5 and 10 observed stops
-- [D25](#d25--three-way-temporal-split-the-test-week-opens-once) Three-way temporal split; the test week opens once
-- [D26](#d26--persistence-not-zero-is-the-baseline-to-beat) Persistence, not zero, is the baseline to beat
-- [D27](#d27--quantile-outputs-are-sorted-before-use) Quantile outputs are sorted before use
-- [D28](#d28--interval-coverage-degrades-with-horizon-never-quote-one-number) Interval coverage degrades with horizon; never quote one number
-- [D31](#d31--a-model-artifact-bundles-boosters-vocabularies-and-the-feature-list) A model artifact bundles boosters, vocabularies and the feature list
-- [D32](#d32--version-id-is-a-utc-timestamp-plus-the-git-commit) Version id is a UTC timestamp plus the git commit
-- [D33](#d33--an-explicit-latest-pointer-not-newest-by-name) An explicit LATEST pointer, not newest-by-name
-- [D34](#d34--saving-is-opt-in-via-save) Saving is opt-in via `--save`
-- [D35](#d35--one-feature-definition-in-src-features-py) One feature definition, in `src/features.py`
-- [D45](#d45--shared-logic-moves-to-a-module-the-moment-a-second-caller-appears) Shared logic moves to a module the moment a second caller appears
-- [D46](#d46--how-the-head-to-head-against-the-operator-is-kept-fair) How the head-to-head against the operator is kept fair
+**[D52](#d52--delay-is-anchored-to-the-stops-own-schedule-everywhere), two definitions of "late".** A train scheduled at 23:50 and arriving at 00:05 is
+either fifteen minutes late or nearly a day early, so there has to be a rule. The training
+data used one rule and the live service had drifted into another; they agree on almost every
+train and disagree by a whole day on a handful, which is the worst way for two rules to
+differ. It surfaced as a mean error far above its own median, and correcting the definition
+rather than the model is what fixed it.
 
-**Serving** 
-- [D39](#d39--prediction-log-schema-write-once-storage-and-fail-closed-serving) Prediction log: schema, write-once storage, and fail-closed serving
-- [D41](#d41--plain-html-css-and-vanilla-javascript-for-the-three-pages) Plain HTML, CSS and vanilla JavaScript for the three pages
-- [D42](#d42--predictions-page-loads-per-train-on-demand-no-precomputation-yet) Predictions page loads per train on demand; no precomputation yet
-- [D43](#d43--the-api-s-deployment-shape-fastapi-behind-mangum-function-url-baked-artifact) The API's deployment shape: FastAPI behind Mangum, Function URL, baked artifact
-- [D49](#d49--the-prediction-log-is-filled-by-a-scheduled-sampler-not-by-traffic) The prediction log is filled by a scheduled sampler, not by traffic
-- [D50](#d50--the-scorer-reuses-the-offline-methodology-rather-than-approximating-it) The scorer reuses the offline methodology rather than approximating it
-- [D51](#d51--three-custom-cloudwatch-metrics-for-the-generator-not-eight) Three custom CloudWatch metrics for the generator, not eight
-- [D52](#d52--delay-is-anchored-to-the-stops-own-schedule-everywhere) Delay is anchored to the stop's own schedule, everywhere
-- [D53](#d53--two-coverage-numbers-and-the-visitor-facing-one-is-the-headline) Two coverage numbers, and the visitor-facing one is the headline
-- [D64](#d64--the-coverage-trigger-fired-on-two-corridors-and-the-answer-is-to-publish-it-rather-than-patch-it) The coverage trigger fired on two corridors, and the answer is to publish it rather than patch it
-- [D57](#d57--the-retrain-on-consistent-journeys-what-it-fixed-what-it-revealed-and-a-gate-that-cannot-pass) The retrain on consistent journeys: what it fixed, what it revealed, and a gate that cannot pass
-- [D58](#d58--the-generator-refuses-out-of-envelope-questions-from-1725-utc-on-3-september) The generator refuses out-of-envelope questions, from 17:25 UTC on 3 September
+**[D57](#d57--the-retrain-on-consistent-journeys-what-it-fixed-what-it-revealed-and-a-gate-that-cannot-pass), a gate amended with a failing candidate in hand.** The champion/challenger gate
+is what stops a retrain quietly degrading the service, and a candidate failed one small
+group's veto on what the bootstrap showed to be noise. The gate was then amended, which is
+the situation in which a rule is most likely to be bent to fit; the entry says so plainly,
+derives the new minimum group size from statistical power rather than from the group that
+failed, and records what would still have blocked promotion. It also carries the project's
+sharpest limitation: on real delays over an hour neither model covers a single case, and the
+old one's apparent competence there was garbage labels matched by garbage-wide intervals.
 
-**Optimisation (buffer allocation)** 
-- [D59](#d59--buffer-allocation-not-delay-management-the-formulation-and-why-the-other-was-rejected) Buffer allocation, not delay management: the formulation and why the other was rejected
-- [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses
-- [D61](#d61--evaluation-bootstrap-over-days-report-both-weightings-declare-the-cap) Evaluation: bootstrap over days, report both weightings, declare the cap
-- [D62](#d62--the-buffer-lp-is-built-and-works-the-result-is-under-powered-and-mostly-negative) The buffer LP is built and works; the result is under-powered and mostly negative
-- [D63](#d63--shrinkage-toward-the-timetable-turns-the-buffer-lp-positive-and-says-where-the-padding-is-wrong) Shrinkage toward the timetable turns the buffer LP positive, and says where the padding is wrong
+**[D64](#d64--the-coverage-trigger-fired-on-two-corridors-and-the-answer-is-to-publish-it-rather-than-patch-it), a pre-registered trigger firing.** The retraining policy fixed in advance what
+counts as the intervals failing their promise. It fired six weeks after training, on two
+corridors that share track, while DART and the Dublin hubs held, and the decision was to
+publish the degradation rather than widen the intervals until the number looked right. The
+accuracy page shows **62.9%** on the Kildare corridor beside the nominal 80%. The point
+estimates did not move with the spread: the live head-to-head is **25.7%** better than the
+operator over **27,984** matched events.
 
-**Cutover and verification** 
-- [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires
-- [D38](#d38--two-structural-artefacts-in-the-parallel-run-diff-and-how-to-tell-them-from-real-disagreement) Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement
-- [D47](#d47--a-100-join-rate-is-necessary-and-nearly-meaningless-usability-is-the-number) A 100% join rate is necessary and nearly meaningless; usability is the number
-- [D54](#d54--cutover-the-lambda-poller-is-the-only-poller) Cutover: the Lambda poller is the only poller
-- [D55](#d55--harvest_codes-gets-a-staleness-guard-not-a-port-to-s3) harvest_codes gets a staleness guard, not a port to S3
+**[D40](#d40--no-database-s3-and-parquet-instead), why there is no database.** Raw responses are gzipped objects, parsed records are
+Parquet, and the API reads what it needs per request. Three reasons in order of weight: a
+24/7 instance would be more than 99% of a bill measured at about **$0.10 a month**, the data
+is file-shaped and read-mostly, and nothing joins across entities at request time. The entry
+names what is given up and the condition under which the answer changes.
+
+**[D72](#d72--the-oidc-subject-carries-numeric-ids-and-cloudtrail-is-the-only-thing-that-says-so), an error that named no value.** Deploys authenticate through GitHub OIDC, with no
+long-lived AWS key in the repository or in GitHub's secrets. Setting it up failed repeatedly
+on a message that distinguishes four different causes not at all, because GitHub sends a
+subject claim carrying numeric owner and repository ids in a format no published guide shows.
+CloudTrail records the subject actually presented, and one query ended it.
+
+**[D76](#d76--a-failed-prediction-log-was-invisible-for-two-months-and-a-comment-said-it-was-not), an alarm that could never have fired.** A prediction that cannot be logged must
+not be served, because the accuracy page is only trustworthy if every prediction provably
+predates its outcome. The service refused correctly and then told nobody: the handler caught
+the failure and returned 503, Lambda counts a returned response as a successful invocation,
+so the error metric stayed at zero. The template carried a comment directly above that alarm
+asserting it worked. Letting the exception escape fixes it, and needs no new metric.
+
+**[D78](#d78--raise-the-ceiling-in-order-to-be-allowed-to-build-a-floor-under-it), raising a limit in order to cap it.** AWS refuses a concurrency reservation that
+would leave too few unreserved executions in the account, so at the old account limit a cap
+on the public endpoint was arithmetically impossible. Raising the limit to **1000** is what
+made capping possible, and the reservation of **5** went on the same morning, in that order
+and for that reason: raising without then capping is strictly worse than never raising at
+all. **995** stay unreserved, so a flood can no longer starve the poller or the scorer.
+
+### One thread through eleven of these
+
+Eleven failures in this project share a shape. None raised an error. Every one produced
+output that looked like a correct, unremarkable result: HTTP 200 from a captive portal,
+`CREATE_COMPLETE` on an alarm topic nobody had confirmed, `0 new codes` from a folder
+nothing writes to any more, a rebuild reporting exit code 0 because the code belonged to
+`tail`, a nightly job printing a healthy report four minutes before it ran out of memory.
+Every one was caught the same way, by taking a number and asking what it should have been.
+All eleven are set out in `docs/story.md`; the entries carrying them are D20 to D23, D52,
+D55, D56, D57 and D65.
+
+## All seventy-eight entries
+
+Grouped by area. Each entry appears once, under the question it settles.
+
+**Collecting the data**
+
+- [D1](#d1--archive-raw-responses-before-parsing) Archive raw responses before parsing. Parsing is a later stage, so a parser change never costs a re-download.
+- [D2](#d2--archive-the-live-getcurrenttrainsxml-snapshots-too) Archive the live `getCurrentTrainsXML` snapshots too. That endpoint has no history, so its bodies cannot be recovered later.
+- [D3](#d3--save-empty-responses-plus-a-per-day-manifest) Save empty responses, plus a per-day manifest. Coverage is answerable from one text file instead of thousands of XML files.
+- [D5](#d5--date-major-iteration-oldest-first) Date-major iteration, oldest first. An abandoned run leaves whole usable days rather than a uniformly sparse range.
+- [D6](#d6--serial-pacer-not-a-token-bucket) Serial pacer, not a token bucket. A bucket accumulates credit while idle and then discharges it as a burst.
+- [D7](#d7--adaptive-pacing-aimd-not-a-fixed-rate) Adaptive pacing (AIMD), not a fixed rate. Backs off on the server's only feedback signal, and recovers without re-tripping it.
+- [D8](#d8--three-retry-classes-handled-differently) Three retry classes, handled differently. A timeout, a 429 and a 404 carry opposite information and deserve opposite responses.
+- [D9](#d9--byte-level-body-guard-before-writing) Byte-level body guard before writing. ASMX services return 200 with HTML error pages, discovered otherwise at parse time.
+- [D11](#d11--fetch-every-code--every-date-do-not-skip-on-the-weekday-set) Fetch every code × every date; do not skip on the weekday set. A wasted request costs half a second; a wrongly skipped one is undetectable afterwards.
+- [D12](#d12--monotonic-clock-for-every-interval-and-duration) Monotonic clock for every interval and duration. NTP, DST and a laptop waking up all move the wall clock, including backwards.
+- [D13](#d13--full-jitter-on-backoff-not-plain-exponential) Full jitter on backoff, not plain exponential. Stops the retry pattern from becoming a synchronised burst if anything else ever runs.
+- [D14](#d14--failures-go-to-an-append-only-log-not-an-exception) Failures go to an append-only log, not an exception. Dead-letter pattern: one bad code does not cost the rest of a four-hour run.
+- [D15](#d15--train-codes-are-allowlist-sanitised-before-becoming-filenames) Train codes are allowlist-sanitised before becoming filenames. The code goes straight into a write path, so path traversal is defended structurally.
+- [D16](#d16--dates-for-the-api-are-built-from-an-explicit-month-table) Dates for the API are built from an explicit month table. `strftime("%b")` is locale-dependent, and the failure looks exactly like "no trains ran".
+- [D29](#d29--poll_live-covers-30-stratified-stations-not-all-171) poll_live covers 30 stratified stations, not all 171. The claim is per kind of line, so each kind needs its own comparison events.
+- [D30](#d30--an-exclusive-host-lock-because-a-docstring-is-not-a-control) An exclusive host lock, because a docstring is not a control. Three scripts carried the warning in a docstring and none of them enforced it.
+- [D55](#d55--harvest_codes-gets-a-staleness-guard-not-a-port-to-s3) harvest_codes gets a staleness guard, not a port to S3. "0 new codes" from a frozen folder is indistinguishable from a network with no new services.
+
+**Storage, parsing and correctness**
+
+- [D4](#d4--atomic-writes-for-every-file) Atomic writes for every file. Resume is an existence check, so a truncated file would be treated as complete.
+- [D10](#d10--record-day-of-week-per-harvested-code) Record day-of-week per harvested code. Weekday and weekend timetables differ, so a single-day harvest is systematically incomplete.
+- [D17](#d17--analysis-lives-in-scripts-and-is-strictly-read-only) Analysis lives in `scripts/` and is strictly read-only. The archive costs hours to reproduce, so surveying it should be incapable of damaging it.
+- [D18](#d18--read-the-gzip-isize-trailer-instead-of-decompressing) Read the gzip ISIZE trailer instead of decompressing. Sizes for every file, inflation only for the sample.
+- [D19](#d19--seeded-sampling-and-structural-nulls-excluded-from-comparison) Seeded sampling, and structural nulls excluded from comparison. A `00:00:00` schedule at an origin is structurally absent, not missing, and inflates the headline.
+
+**Labels and data quality**
+
+- [D20](#d20--echo-detection-by-line-name-tried-appeared-to-work-abandoned) Echo detection by line name: tried, appeared to work, abandoned. The result confirmed the documentation, which is why it went unchallenged for a whole cycle.
+- [D21](#d21--autoarrival-is-the-echo-signal) `AutoArrival` is the echo signal. A per-record field separates the data far more sharply than any geographic proxy.
+- [D22](#d22--times-are-quantised-to-6-seconds-spike-ratios-must-account-for-it) Times are quantised to 6 seconds; spike ratios must account for it. Dividing by seconds rather than by reachable buckets made an artefact look like network-wide echoing.
+- [D23](#d23--flag-non-auto-records-do-not-drop-them) Flag non-auto records, do not drop them. Dropping would fall hardest where an honest answer matters most; exclusion is an evaluation choice.
+- [D48](#d48--line-keywords-are-matched-on-word-boundaries-not-substrings) Line keywords are matched on word boundaries, not substrings. `Ballina` is a prefix of `Ballinasloe`, and the bug would have produced a plausible number.
+- [D56](#d56--a-third-class-of-bad-label-machine-captured-arrivals-attributed-to-the-wrong-train) A third class of bad label: machine-captured arrivals attributed to the wrong train. Real observations filed against the wrong service, carrying every signal of a verified one.
+
+**Features and modelling**
+
+- [D24](#d24--training-examples-at-fixed-horizons-of-1-3-5-and-10-observed-stops) Training examples at fixed horizons of 1, 3, 5 and 10 observed stops. All-pairs multiplies rows without adding independent delay realisations.
+- [D26](#d26--persistence-not-zero-is-the-baseline-to-beat) Persistence, not zero, is the baseline to beat. Beating the zero-delay predictor only proves the timetable is imperfect, which is not in doubt.
+- [D27](#d27--quantile-outputs-are-sorted-before-use) Quantile outputs are sorted before use. An interval whose lower bound exceeds its upper is broken, not weak.
+- [D31](#d31--a-model-artifact-bundles-boosters-vocabularies-and-the-feature-list) A model artifact bundles boosters, vocabularies and the feature list. Rebuilding vocabularies later remaps categories silently, and every prediction is then wrong.
+- [D32](#d32--version-id-is-a-utc-timestamp-plus-the-git-commit) Version id is a UTC timestamp plus the git commit. Logged predictions must name the code that produced them; `-dirty` makes an uncommitted model visible.
+- [D33](#d33--an-explicit-latest-pointer-not-newest-by-name) An explicit LATEST pointer, not newest-by-name. Rollback becomes a one-line edit instead of deleting a good artifact. Amended once serving moved to CloudFormation.
+- [D34](#d34--saving-is-opt-in-via---save) Saving is opt-in via `--save`. Most runs are exploratory and would otherwise churn the pointer with artifacts nobody loads.
+- [D35](#d35--one-feature-definition-in-srcfeaturespy) One feature definition, in `src/features.py`. Two copies had diverged, and the saved model could not have served a live request.
+- [D45](#d45--shared-logic-moves-to-a-module-the-moment-a-second-caller-appears) Shared logic moves to a module the moment a second caller appears. `featurise` must agree between offline evaluation and live serving or the two describe different models.
+- [D52](#d52--delay-is-anchored-to-the-stops-own-schedule-everywhere) Delay is anchored to the stop's own schedule, everywhere. A training/serving skew on the dominant feature, agreeing on almost every train and disagreeing by a day on a few.
+
+**Evaluation and honest reporting**
+
+- [D25](#d25--three-way-temporal-split-the-test-week-opens-once) Three-way temporal split; the test week opens once. A random split puts one journey on both sides; a two-way split leaves nowhere to tune.
+- [D28](#d28--interval-coverage-degrades-with-horizon-never-quote-one-number) Interval coverage degrades with horizon; never quote one number. The headline average is dominated by short horizons; long ones are where the service is useful.
+- [D46](#d46--how-the-head-to-head-against-the-operator-is-kept-fair) How the head-to-head against the operator is kept fair. Four ways the comparison could have flattered the model, each closed, less flattering variant published.
+- [D47](#d47--a-100-join-rate-is-necessary-and-nearly-meaningless-usability-is-the-number) A 100% join rate is necessary and nearly meaningless; usability is the number. Weak-coverage lines join perfectly and still have too few scoreable events to claim anything.
+- [D53](#d53--two-coverage-numbers-and-the-visitor-facing-one-is-the-headline) Two coverage numbers, and the visitor-facing one is the headline. The conditional answer rate is true of a population no visitor ever picks from.
+- [D57](#d57--the-retrain-on-consistent-journeys-what-it-fixed-what-it-revealed-and-a-gate-that-cannot-pass) The retrain on consistent journeys: what it fixed, what it revealed, and a gate that cannot pass. A gate amended with a failing candidate in hand, and the limitation that severe delays are never covered.
+- [D64](#d64--the-coverage-trigger-fired-on-two-corridors-and-the-answer-is-to-publish-it-rather-than-patch-it) The coverage trigger fired on two corridors, and the answer is to publish it rather than patch it. Recalibrating would have taken the number back to 80% and deleted the evidence that the railway changed.
+- [D73](#d73--pre-registration-what-the-test-week-will-be-asked-written-before-it-is-opened) Pre-registration: what the test week will be asked, written before it is opened. Model, data, command, reported quantities and the absence of a pass mark, all fixed in advance.
+- [D74](#d74--the-test-week-says-the-calibration-was-real-so-the-live-shortfall-is-the-railway) The test week says the calibration was real, so the live shortfall is the railway. Coverage of 80.0% against a claimed 80.0% on 217,290 unseen predictions.
+
+**Serving**
+
+- [D39](#d39--prediction-log-schema-write-once-storage-and-fail-closed-serving) Prediction log: schema, write-once storage, and fail-closed serving. A prediction that cannot be logged is not served, and IAM enforces that rather than discipline.
+- [D40](#d40--no-database-s3-and-parquet-instead) No database. S3 and Parquet instead. Cost rules forbid it, the data is file-shaped and read-mostly, and nothing joins at request time.
+- [D42](#d42--predictions-page-loads-per-train-on-demand-no-precomputation-yet) Predictions page loads per train on demand; no precomputation yet. Precomputing would have changed the parallel run's control while the experiment was running.
+- [D43](#d43--the-apis-deployment-shape-fastapi-behind-mangum-function-url-baked-artifact) The API's deployment shape: FastAPI behind Mangum, Function URL, baked artifact. The same app runs under `uvicorn` locally, so every path was exercised before anything deployed.
+- [D44](#d44--packaging-lightgbm-for-lambda-three-problems-a-normal-pip-install-hides) Packaging lightgbm for Lambda: three problems a normal pip install hides. Two `--platform` tags, an explicit Python version, and a vendored `libgomp.so.1`.
+- [D49](#d49--the-prediction-log-is-filled-by-a-scheduled-sampler-not-by-traffic) The prediction log is filled by a scheduled sampler, not by traffic. A portfolio service has no organic traffic, and a uniform random draw is a frame that can be stated.
+- [D50](#d50--the-scorer-reuses-the-offline-methodology-rather-than-approximating-it) The scorer reuses the offline methodology rather than approximating it. A live number computed differently from the published one is not comparable to it.
+- [D58](#d58--the-generator-refuses-out-of-envelope-questions-from-1725-utc-on-3-september) The generator refuses out-of-envelope questions, from 17:25 UTC on 3 September. A lead ceiling read off the timetable, consistency checked at prediction time, and a physical bound on an impossible vantage.
+- [D67](#d67--the-public-api-gets-a-rate-limit-and-a-refusal-that-says-how-long-to-wait) The public API gets a rate limit, and a refusal that says how long to wait. In-process token buckets, with the ceiling they cannot cover stated rather than implied.
+- [D69](#d69--0000-is-a-real-time-and-reading-it-as-not-applicable-blanked-a-stop) 00:00 is a real time, and reading it as "not applicable" blanked a stop. `LocationType` says which field applies, so guessing from the value is unnecessary.
+- [D76](#d76--a-failed-prediction-log-was-invisible-for-two-months-and-a-comment-said-it-was-not) A failed prediction log was invisible for two months, and a comment said it was not. A handled error is not an error as far as Lambda is concerned.
+
+**The web layer**
+
+- [D41](#d41--plain-html-css-and-vanilla-javascript-for-the-three-pages) Plain HTML, CSS and vanilla JavaScript for the three pages. The framework question sat unanswered for six weeks and was then asserted from a deleted line.
+- [D66](#d66--the-site-gets-a-visual-world-a-build-step-and-a-deployment-pipeline) The site gets a visual world, a build step, and a deployment pipeline. Amends D41: Tailwind compiled ahead of time, TypeScript as a check rather than a compiler, still no framework.
+- [D68](#d68--the-board-opens-into-the-route-and-the-deploy-runs-itself) The board opens into the route, and the deploy runs itself. The journey was already downloaded to make the prediction, so showing the route costs nothing extra.
+- [D70](#d70--routes-are-fetched-when-someone-opens-one-not-when-a-board-is-drawn) Routes are fetched when someone opens one, not when a board is drawn. Cost to the upstream feed scales with curiosity rather than with the size of the board.
+- [D75](#d75--the-fonts-move-in-house-and-the-site-stops-talking-to-anyone-else) The fonts move in-house, and the site stops talking to anyone else. Every visitor's address reached a third party for no benefit, and removing it let the CSP tighten.
+
+**Infrastructure, cost and operations**
+
+- [D36](#d36--the-lambda-parallel-run-is-a-time-boxed-exception-to-d30-and-it-expires) The Lambda parallel run is a time-boxed exception to D30, and it expires. A temporary doubling of load on someone else's free service is how temporary becomes permanent.
+- [D37](#d37--cfn-lint-validates-shape-not-service-rules-check-quotas-and-units-before-deploying) cfn-lint validates shape, not service rules; check quotas and units before deploying. Both failures passed every linter, and neither was a typo.
+- [D38](#d38--two-structural-artefacts-in-the-parallel-run-diff-and-how-to-tell-them-from-real-disagreement) Two structural artefacts in the parallel-run diff, and how to tell them from real disagreement. Window-edge sampling skew is one-sided; real disagreement scatters both ways.
+- [D51](#d51--three-custom-cloudwatch-metrics-for-the-generator-not-eight) Three custom CloudWatch metrics for the generator, not eight. Ten custom metrics are free and the eleventh is charged; logs are free.
+- [D54](#d54--cutover-the-lambda-poller-is-the-only-poller) Cutover: the Lambda poller is the only poller. The bar was met over the full window, and every miss was explained rather than merely counted.
+- [D65](#d65--the-scorer-ran-out-of-memory-building-the-rollup-and-the-write-order-is-why-nothing-was-lost) The scorer ran out of memory building the rollup, and the write order is why nothing was lost. The durable write happens before the derived one, so the crash cost a stale page and no data.
+- [D71](#d71--what-a-determined-caller-could-actually-cost-and-the-alarm-that-shortens-it) What a determined caller could actually cost, and the alarm that shortens it. A derived ceiling in money and in requests per second, and a five-minute signal instead of a next-morning one.
+- [D72](#d72--the-oidc-subject-carries-numeric-ids-and-cloudtrail-is-the-only-thing-that-says-so) The OIDC subject carries numeric ids, and CloudTrail is the only thing that says so. When an error names no value, go and find the value.
+- [D77](#d77--one-requirements-file-could-not-say-what-the-project-uses) One requirements file could not say what the project uses. A freeze cannot tell a linter's dependency from the project's, and the file was missing every API dependency.
+- [D78](#d78--raise-the-ceiling-in-order-to-be-allowed-to-build-a-floor-under-it) Raise the ceiling in order to be allowed to build a floor under it. Raising the account limit is what made capping the public endpoint possible.
+
+**The optimisation component, which nothing in the deployed service depends on**
+
+- [D59](#d59--buffer-allocation-not-delay-management-the-formulation-and-why-the-other-was-rejected) Buffer allocation, not delay management: the formulation and why the other was rejected. Delay management needs passenger weights that do not exist and that sit inside the objective.
+- [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses. The usual one-line justification fails under terminus-only weighting, which is one of the two published.
+- [D61](#d61--evaluation-bootstrap-over-days-report-both-weightings-declare-the-cap) Evaluation: bootstrap over days, report both weightings, declare the cap. The independent unit is the day, and choosing one weighting would reintroduce invented numbers.
+- [D62](#d62--the-buffer-lp-is-built-and-works-the-result-is-under-powered-and-mostly-negative) The buffer LP is built and works; the result is under-powered and mostly negative. More freedom than evidence, diagnosed by fitting days per decision variable.
+- [D63](#d63--shrinkage-toward-the-timetable-turns-the-buffer-lp-positive-and-says-where-the-padding-is-wrong) Shrinkage toward the timetable turns the buffer LP positive, and says where the padding is wrong. The timetable is tuned for terminal punctuality, so the available gain is all at intermediate stops.
 
 ---
 
@@ -981,6 +1100,11 @@ clicked. Every alarm for three days would have shown ALARM in the console and no
 nobody. Both topics are now confirmed. Check subscriptions after any stack that creates
 one, because nothing else surfaces this.
 
+**Number corrected 2026-09-11.** "Discarded after three days" is what AWS documents and is
+not what AWS does. The scorer's subscription, created 2026-08-27 20:14 UTC, was reaped
+**48 hours** later. Assume the window is shorter than documented and check rather than
+counting days.
+
 **Both tests cost no comparison data.** Test A ran while local was collecting, so the
 parallel run lost only the Lambda side for nine minutes. Test B ran entirely inside quiet
 hours (00:30-05:30 Dublin), when neither poller collects, so the 35 minutes were free.
@@ -1510,6 +1634,13 @@ being the most informed prediction the operator made at that range.
 not reported anywhere yet. The operator answers those; we cannot. So "27% better" is
 conditional on us having anything to say at all, and that limit belongs beside the number
 everywhere it appears.
+
+**Superseded 2026-09-11, and this matters because the figure above is still correct.**
+D53 retired "~56% of polls unanswerable" as a *published* figure. It is a share of station
+board polls over this offline period, which is a different population from the live answer
+rate measured since launch, and putting the two side by side reads as an improvement that
+never happened. The number stays here because it is what this comparison measured. **Do not
+quote it outside this entry**; the live figures and their denominators are in D53.
 
 **Where it loses.** Weak-coverage lines: MAE looks 2.3% better but the median is worse
 (183s against 159s) and the model loses 58.7% of head-to-head comparisons on n=104.
