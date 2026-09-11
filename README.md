@@ -1,122 +1,164 @@
-# irish-rail-delay-predictor
+# RailCast
 
-Predicts how late an Irish Rail train will arrive at a stop further along its route, as a
-**range** rather than a single number.
+Predicts how late an Irish Rail train will arrive at a stop further along its route, and
+answers with an **80% range rather than a single number**.
 
-> It is 16:30. A220 left Heuston at 16:00 for Cork and has been 1–2 minutes down at
-> Kildare, Portarlington and Portlaoise. Asked about Thurles, the service answers:
-> expected 17:07–17:14, most likely 17:09, 80% confidence.
+**Live: https://dc9icf7494up8.cloudfront.net**
 
-One model for the whole network. The target is to beat Irish Rail's own `ExpectedArrival`
-on well-covered lines, and to be explicit about the lines where the data cannot support a
-claim.
+> It is 16:30. A220 left Heuston at 16:00 for Cork and has been one to two minutes down at
+> Kildare, Portarlington and Portlaoise. Asked about Thurles, the service answers: expected
+> 17:07 to 17:14, most likely 17:09, 80% confidence.
 
-Data comes from the [Irish Rail Realtime API](http://api.irishrail.ie/realtime/) — no key,
-no registration, no rate limit documented and no support offered.
+One model for the whole network, trained on the [Irish Rail Realtime
+API](http://api.irishrail.ie/realtime/), which needs no key and offers no support. Every
+prediction is written down before the train arrives and scored against the real arrival the
+following night, so the accuracy page is a record rather than a claim.
 
-## Status
+## The result
 
-**Running unattended on AWS.** Collection, model and serving are done and deployed. The
-three web pages are the remaining work.
+Measured against Irish Rail's own `ExpectedArrival`, on matched events where both the model
+and the operator answered for the same train, station and moment.
 
-- [x] API feasibility probes, field reference, known data-quality issues
-- [x] Historical availability established — `TrainDate` is honoured back to at least 2007
-- [x] `harvest_codes.py` / `backfill.py` — resumable, throttled collection
-- [x] `parse_raw.py` — raw XML → Parquet
-- [x] Label quality resolved — it follows `AutoArrival`, not the line list
-- [x] `build_examples.py`, `baseline.py`, `train_quantile.py` — LightGBM quantile model
-- [x] Head-to-head against the operator's own live estimates
-- [x] FastAPI service on Lambda, prediction logging, nightly scorer
-- [x] Cutover to the Lambda poller after a seven-day parallel run
-- [ ] Three web pages: predictions, accuracy, how it works
+| | RailCast | Irish Rail | Improvement | Matched events |
+|---|---|---|---|---|
+| Offline, held-out validation | 80.1s | 109.7s | **27%** | 9,077 |
+| Live, cumulative since launch | 86.8s | 116.8s | **25.7%** | 27,984 |
+| Live, rolling 7 days | 88.5s | 117.7s | 24.8% | 20,761 |
 
-**Dataset.** 28,706 gzipped responses, 1,087 train codes, 34 dates (25 Jun – 2 Aug 2026),
-504,810 stop-level records. Collected once, not repeated — re-fetchable by date if needed.
+The live figures come from predictions logged before their outcomes existed, against a
+baseline that was moving at the same time. The claim survived production on three times the
+offline sample.
 
-**Model.** LightGBM quantile regression at the 10th, 50th and 90th percentiles. Twelve
-features, all computable at prediction time. Trained 27 Jun – 12 Jul, validated 13–19 Jul,
-on journeys whose reported arrivals are internally consistent — 3.7% of journeys are
-excluded because at least one of their arrivals belongs to a different train (D56, D57).
-Validation MAE for the serving model: 59.7s on the consistent 96.1% of rows. The previous
-model scored 76.1s across all journeys and 60.6s on the consistent subset, so about
-fifteen seconds of the earlier published figure was label contamination, not model error.
-The test week (20–26 Jul) has never been opened and stays closed until the end — every
-number quoted anywhere is validation or live, never test.
+### The sealed week
 
-**Against the operator.** 80.1s MAE against `ExpectedArrival` at 109.7s — a 27%
-improvement over 9,077 matched comparisons covering 2,654 distinct events. Replicated on
-live data on 2026-08-31: 92.3s against 124.5s, **25.9%** over 1,079 matched events, from
-predictions logged before the outcomes existed.
+A week of data (20 to 26 July) was held out at the start and **never looked at**, not once,
+through every model change. An analysis plan was committed to the repository first, saying
+what would be measured and what would count as a failure. It was then opened once, on
+2026-09-10:
 
-**Honest limits, kept next to the number.**
+- MAE **58.3s**, median 29.1s, on **217,290** unseen predictions
+- Interval coverage **80.0%** against the 80.0% the model claims
+- Misses split 10.4% above and 9.6% below, against 10 and 10 expected
+- **32.1%** better than a persistence baseline
 
-- It answers only for a train that has already reported at an upstream stop. Measured
-  live: **91.8%** of sampled in-service trains, but **38.0%** of what a visitor meets on a
-  station board, because a board also lists trains that have not departed.
-- The 80% interval measured **79.0%** live overall, but degrades with horizon — 78.1% at
-  0–5 minutes down to **74.5%** beyond an hour. Never quote one coverage number.
-- On documented weak-coverage lines the model loses more head-to-head comparisons than it
-  wins: 55% of 104 lost, with the medians within three seconds of each other (replayed
-  2026-09-03). Reported as a loss, not omitted.
-- **The intervals do not cover disruptions.** On real delays over an hour — 53 validation
-  rows, and 16 predictions at the Sligo trains that lost 75–89 minutes in one stretch on
-  2 Sep — coverage is **0%**, for this model and the one before it. Every one of those
-  trains was 2–7 minutes late at the moment of asking. No delay-so-far feature can see a
-  disruption that has not started. The previous model's apparent 27.6% on such delays was
-  wrong-train labels covered by intervals learned from the same labels (D57).
+The intervals were honestly calibrated. That matters for the section below, because it means
+the live shortfall is the railway changing, not the model having been optimistic. The week
+cannot be used again.
 
-## Architecture
+## Where it is wrong
 
-```
-EventBridge ──> poller Lambda ──> S3   raw station boards + operator ETAs, every 5 min
-EventBridge ──> generator ─────> S3   sampled predictions, so the scoreboard has input
-                    │
-                 api.py (FastAPI + Mangum, Lambda Function URL)
-                    │
-                    └────────────> S3   prediction log, written BEFORE the outcome exists
-EventBridge ──> scorer Lambda ──> S3   nightly: joins yesterday's predictions to arrivals
-```
+These are on the live site next to the good numbers, not buried here.
 
-Four Lambdas, two buckets, four CloudFormation stacks, eight CloudWatch alarms. No
-database — see [decisions.md](docs/decisions.md) D40. No EC2, no RDS, no VPC, no queues.
+**Interval coverage is currently 75.0% against a nominal 80%, and the shortfall is not
+evenly spread.**
 
-The API is live behind a Lambda Function URL. The URL is deliberately not advertised: every
-`/predict` call makes an upstream request to Irish Rail, and there is no throttle in front
-of it. It did sit in `CLAUDE.md` from 25 August to 3 September, so it is in the git history
-and should be treated as public.
+| Station group | Coverage |
+|---|---|
+| `commuter_maynooth` | 81.4% |
+| `dublin_hubs` | 77.6% |
+| `dart` | 77.2% |
+| `weak_coverage` | 73.1% |
+| `intercity_cork_corridor` | **66.5%** |
+| `commuter_kildare` | **62.9%** |
+| `intercity_other` | **57.0%** |
 
-## Layout
+A single blended 75.0% would hide two corridors in the sixties, so coverage is never
+published as one figure. A degradation trigger written in advance fired on these corridors,
+and the decision was to publish the degradation rather than widen the intervals until the
+number looked better. Reasoning in decision D64.
 
-```
-src/
-  harvest_codes.py   poll getCurrentTrainsXML, accumulate train codes
-  backfill.py        download raw getTrainMovementsXML per (date, code)
-  parse_raw.py       raw XML -> Parquet, partitioned by date
-  build_examples.py  training examples at fixed horizons
-  baseline.py        persistence and zero baselines
-  train_quantile.py  LightGBM quantile model, versioned artifacts
-  features.py        THE feature definition, imported by training and serving alike
-  feedtime.py        feed time/date parsing, delay rule, lead-time bands
-  poll_live.py       the poll cycle, shared by the local poller and the Lambda
-  sinks.py           where a cycle's output goes: local disk, S3, or memory
-  lambda_poll.py     one poll cycle as a Lambda invocation
-  api.py             the prediction service
-  generate.py        scheduled sampled predictions, so the scorer has input
-  score.py           nightly scorer: predictions joined to realised arrivals
-  prediction_log.py  fail-closed prediction logging
-  hostlock.py        one collector per host
-scripts/     read-only probes, surveys and the build scripts
-infra/       CloudFormation/SAM templates
-docs/        data dictionary, decision log, label quality, explain index
-data/        raw collected data is gitignored; small build artifacts are committed
+**The intervals cover 0% of real delays over an hour.** Every one of those trains was two to
+seven minutes late at the moment of asking. No delay-so-far feature can see a disruption that
+has not started yet.
+
+**It only answers for a train already running that has reported at an earlier stop.** That is
+92.9% of sampled in-service trains, but a station board also lists trains that have not
+departed, and for those there is nothing to go on.
+
+## How it works
+
+```mermaid
+flowchart LR
+    FEED[("Irish Rail realtime feed")]
+    VISITOR(["visitor"])
+
+    subgraph edge["Public edge"]
+        CF["CloudFront<br/>static site and /api/*"]
+    end
+
+    subgraph lambdas["Lambda, eu-west-1"]
+        POLL["poller<br/>every 5 min"]
+        API["api<br/>FastAPI, capped at 5 concurrent"]
+        GEN["generator<br/>every 5 min, samples trains"]
+        SCORE["scorer<br/>nightly, 06:15 UTC"]
+    end
+
+    subgraph buckets["S3, both buckets fully private"]
+        DATA[("data bucket<br/>raw boards, prediction log, scores")]
+        SITE[("site bucket<br/>readable only by CloudFront")]
+    end
+
+    VISITOR --> CF
+    CF --> SITE
+    CF --> API
+    FEED --> POLL --> DATA
+    FEED --> API --> DATA
+    FEED --> GEN --> DATA
+    DATA --> SCORE --> DATA
+    SCORE -->|accuracy.json| SITE
 ```
 
-`data/` splits in two and the split is a rule, not a list of exceptions. Raw XML, Parquet
-and poll output are never committed. The artifacts a build needs — `codes.json`,
-`live/stations.json`, `models/` — are. The test of the rule is not reading it: clone to a
-temp directory and run the build scripts.
+Four Lambda functions, two S3 buckets, six CloudFormation stacks, nine CloudWatch alarms.
+**No database** (the reasoning is decision D40, because "why no database?" is an interview
+question), no EC2, no RDS, no VPC, no queues. It costs about **$0.10 a month**, almost all of
+it S3 PUT requests.
 
-## Setup
+The site deploys itself from GitHub Actions using OIDC, so **no long-lived AWS key exists in
+the repository or in GitHub's secrets**. The public endpoint is capped at five concurrent
+executions, which bounds both the bill and the load this project can put on someone else's
+free API.
+
+### Why the accuracy page can be trusted
+
+```mermaid
+sequenceDiagram
+    participant V as Visitor or generator
+    participant A as api Lambda
+    participant L as S3 prediction log
+    participant N as scorer, next night
+
+    V->>A: which train, which station
+    A->>A: build features from upstream delays
+    A->>L: write prediction, quantiles, model version
+    Note over L: Written before the outcome exists.<br/>A failed write fails the invocation,<br/>so a broken log cannot go unnoticed.
+    A-->>V: 80% interval
+    N->>L: read yesterday's predictions
+    N->>N: join to realised arrivals
+    N->>L: write scores, never touching predictions
+```
+
+Historical predictions are never regenerated. Recomputing what the model "would have said"
+uses today's model against a known outcome, which is leakage. This is enforced by IAM rather
+than by discipline: the API may write the prediction prefix and cannot read it, and the
+scorer may read it and cannot write it.
+
+## Techniques
+
+LightGBM quantile regression at the 10th, 50th and 90th percentiles, twelve features, all
+computable at request time. The load-bearing rule is that **features describe the situation,
+not the identity**: train code is not an input, because a model that learned "A218 runs two
+minutes down" has nothing to say about a service launched next March.
+
+The ingestion path is deliberately defensive, because the expensive resource is elapsed time
+against someone else's server. Fixed-interval request pacing rather than a token bucket, so an
+idle period cannot bank credit and fire a burst. AIMD rate control, the same shape as TCP
+congestion control. Server-directed backoff when a `Retry-After` arrives. An error taxonomy
+that treats a timeout, a 429 and a 404 differently, which is the difference between handling
+errors and retrying a rate limit at the same rate. Atomic write-then-rename, so an interrupted
+run cannot leave a half-written file that the resume check reads as complete. Full reasoning
+and the rejected alternatives are in the decision log.
+
+## Running it
 
 ```powershell
 python -m venv .venv
@@ -124,39 +166,14 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 ```
 
-`requests` for ingestion, `pyarrow` for the Parquet stage, `lightgbm` and `numpy` for the
-model, `uvicorn` to serve the API locally, and `tzdata` because Windows ships no system
-timezone database and the poller evaluates its schedule in `Europe/Dublin`.
-
-`requirements-dev.txt` is that list plus `cfn-lint`, and it pulls in `requirements.txt`
-itself. Install `requirements.txt` alone if you only want to run and train. The two
-narrower files the build scripts package for Lambda, `requirements-lambda.txt` and
-`requirements-api.txt`, are deliberately smaller again.
-
-## Running
-
-Collection. Harvest across a full service day (~05:30 to after midnight), on a weekday and
-again on a weekend — the timetables differ.
+Collect, parse, train, evaluate. All idempotent.
 
 ```powershell
 python src\harvest_codes.py
-python src\backfill.py --start 2026-06-25 --end 2026-07-24 --dry-run
 python src\backfill.py --start 2026-06-25 --end 2026-07-24
-```
-
-Parse, build examples, baseline, train. All idempotent; `--save` persists an artifact.
-
-```powershell
 python src\parse_raw.py
 python src\build_examples.py
-python src\baseline.py
 python src\train_quantile.py --save
-```
-
-Evaluate against the operator, and check the join before trusting it.
-
-```powershell
-python scripts\validate_join.py
 python scripts\compare_to_operator.py
 ```
 
@@ -167,174 +184,56 @@ uvicorn api:app --app-dir src
 python src\score.py --date 2026-08-31 --dry-run
 ```
 
-The collectors take an exclusive lock (`src/hostlock.py`) and refuse to run concurrently:
-the 2 req/s budget is per host, not per script, so running two would silently double it.
+`data/` splits in two and the split is a rule rather than a list of exceptions. Raw XML,
+Parquet and poll output are never committed, because they are large and re-fetchable. The
+small artifacts a build needs are. The test of that rule is not reading it: clone to a temp
+directory and run the build scripts.
 
-## Deploying
+## Layout
 
-Each stack builds its own package, then deploys with SAM. The API's version argument is
-required and is not defaulted — the artifact baked into the package must be the version
-the stack names.
-
-```powershell
-powershell scripts\build_lambda.ps1
-sam deploy --region eu-west-1 --template-file infra/poller.yaml
-
-powershell scripts\build_api.ps1 -Version 20260813T221035Z-0c444e3
-sam deploy --region eu-west-1 --template-file infra/api.yaml
-
-powershell scripts\build_scorer.ps1
-sam deploy --region eu-west-1 --template-file infra/scorer.yaml
 ```
-
-A CloudFormation stack that creates an email SNS subscription reports success before
-anyone confirms it, and AWS discards an unconfirmed subscription. Check afterwards rather
-than assuming:
-
-```powershell
-aws sns list-subscriptions-by-topic --topic-arn <arn> --region eu-west-1
+src/          collection, features, model, API, generator, nightly scorer
+scripts/      read-only probes and surveys, plus the Lambda build scripts
+infra/        CloudFormation and SAM templates
+site/         the four pages, Tailwind compiled ahead of time, no framework
+docs/         decision log, data dictionary, label quality, feature design
 ```
-
-## Techniques
-
-The ingestion scripts are deliberately defensive, because the expensive thing here is not
-compute — it is elapsed download time against someone else's server. Every technique below
-exists to stop a specific failure. Full reasoning and the rejected alternatives are in
-[docs/decisions.md](docs/decisions.md).
-
-### Being a good client
-
-**Request pacing (fixed-interval rate limiting).** One timestamp says when the next
-request is allowed; the code sleeps until then. Deliberately *not* a token bucket, because
-a bucket saves up credit while idle and then fires a burst. Prevents hitting an
-undocumented rate limit and prevents being rude to a free service.
-
-**Adaptive rate control (AIMD — additive increase, multiplicative decrease).** A 429 or
-503 doubles the gap between requests; a long run of successes shrinks it back a little at
-a time. Same shape as TCP congestion control. Prevents both failure modes: hammering a
-server that has asked for less, and staying permanently slow after one transient blip.
-
-**Server-directed backoff.** If the response carries a `Retry-After` header, that value is
-used instead of our own guess. Prevents guessing when the server has already told us.
-
-**Connection reuse (HTTP keep-alive).** One `requests.Session` for the whole run instead
-of a new connection per request. Prevents thousands of redundant TCP and TLS handshakes.
-
-### Handling failure
-
-**Error taxonomy.** Failures are sorted into three kinds and treated differently: a
-network timeout (retry, don't slow down — the server never complained), a 429/503 (slow
-down and retry patiently), a 404 (never retry, it will never work). Prevents the single
-worst bug in naive retry code, which is retrying a rate-limit response at the same rate
-and calling it "handling errors".
-
-**Exponential backoff with full jitter.** Each retry waits a random time up to a doubling
-cap, rather than a fixed doubling. Prevents synchronised retry spikes — the thundering
-herd — if this ever runs from more than one place.
-
-**Retry budgets.** Each failure kind has a maximum attempt count. Prevents an infinite
-loop against a permanently broken item.
-
-**Dead-letter log.** A pair that exhausts its retries is appended to a JSONL failure log
-and the run carries on; `--retry-failures` replays that log later. Prevents one bad train
-code on hour three of a four-hour run costing the remaining hour, and prevents losing the
-list of what failed when the process is killed.
-
-### Not corrupting the archive
-
-**Atomic writes (write-then-rename).** Every file is written to a `.tmp` name and moved
-into place with `os.replace()`. Prevents a Ctrl-C mid-write leaving a half-written file
-that the resume check then treats as complete — corruption that stays silent until the
-parser hits it weeks later.
-
-**Idempotent resume (checkpoint-restart).** Work already on disk is skipped by a plain
-file-existence check, so rerunning the same command costs nothing and interrupting is
-free. Combined with atomic writes, "the file exists" reliably means "the file is
-complete". Prevents re-downloading hours of data to recover from one interruption.
-
-**Response validation before persisting.** Before archiving, the raw bytes are checked for
-an XML declaration and the expected element name — no parsing, just a substring check.
-ASMX services return HTTP 200 with an HTML error page often enough to matter. Prevents
-archiving thousands of error pages under `.xml.gz` names and discovering it at parse time.
-
-**Path sanitisation (allowlist).** Train codes become filenames, so anything that is not
-alphanumeric, `-` or `_` is dropped and reported. Prevents a corrupted or hand-edited code
-list writing outside the target directory.
-
-**Monotonic clock for all durations.** Timing uses `time.monotonic()`, never the wall
-clock. Prevents an NTP correction, a DST change, or a laptop waking from sleep from making
-an elapsed time negative or skipping the throttle mid-run.
-
-**Locale-independent date formatting.** The API's `25 jul 2026` format is built from an
-explicit month table rather than `strftime("%b")`. Prevents a non-English system locale
-silently turning every request into an empty result that looks exactly like "no trains ran
-that day".
-
-### Staying honest about the data
-
-**Read-only by construction.** The survey script has no write path at all. Prevents the
-one artefact that costs hours to reproduce from being damaged by a tool meant to look at
-it.
-
-**Cheap metadata reads.** File sizes come from the gzip trailer's stored length rather
-than decompressing. Prevents the survey's cost growing with the archive when it only needs
-a number.
-
-**Seeded sampling.** The sample of files to parse is drawn with a fixed RNG seed, so two
-runs are comparable. Prevents mistaking a different random draw for a real change in the
-data.
-
-**Domain-aware comparison.** When checking whether an actual arrival differs from the
-scheduled one, records where the scheduled time is `00:00:00` are excluded — at an origin,
-that means "structurally absent", not "missing". Prevents inflating the headline
-label-quality number with records that were never comparable.
-
-**Verifiable heuristics.** The empty-response threshold is a parameter, and the script
-prints every distinct file size it classified as empty so the threshold can be checked
-against reality. Prevents a silently wrong constant.
-
-### Surviving interruption
-
-**Incremental checkpointing.** The harvester rewrites its state file after every poll, so
-an interrupted run loses at most one poll rather than a day.
-
-**Idempotent merge.** Codes are merged as a set union with first-seen and last-seen dates,
-so re-running or overlapping runs cannot double-count or corrupt the accumulated list.
-
-**Quarantine on corrupt input.** An unreadable state file is moved aside with a timestamp
-and the run continues from empty, rather than crashing or deleting. Prevents one bad file
-ending a multi-hour harvest, and prevents destroying evidence of why it went bad.
-
-**Responsive sleep.** Long waits are slept in one-second slices. Prevents Ctrl-C appearing
-to hang for up to five minutes.
-
-**Fixed-rate scheduling.** The next poll is scheduled relative to when the last one
-*started*, not when it finished. Prevents the polling interval drifting later and later
-across a long day.
-
-**Dry-run mode.** `--dry-run` reports exactly what would be fetched and exits. Prevents
-committing to a multi-hour job with the wrong arguments.
 
 ## Documentation
 
-The decision log is the primary record; code comments point at it rather than repeating it.
+The decision log is the primary record. Code comments point at entry numbers rather than
+repeating the reasoning.
 
-- [CLAUDE.md](CLAUDE.md) — project scope, working agreement, what is deliberately out of scope
-- [docs/decisions.md](docs/decisions.md) — 55 entries: what was chosen, what was rejected, why
-- [docs/data-dictionary.md](docs/data-dictionary.md) — every field, provenance-tagged `[DOC]` / `[VERIFIED]` / `[INFERRED]` / `[UNKNOWN]`
-- [docs/label-quality.md](docs/label-quality.md) — the echo problem, written to be read cold
-- [docs/feature-ideas.md](docs/feature-ideas.md) — candidate model inputs and the rule that admits them
-- [docs/explain-index.md](docs/explain-index.md) — questions this project should be able to answer, no answers given
+- **[docs/decisions.md](docs/decisions.md)**. 78 entries: what was chosen, what was rejected,
+  and why. It opens with a short guide and a list of the ones worth a stranger's time.
+- [docs/story.md](docs/story.md). The whole project as a narrative, written for someone who
+  does not code and does not know trains.
+- [docs/label-quality.md](docs/label-quality.md). The feed often reports an arrival exactly
+  equal to the schedule, which usually means nobody recorded a real time. The obvious fix, to
+  distrust the lines the official documentation flags, was tried, appeared to work, and was
+  wrong. Simpson's paradox.
+- [docs/data-dictionary.md](docs/data-dictionary.md). Every field, tagged by provenance.
+  Useful to anyone else trying to use this feed.
+- [docs/feature-ideas.md](docs/feature-ideas.md). The rule that admits a feature, the twelve
+  that are in, and what was rejected.
+- [docs/aws-web-layer.md](docs/aws-web-layer.md). How the public layer is secured, and why
+  each control is there.
+- [CLAUDE.md](CLAUDE.md). The working rules for changing this repository.
 
 ### One theme worth reading for
 
-Seven failures in this project shared a shape: none raised an error, and every one
-produced output that looked like a correct result. Arrival times identical to the
-schedule. 420 successful fetches that were a captive portal. An alarm topic with no
-subscribers. A model with a 22-minute average error and a 48-second median. A harvester
-reporting "0 new codes" from a folder nothing had written to. A count taken from 400 of
-2,088 files and reported as complete. A `.gitignore` fix that was inert while the file sat
-visibly in the repo.
+Eleven failures in this project shared a shape: **none raised an error, and every one produced
+output that looked like a correct result.** Arrival times identical to the schedule. 420
+successful fetches that were a captive portal. An alarm topic with no subscribers. A model
+with a 22-minute average error and a 48-second median. A harvester reporting "0 new codes"
+from a folder nothing had written to. An alarm that could not fire, beside a template comment
+asserting that it did.
 
 Each was caught the same way: taking a number and asking what it should have been.
-Section N of [explain-index.md](docs/explain-index.md) collects them.
+
+## Licence
+
+[MIT](LICENSE). The bundled webfonts are under the SIL Open Font Licence, included beside them
+in `site/fonts/`.
+
+Not affiliated with Iarnród Éireann. Data from their public realtime feed.
