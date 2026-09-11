@@ -4,8 +4,19 @@
    classes exist only where a utility string would be repeated across four pages or where
    the thing being styled is a drawn object rather than a box. */
 
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 
+/* source(none) switches OFF Tailwind v4's automatic content detection, so this one line
+   is the whole answer to "what gets scanned for class names". Without it v4 also walks
+   the repository root and scans every non-binary file that git does not ignore, prose
+   included. That is not theoretical: rewriting docs/data-dictionary.md put the ordinary
+   English words "lowercase" and "outline" into a paragraph, Tailwind read them as
+   utilities, and .lowercase and .outline were compiled into the stylesheet served to
+   visitors. CI caught it as a committed-CSS mismatch, which is the right alarm for the
+   wrong-looking reason: the build was not stale, the input had silently widened.
+
+   The @source line below was always meant to express this scope. It only ever added to
+   the automatic set rather than replacing it. */
 @source "../site/**/*.{html,js}";
 
 /* ── the two faces, served from this origin ─────────────────────────────────
