@@ -140,31 +140,32 @@ over an hour (53 validation rows excluding the Galway stations; 16 Sligo-line pr
 on 2 Sep) both models cover **0%**. The champion's apparent 27.6% was Galway garbage. State
 this on the accuracy page beside the coverage figure.
 
-Everything the scope lock asked for is built, deployed and running. What is left, in the
-order it is worth doing:
-
-1. **Raise the Lambda concurrency limit, then reserve a few for the API** (D71). Counter-
-   intuitive but correct: reserved concurrency is refused below an account limit of 100, so
-   raising the limit is what makes a hard cap possible. Today all four functions share an
-   account limit of **10**, so a flood on the public endpoint could starve the poller and the
-   scorer of concurrency — which costs collected data, not money.
-
-   ```powershell
-   aws service-quotas request-service-quota-increase --service-code lambda `
-     --quota-code L-B99A9384 --desired-value 1000 --region eu-west-1
-   ```
-
-   Then set `ReservedConcurrentExecutions: 5` on `ApiFunction` in `infra/api.yaml` and
-   redeploy. That is the cap that matters: it holds the public endpoint to five containers
-   however hard it is hit, and 5 of 1000 leaves far more than the 100 unreserved AWS insists
-   on. Check progress with `aws service-quotas list-requested-service-quota-change-history-by-quota
-   --service-code lambda --quota-code L-B99A9384 --region eu-west-1`.
-
-That is the whole list, and it is the one item nobody but me can do.
+**Everything the scope lock asked for is built, deployed, running and capped. The task list
+is empty.** Anything from here is a choice, not an obligation.
 
 Done and recorded, so do not redo: the test week (D74), self-hosted fonts and a
-`'self'`-only CSP (D75), the prediction-log alarm gap (D76), and the requirements split
-(D77).
+`'self'`-only CSP (D75), the prediction-log alarm gap (D76), the requirements split (D77),
+and the concurrency cap (D78).
+
+**The public endpoint is capped at 5 concurrent executions** (D78, 2026-09-11). The account
+limit went 10 → 1000 and `ReservedConcurrentExecutions: 5` went on `ApiFunction` the same
+morning, in that order and for that reason: AWS refuses a reservation leaving under 100
+unreserved, so raising the ceiling is what made a floor possible. Lambda now rejects a sixth
+simultaneous request before any code runs. Worst case for a saturated day is ~$6 and ~10
+req/s at Irish Rail, against ~$12 and ~20 req/s before. **Do not remove the reservation
+without replacing it with something equivalent** — the raise and the cap only make sense
+together, and the raise alone is worse than neither. 995 stay unreserved, so a flood can no
+longer starve the poller or the scorer, which was always the worse of the two outcomes.
+If a real visitor is ever throttled it shows as `AWS/Lambda Throttles` on that function;
+raising the 5 then is fine and costs nothing until it happens.
+
+Optional, in rough order of value if there is ever time:
+
+1. `api.predict_row` uses today's Dublin date, so a train running 00:00–00:30 is fetched
+   under the wrong `TrainDate`. Half an hour a night, never observed in scores. Detailed in
+   the open items below.
+2. CloudFront access logs. Only wanted if the flood alarm ever fires and the question
+   becomes "who was that", which no current log answers.
 
 **Cutover completed 2026-08-31** (D54). The parallel run met the D36 bar over 132.9 covered
 hours: schema identical, **99.9% event overlap** (21,183 both / 5 local-only / 6

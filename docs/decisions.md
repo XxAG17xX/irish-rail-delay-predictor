@@ -3573,3 +3573,73 @@ That is more work than pasting a freeze and it is the point: the person adding t
 is the only one who knows which file it belongs in.
 
 **Date.** 2026-09-10
+
+
+## D78 — Raise the ceiling in order to be allowed to build a floor under it
+
+**Why this matters.** The prediction endpoint is open to the internet with no key and no
+login. Until today nothing could stop someone calling it as fast as they liked; there were
+only alarms that would tell me afterwards. Now Lambda refuses the sixth simultaneous request
+before any of my code runs.
+
+**The change.** `ReservedConcurrentExecutions: 5` on `ApiFunction`. Approved quota raise
+landed 2026-09-11, account limit 10 → 1000, and the reservation went on the same morning.
+
+**The order is backwards and that is the whole point.** Reserved concurrency is two things at
+once: a guarantee to the function and a cap on it. AWS refuses any reservation that would
+leave fewer than 100 unreserved executions in the account, so at the old limit of 10 a cap
+was arithmetically impossible (D37 recorded this as a dead end). **Raising the limit is what
+made capping possible.** Asking for 1000 looks like asking for the ability to spend more. It
+was the precondition for being able to spend less.
+
+**The number that made it worth doing.** At 1024 MB on arm64 the cost of a saturated day is
+concurrency multiplied by wall-clock seconds, so it scales linearly with the ceiling:
+
+| Ceiling | Saturated for 24h | Worst case at Irish Rail |
+|---|---|---|
+| 10 (before) | ~$12/day | ~20 req/s |
+| 1000, uncapped | ~$1,150/day | (never existed; see below) |
+| **5 (now)** | **~$6/day** | **~10 req/s** |
+
+86.4M GB-seconds at $0.0000133334 is the middle row, and it is why the raise and the
+reservation had to be the same morning rather than the same week. **Raising the limit without
+then capping would have been strictly worse than never raising it.** The uncapped window was
+about twenty minutes and nobody knows the site exists, but the reasoning is the point: the
+intermediate state is the dangerous one, and a plan that ends at "then I will remember to do
+the second part" is not a plan.
+
+The Irish Rail column matters more than the money one. `Pacer` holds each container to 2
+requests a second against the feed, but nothing could cap the number of containers, which is
+exactly the hole D71 identified and priced. Five containers halves the worst case a
+determined caller could put on someone else's free API, from D71's ~20 req/s to ~10.
+
+**Why five.** Normal traffic is tens of invocations a *day*, and this caps concurrency rather
+than rate: five requests finishing in half a second each is still ten a second sustained,
+which is more than a CV-portfolio site will ever see. The failure mode to watch is a real
+visitor being throttled, which shows as `AWS/Lambda Throttles` on this function. Raise it if
+that ever appears; it has no cost until it does.
+
+**What a throttled caller sees, checked rather than assumed.** Lambda answers a throttle with
+a bare 429 and no `Retry-After` and no JSON body. `get()` in `predictions.js` already falls
+back to `HTTP <status>` on an unparseable body and to 20 seconds on a missing header, and the
+429 branch of `showFailure` never prints the message, so a throttle renders the same honest
+"too many requests" panel with a countdown and an automatic retry as the application's own
+limiter does. No page change was needed. This was verified by reading the path, not assumed
+from the fact that a 429 handler exists.
+
+**What this does not protect.** It caps the API function only. The poller, generator and
+scorer are schedule-driven and can never exceed one or two concurrent, so they need no
+reservation — and with 995 left unreserved a flood on the public endpoint can no longer
+starve a collection cycle. That was always the worse outcome of the two: a lost dollar comes
+back, a poll cycle that never ran does not.
+
+**In the template, not the console.** `aws lambda put-function-concurrency` would have done it
+in one command and CloudFormation would have quietly reverted it on the next deploy — the same
+argument `api.yaml` already makes for the generator's schedule. A control that disappears when
+someone redeploys is not a control.
+
+**This discharges the last open item.** D71 priced the exposure and added a five-minute
+traffic alarm because a cap was impossible at the time. The cap now exists, and the alarm
+stays: it catches the flood, the reservation bounds what the flood can do.
+
+**Date.** 2026-09-11

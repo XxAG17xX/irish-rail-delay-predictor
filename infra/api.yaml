@@ -127,8 +127,27 @@ Resources:
         Cors:
           AllowOrigins: ["*"]
           AllowMethods: [GET]
-      # No ReservedConcurrentExecutions: the account limit is 10 and AWS refuses any
-      # reservation leaving under 100 unreserved (D37).
+      # The hard cap on the only thing a stranger can trigger. Lambda enforces this before
+      # the code runs: a sixth concurrent request is rejected with a 429 and costs nothing,
+      # so no amount of traffic can turn this endpoint into a bill or into 200 requests a
+      # second at Irish Rail. The token buckets in src/ratelimit.py hold one caller down;
+      # this is what holds the whole internet down, because it is the only limit that
+      # survives the caller opening more containers.
+      #
+      # It also protects the poller and the scorer, which is the part that is not about
+      # money: with 1000 in the account and 5 reserved here, 995 stay unreserved for them,
+      # and a flood on this function cannot starve a collection cycle. Lost collection is
+      # unrecoverable in a way a lost dollar is not.
+      #
+      # Five, not fifty: normal traffic is tens of invocations a DAY, and this number is a
+      # ceiling on concurrency rather than on rate. Raise it if a real visitor is ever
+      # throttled, which would show as AWS/Lambda Throttles on this function.
+      #
+      # Order of operations, and the reason this line could not exist until 2026-09-11: AWS
+      # refuses any reservation leaving under 100 unreserved, so at the old account limit of
+      # 10 a cap was impossible (D37). Raising the limit is what made capping possible, and
+      # raising it without then capping would have been strictly worse than leaving it (D78).
+      ReservedConcurrentExecutions: 5
 
   # Same package and same baked model as the API, deployed as a second handler rather
   # than as its own stack. That is deliberate: the serving version would otherwise be
