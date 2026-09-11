@@ -1,0 +1,22 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "rail-delay-poller"
+resolve_s3 = true
+s3_prefix = "rail-delay-poller"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "BucketName=\"rail-delay-poller-kg\" Prefix=\"parallel/lambda\" Stage=\"parallel\" AlarmEmail=\"you@example.com\" PollRate=\"2\" NumMins=\"90\""
+image_repositories = []
+
+[default.global.parameters]
+region = "eu-west-1"
+
+# Copy to samconfig.toml and set AlarmEmail to a real address before deploying.
+#
+# The real file is gitignored, for two reasons. It carries an email address, which does not
+# belong in a public repository. And AlarmEmail is not a value to edit casually: changing it
+# forces CloudFormation to replace the SNS subscription, and because CloudFormation cannot
+# confirm an email subscription it will report success on a channel nobody has confirmed.
+# See the subscription trap in CLAUDE.md.

@@ -45,3 +45,10 @@ site/accuracy.json
 
 # npm
 node_modules/
+
+# Working notes kept out of the public repo: interview prep and product notes.
+# Git history still has the versions that were committed before 2026-09-11.
+private/
+
+# Carries a real alarm email address. Copy infra/samconfig.toml.example instead.
+infra/samconfig.toml
