@@ -230,8 +230,12 @@ Resources:
   # The Function URL is AuthType NONE and nothing outside this account can be stopped from
   # calling it. The token buckets in src/ratelimit.py hold one caller down, and the Pacer
   # holds each container to 2 requests a second against Irish Rail, but neither can cap the
-  # number of containers: with no reserved concurrency (D37: AWS refuses a reservation that
-  # leaves under 100 unreserved, and this account's limit is 10) the ceiling is 10 at once.
+  # number of containers. ReservedConcurrentExecutions above now does: the ceiling is 5, so
+  # the worst a determined caller can produce is ~10 req/s at Irish Rail (D78).
+  #
+  # That cap is what bounds the damage. This alarm is what tells you it is happening, which
+  # is a different job and still worth a slot: a capped flood is silent, and five containers
+  # saturated for a day is both a bill and a lot of traffic aimed at someone else's free API.
   #
   # The budget alarm catches the cost, but budgets settle roughly daily, so it is a
   # next-morning signal. This is a five-minute one. Normal traffic is tens of invocations a

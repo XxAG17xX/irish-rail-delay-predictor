@@ -128,7 +128,12 @@ jobs:
         run: |
           echo "repository : ${{ github.repository }}"
           echo "ref        : ${{ github.ref }}"
-          echo "expected sub: repo:${{ github.repository }}:ref:${{ github.ref }}"
+          # NOT repo:<owner>/<repo>:ref:... . GitHub sends numeric owner and repo ids in the
+          # subject and no published guide shows it, which cost four failed deploys (D72).
+          # The ids are not available to this step, so print the shape and where they go.
+          echo "expected sub: repo:<owner>@<ownerId>/<repo>@<repoId>:ref:${{ github.ref }}"
+          echo "             ids come from api.github.com/repos/${{ github.repository }} (owner.id and id)"
+          echo "             if this fails, read the real sub off CloudTrail, do not guess"
           echo "role arn    : '${{ env.DEPLOY_ROLE_ARN }}'"
           echo "repo var    : '${{ vars.AWS_DEPLOY_ROLE_ARN }}'   (unused; kept only to show whether it differs)"
 

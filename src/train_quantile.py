@@ -9,13 +9,18 @@ prediction and is compared directly against the persistence baseline.
 min_data_in_leaf 20, 100 boosting rounds, fixed seed. No early stopping, no search. A
 tuned number arrived at before an untuned one is a number you cannot interpret.
 
-Features — Tier 1 from feature-ideas.md only
---------------------------------------------
+The twelve features, defined once in features.py and imported here
+------------------------------------------------------------------
   delay history      current_delay_sec, prev_delay_sec, prev2_delay_sec
-  horizon            horizon_observed_stops, horizon_route_stops, horizon_sched_sec
+  horizon            horizon_route_stops, horizon_sched_sec
   time of day        vantage_hour, vantage_minute_of_day
   calendar           day_of_week
   route              vantage_location, target_location, TrainOrigin, TrainDestination
+
+This list used to name horizon_observed_stops as well, which was wrong for two months.
+D35 dropped it because it is not computable at prediction time, and features.EXCLUDED
+says so. The code was always right, because it imports FEATURES rather than restating
+it; only this docstring advertised thirteen. See docs/feature-ideas.md.
 
 Two Tier 1 entries are not what feature-ideas.md asks for, and it matters:
 
