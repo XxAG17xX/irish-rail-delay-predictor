@@ -2846,7 +2846,29 @@ becomes the right call with time to do it properly — a per-group conformal adj
 on one window and validated on a later one, through the gate like any other model change.
 Neither is work for this week.
 
-**Date.** 2026-09-08
+**Reading taken 2026-09-11, which is what the clause above asked for.** No recovery. Rolling
+7-day to 2026-09-09: overall 75.0% against 75.4% three days earlier, `commuter_kildare`
+62.9% (was 64.7%), `intercity_cork_corridor` 66.5% (was 66.7%), `intercity_other` 57.0% (was
+56.7%). Daily coverage has sat between 73.9% and 76.2% every day since 2 September, so the
+shift is **persistent and flat** rather than either recovering or deteriorating. Nine days is
+long enough to say it is not noise.
+
+That answers the question D64 left open: the shift is not temporary, so per-group conformal
+recalibration is the indicated remedy. **Whether to do it now is a scope call, not a
+statistical one**, and it belongs to the deadline rather than to this entry. What is not in
+doubt is that the decision to publish rather than patch was right for the reason given: the
+page shows 62.9% next to a nominal 80% and a visitor can see exactly where the intervals are
+not keeping their promise.
+
+**The headline claim survived the shift, which is the more important reading.** Live
+head-to-head against the operator's own `ExpectedArrival` since launch: 86.8s vs 116.8s MAE,
+**25.7% better over 27,984 matched events**, and 24.8% on the rolling week. The offline claim
+was 27% over 9,077 comparisons. Three times the sample, in production, against a live
+baseline, and it held. The intervals are miscalibrated; the point estimates are not worse
+than they were. Those are separate properties and only one of them moved, which is itself
+evidence that this is a spread problem rather than a model that has gone bad.
+
+**Date.** 2026-09-08, amended 2026-09-11
 
 ---
 

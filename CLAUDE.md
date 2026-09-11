@@ -224,9 +224,14 @@ Open items that will not announce themselves:
   not a model that has gone bad. No model change was made; the reasoning is in D64.
   **The accuracy page must show coverage per station group beside the nominal 80%**, never
   as a single blended figure, or it conceals that two corridors sit at 65%.
-  Recovery is now itself a measurement: if those corridors return to ~79% unaided the shift
-  was temporary; if they stay low past the deadline, per-group conformal recalibration is
-  the right call with time to do it properly.
+  Recovery was itself a measurement, and **the reading was taken on 2026-09-11: no recovery**.
+  Rolling to 09-09, overall 75.0%, Kildare 62.9%, Cork 66.5%, intercity_other 57.0%, and daily
+  coverage between 73.9% and 76.2% every day since 2 September. Persistent and flat, not noise.
+  So per-group conformal recalibration is the indicated remedy and whether to spend the time on
+  it is a scope call, not a statistical one. **The point estimates did not move with it:** live
+  head-to-head since launch is 86.8s vs the operator's 116.8s, **25.7% better over 27,984
+  matched events**, against 27% over 9,077 offline. The spread is miscalibrated; the centre is
+  not. See the D64 amendment.
 - **Coverage is published as two numbers, headline visitor-facing** (D53): 89.3%
   conditional on the train being in service, **37.8%** as a visitor meets it on a station
   board (42.3% of board entries are trains that have not departed). The offline "~56% of
