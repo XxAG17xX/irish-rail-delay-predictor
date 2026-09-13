@@ -185,7 +185,10 @@ jobs:
     name: Lighthouse
     needs: deploy
     runs-on: ubuntu-latest
-    continue-on-error: true # a score is evidence, not a gate; a slow CDN edge should not fail a deploy
+    # No continue-on-error. This job runs after the deploy, so it could never block one; all
+    # continue-on-error did was keep the run green while color-contrast failed on every audit
+    # for five runs. Performance is only a warning in .lighthouserc.json, so a slow CDN edge
+    # still cannot turn a run red. An accessibility or best-practices error now does.
     steps:
       - uses: actions/checkout@v4
       - name: Audit the deployed pages
