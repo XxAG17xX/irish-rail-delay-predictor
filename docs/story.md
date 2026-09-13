@@ -402,5 +402,5 @@ introduced after the system was already working, while writing up the others. Th
 "be more careful". It is that a system which works and a system that can be *shown* to be
 working are different things, and most of the effort here went into the second.
 
-The reasoning behind every decision above is in `docs/decisions.md`, 81 entries, including the
+The reasoning behind every decision above is in `docs/decisions.md`, 82 entries, including the
 ones that were wrong.

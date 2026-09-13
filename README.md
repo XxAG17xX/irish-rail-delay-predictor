@@ -168,7 +168,7 @@ site/      the four pages; Tailwind compiled ahead of time, no framework
 docs/      the write-ups below
 ```
 
-- **[docs/decisions.md](docs/decisions.md).** 81 decisions: what was chosen, what was rejected
+- **[docs/decisions.md](docs/decisions.md).** 82 decisions: what was chosen, what was rejected
   and why. Opens with a guide and the ten worth a stranger's time.
 - [docs/story.md](docs/story.md). The whole project as a narrative, for someone who does not
   code and does not know trains.

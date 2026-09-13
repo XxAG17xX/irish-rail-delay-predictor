@@ -207,6 +207,16 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   than a compiler, and no framework. **This amends D41**, which originally said no build step
   and no npm; the amendment and its reasoning are in D66. The compiled `site/app.css` is
   committed and CI refuses a copy that differs from its source.
+- **Tailwind scans `site/` and nothing else**, because `styles/app.css` imports it with
+  `source(none)`. Without that, Tailwind v4 also scans the whole repository, prose included:
+  ordinary words in a doc ("lowercase", "outline") were compiled into the stylesheet served to
+  visitors. Do not remove it.
+- **Never express state by lowering text opacity.** The landing page's method steps faded
+  inactive text to 25%, failing WCAG contrast on every audit run; they now recede to a darker
+  token that still passes (D82). `scripts/contrast.py` checks token pairings, not opacity, so
+  it cannot catch this: check both states of anything that dims.
+- **The Lighthouse audit can turn a run red.** It runs after the deploy, so it never blocks one.
+  Accessibility and best-practices failures are errors; performance is only a warning.
 
 ## Conventions
 
@@ -218,6 +228,9 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   Note `data/*` rather than `data/`, because git does not descend into an excluded directory,
   which makes every negation silently inert.
 - `private/` is gitignored. Interview prep and product notes live there, out of the public repo.
+  So are `infra/samconfig.toml`, which carries a real alarm address (copy
+  `infra/samconfig.toml.example`), and AI assistant tooling: `.agents/`, `.claude/`,
+  `skills-lock.json`.
 - Secrets in `.env`, never committed.
 - **Four requirements files, narrowest last.** `requirements-dev.txt` (a laptop) →
   `requirements.txt` (run and train) → `requirements-api.txt` and `requirements-lambda.txt`
@@ -229,7 +242,7 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   ones naming a trap, a ceiling or a rejected alternative. **Reasoning belongs in
   `docs/decisions.md`**, not repeated in the source.
 - **Commit messages:** short imperative subject. A body only when there is a non-obvious reason
-  worth recording.
+  worth recording. No co-author trailers.
 - **Write down what was tested and what the evidence was, not just the conclusion.** Several
   claims in this file were wrong until tested against raw records.
 - **Static text never chases live numbers.** The README, the docs and the GitHub description
@@ -237,6 +250,11 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   week, or live figures stamped with the period they measure ("25.7%, launch to 9 Sept
   2026"). Current figures live only on the accuracy page, which recomputes them nightly.
   Re-quoting today's number into a static file is how the README went stale.
+- **Public copy house style**, for the site, the README and the docs. **No em dashes**: use a
+  full stop, comma, colon or brackets; en dashes in numeric ranges are fine. **No defensive
+  phrasing**: state what a thing is and what it does not do, flat. Never "this is not a failure,
+  rather", never a caveat raised before anyone asked. Third person, no "we". Every limitation
+  keeps its number beside it. Decision-log entries predate this and keep their em dashes.
 - Commit small and often. The history is itself evidence of the work.
 
 ## Reliability principle

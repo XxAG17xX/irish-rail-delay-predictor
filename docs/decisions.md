@@ -1,6 +1,6 @@
 # Decision log
 
-Eighty-one entries, one per significant design choice in RailCast: what was decided,
+Eighty-two entries, one per significant design choice in RailCast: what was decided,
 what else was on the table, why it lost, and the date. The file is append-only. An entry is
 never edited to reflect a changed mind, because the value of a dated record is that it was
 written as the work happened; a later entry supersedes it and both say so. A wrong *number*
@@ -19,7 +19,7 @@ Three conventions worth knowing before reading:
 - Code comments in this repo point at entry numbers rather than repeating the argument. A
   comment reading `see D52` means the reasoning is here, in full, once.
 - Nobody reads this file end to end and nobody is meant to. **Start here** is ten entries
-  that stand alone; the index below covers all eighty-one, one line each.
+  that stand alone; the index below covers all eighty-two, one line each.
 - **Dates mean different things either side of D11.** D1 to D10 were written together on
   2026-07-25 and cover decisions made up to that point, a few settled slightly earlier the
   same week. From D11 on, the date is the day the decision was actually made.
@@ -215,6 +215,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D78](#d78--raise-the-ceiling-in-order-to-be-allowed-to-build-a-floor-under-it) Raise the ceiling in order to be allowed to build a floor under it. Raising the account limit is what made capping the public endpoint possible.
 - [D80](#d80--cloudfront-access-logs-a-separate-private-bucket-acls-on-30-days) CloudFront access logs: a separate private bucket, ACLs on, 30 days. The traffic alarm could say something was hammering the endpoint and nothing could say who; IP addresses are personal data, so they expire.
 - [D81](#d81--a-train-still-running-after-midnight-is-yesterdays-service) A train still running after midnight is yesterday's service. Journeys resolve their own TrainDate, and the prediction log files each row under its own date rather than the batch's first.
+- [D82](#d82--the-method-steps-recede-by-colour-and-the-audit-is-allowed-to-fail-a-run) The method steps recede by colour, and the audit is allowed to fail a run. Opacity dimming failed WCAG contrast on every audit while continue-on-error kept each run green.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -3973,5 +3974,36 @@ resolves to yesterday and reads 00:15 as 24:15; a finished run from yesterday do
 failed fetch of yesterday falls back to today; and neither a reported run nor a midday request
 makes a second request. `prediction_log.py`: a batch mixing two service dates is written as two
 objects, each under its own date.
+
+**Date.** 2026-09-13
+
+---
+
+## D82 — The method steps recede by colour, and the audit is allowed to fail a run
+
+**Why this matters.** The site's accessibility check failed on every run since the pipeline
+existed, and every run still showed green. Nobody could see it, which is the same shape as D76.
+
+**What failed.** The landing page's method walkthrough dimmed every step except the one being
+read to 25% opacity. At rest that put four of five steps below WCAG AA contrast: heading
+2.02:1, body 1.53:1, step number 1.38:1, against 4.5:1 needed. Lighthouse failed
+`color-contrast` on runs 7, 8, 10, 11 and 12. No opacity could have passed, because `ink-3`
+labels clear 4.5:1 only at full strength. `scripts/contrast.py` could not catch it: it checks
+token pairings, and every token was fine.
+
+**Why nobody saw it.** The audit job carried `continue-on-error: true`, with the reason that a
+slow CDN edge should not fail a deploy. The job runs after the deploy, so it never could block
+one, and performance is already only a warning in `.lighthouserc.json`. What the setting
+actually did was hide real errors.
+
+**Decision.** Inactive steps recede by colour: heading `ink-2`, body and number `ink-3`. The
+active step brightens to `ink`, `ink-2` and a `clear` number. Every colour is a pairing
+`contrast.py` already checks. Measured on a local render: inactive 7.48 / 5.29 / 5.29, active
+16.04 / 7.48 / 9.69, and no visible text on the page below its threshold. `continue-on-error`
+is removed, so an accessibility or best-practices error turns the run red while a slow edge
+still only warns. Run 14 passed all three jobs, the first run where a pass meant anything.
+
+**Rule going forward.** Never express state by lowering text opacity. Recede to a darker token
+that still passes, and check both states.
 
 **Date.** 2026-09-13
