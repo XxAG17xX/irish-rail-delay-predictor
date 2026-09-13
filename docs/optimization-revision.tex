@@ -123,8 +123,8 @@ appear in a linear program.
 Constraints (C1) and (C2) are the same expression written as two \emph{inequalities}. They
 say $L_i^\omega$ is at least each of the two arguments --- which is weaker than saying it
 equals their maximum. Every feasible point of the true system is feasible here, but so are
-points where $L_i^\omega$ is too large. The relaxation must be shown to be \textbf{tight}:
-that the optimum of the relaxed program is a solution of the true recursion.
+points where $L_i^\omega$ is too large. The relaxation must be shown to be \textbf{exact}:
+that its optimal buffers and optimal cost are those of the true recursion.
 
 \subsection*{The argument, in three steps}
 
@@ -148,43 +148,56 @@ same direction. There is no configuration in which inflating $L_i^\omega$ buys a
 \subsection*{The formal version}
 
 \begin{quote}
-\textbf{Claim.} Let $(b^\ast, L^\ast)$ be optimal. Then
-$L_i^{\ast\omega} = \max\bigl(0,\ L_{i-1}^{\ast\omega} + \delta_i^\omega - b_i^\ast\bigr)$
-for every $i,\omega$.
+\textbf{Lemma (least element).} Fix any buffer vector $b$ and scenario $\omega$, and let
+$\bar L^\omega(b)$ be the true recursion. Every $L^\omega$ satisfying (C1) and (C2) has
+$L_i^\omega \ge \bar L_i^\omega(b)$ at every stop.
 
-\textbf{Proof.} Suppose some $L_i^{\ast\omega}$ strictly exceeds that maximum. Lower it to
-the maximum. Then (C1) at index $i$ still holds, since the value still meets the bound;
-(C2) still holds, since the maximum is non-negative; (C1) at index $i+1$ has a strictly
-\emph{smaller} right-hand side and so still holds; and (C3), (C4) are untouched, involving
-only $b$. The point remains feasible, and the objective has strictly decreased ---
-contradicting optimality. \hfill$\square$
+\textbf{Proof.} By induction along the route. At $i = 1$, (C1) and (C2) give
+$L_1^\omega \ge \max(0,\ l_0^\omega + \delta_1^\omega - b_1) = \bar L_1^\omega(b)$. If
+$L_{i-1}^\omega \ge \bar L_{i-1}^\omega(b)$ then
+$L_i^\omega \ge \max(0,\ L_{i-1}^\omega + \delta_i^\omega - b_i)
+\ge \max(0,\ \bar L_{i-1}^\omega(b) + \delta_i^\omega - b_i) = \bar L_i^\omega(b)$.
+\hfill$\square$
 \end{quote}
 
-\subsection*{The gap in that proof, and the condition that closes it}
+\begin{quote}
+\textbf{Theorem.} If $w_i \ge 0$ for every $i$, the relaxed program and the true problem have
+the same optimal cost, and every optimal $b^\ast$ of the relaxed program is optimal for the
+true problem.
 
-The last step needs the objective to \emph{strictly} decrease, which needs $w_i > 0$. Under
-terminus-only weighting ($w_i = 0$ for every $i < n$) that fails, and the naive argument
-does not go through.
+\textbf{Proof.} For fixed $b$, the lemma and $w \ge 0$ give
+$\sum_i w_i L_i^\omega \ge \sum_i w_i \bar L_i^\omega(b)$ for every feasible $L$, and
+$\bar L(b)$ is itself feasible, so the minimum over $L$ is exactly the true cost of $b$.
+Minimising over $b$ as well gives both programs the same optimum, and
+$\mathrm{true}(b^\ast) \le \mathrm{relaxed}(b^\ast, L^\ast) = \mathrm{optimum}
+\le \mathrm{true}(b^\ast)$. \hfill$\square$
+\end{quote}
 
-The relaxation is still tight, for a subtler reason. Lowering $L_i^\omega$ relaxes (C1) at
-$i+1$, which lets $L_{i+1}^\omega$ fall, which relaxes (C1) at $i+2$, and so on: a reduction
-propagates forward along the chain with coefficient $1$ at every step. So it reaches the
-terminus, where the weight is positive, and the objective does strictly decrease.
+\noindent No positivity condition appears, and terminus-only weighting needs nothing extra.
+
+\subsection*{What is not exact, and an earlier mistake}
+
+The theorem is about the buffers and the cost. It says nothing about the lateness values the
+solver returns, and they need not be the true ones. Replacing $L^\ast$ by $\bar L(b^\ast)$
+changes the objective by $\sum_i w_i \bigl(L_i^\ast - \bar L_i(b^\ast)\bigr) \ge 0$, which is
+zero at an optimum, so $L_i^\ast$ is exact wherever $w_i > 0$ and unconstrained from above
+wherever $w_i = 0$.
+
+An earlier version of this document claimed the lateness was exact at every stop $i$ with
+$\sum_{j \ge i} w_j > 0$, because a reduction at $i$ propagates forward to the terminus with
+coefficient $1$. It does not: the propagation stops wherever the zero floor binds downstream,
+since an early train absorbs the excess. Three stops, terminus-only weights, $l_0 = 0$,
+$\delta = (10, 0, 5)$, budget $100$ and $b = (0, 50, 50)$. The true lateness is $(10, 0, 0)$,
+yet $(30, 0, 0)$ is feasible and costs the same $0$, which is the optimum. The condition held
+at stop~1 and the claim failed there. Nothing reported by the project depended on it, because
+every cost is recomputed from the buffers through the true recursion.
 
 \begin{keybox}
-\textbf{The general condition.} The relaxation is tight at $(i,\omega)$ provided
-\[
-w_j \ge 0 \ \ \text{for all } j, \qquad\text{and}\qquad \sum_{j \ge i} w_j > 0 .
-\]
-That is: every stop from $i$ onward has non-negative weight, and at least one of them is
-strictly positive. Under uniform weighting every index qualifies immediately. Under
-terminus-only weighting every index qualifies because $w_n > 0$ and the reduction
-propagates forward to it.
+\textbf{The version to give if pushed.} For fixed buffers, the real lateness is the least
+point the constraints allow, so with non-negative weights the program can never look cheaper
+than reality. The buffers it returns are exactly optimal under either weighting. Lateness is
+never read off the solver.
 \end{keybox}
-
-\noindent This is the version to give if pushed. Stating only ``the objective pushes it
-down'' invites the follow-up \emph{``what if that stop has zero weight?''}, and terminus-only
-weighting --- which this project runs --- is exactly that case.
 
 \section{The failure mode}
 

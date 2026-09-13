@@ -26,19 +26,22 @@ The one step that makes this a formulation rather than a solver call
 ---------------------------------------------------------------------
 The true dynamics are L_i = max(0, L_{i-1} + d_i - b_i), which is not linear. C1 and C2 are
 that max written as two INEQUALITIES, which is weaker: they permit an L_i larger than the
-max. The relaxation is tight because the objective drives every L_i down, C1 and C2 are its
-only lower bounds, and reducing an L_i only ever RELAXES the constraint at i+1 (it appears
-there with coefficient +1). So nothing is gained by inflating one.
+max. Why that loses nothing (D79, which corrects D60):
 
-That argument needs care under terminus-only weighting, where w_i = 0 at every intermediate
-stop and "the objective pushes it down" is false for those variables. It is still tight: a
-reduction propagates forward along the chain to the terminus, where the weight is positive.
-The condition is `w_j >= 0 for all j` AND `sum_{j>=i} w_j > 0`, not `w_i > 0`.
+For a FIXED buffer vector, the true lateness is the smallest point C1 and C2 allow. By
+induction along the route, any L meeting both is at least the true recursion at every stop.
+With w >= 0 the objective can therefore never go below the real cost of those buffers, and
+the real lateness attains it. So the LP's optimal cost is the true optimal cost and the
+buffers it returns are truly optimal, under ANY non-negative weights.
 
-`_self_check` verifies this empirically: it solves the LP, replays the solution through the
-true nonlinear recursion in `simulate`, and asserts the two agree. If the linearisation were
-wrong the LP objective would sit BELOW the simulated cost, because the LP would have found a
-cheaper point that the real dynamics do not permit.
+What is NOT guaranteed is the lateness the solver hands back. At a stop with weight zero,
+inflating L_i costs nothing, and when a later stop's zero floor absorbs the excess the
+inflated point is still optimal. Under terminus-only weighting that is every intermediate
+stop, so lateness is exact only where w_i > 0. This file never reads lateness off the
+solver: `solve` returns buffers, and every reported cost comes from `simulate`.
+
+`_self_check` checks both halves: the LP objective equals `simulate` at the returned buffers
+under both weightings, and a hand-built inflated point is feasible and optimal.
 
 A negative weight anywhere breaks it for real, and `solve` refuses one.
 """
@@ -493,9 +496,21 @@ def _self_check():
         assert b.sum() <= 300.0 + 1e-6, "budget violated"
         assert (b >= -1e-9).all(), "negative buffer"
 
-    # terminus-only is the case where the naive "objective pushes it down" argument fails,
-    # because w_i = 0 at every intermediate stop. It is still tight, which the assert above
-    # has just demonstrated -- that is the whole point of testing both weightings here.
+    # terminus-only is where "the objective pushes it down" is false for the intermediate
+    # lateness variables. Cost and buffers are still exact, which the assert above has just
+    # shown. The lateness values are not, and this is the smallest case that proves it (D79):
+    # three stops, and the zero floor at stop 2 absorbs anything added at stop 1, so raising
+    # L_1 from its true 10 to 30 stays feasible and costs nothing.
+    w3, d3, l3 = weight_vector("terminus", 3), np.array([[10.0, 0.0, 5.0]]), np.zeros(1)
+    _, opt3, _ = solve(d3, l3, 100.0, w3)
+    b3, inflated = np.array([0.0, 50.0, 50.0]), np.array([30.0, 0.0, 0.0])
+    assert b3.sum() <= 100.0
+    prev = l3[0]
+    for i in range(3):
+        assert inflated[i] >= max(0.0, prev + d3[0, i] - b3[i]) - 1e-9, "inflated point is feasible"
+        prev = inflated[i]
+    assert abs(float(w3 @ inflated) - opt3) < 1e-9, "and costs the optimum"
+    assert inflated[0] > max(0.0, l3[0] + d3[0, 0] - b3[0]), "yet L_1 is above its true value"
 
     # --- a negative weight is refused rather than silently producing a wrong optimum
     try:
