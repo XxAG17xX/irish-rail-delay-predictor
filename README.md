@@ -9,49 +9,39 @@ answers with an **80% range rather than a single number**.
 > Kildare, Portarlington and Portlaoise. Asked about Thurles, the service answers: expected
 > 17:07 to 17:14, most likely 17:09, 80% confidence.
 
-One model for the whole network, trained on the [Irish Rail Realtime
-API](http://api.irishrail.ie/realtime/), which needs no key and offers no support. Every
-prediction is written down before the train arrives and scored against the real arrival the
-following night, so the accuracy page is a record rather than a claim.
+One model for the whole network, trained on the public [Irish Rail Realtime
+API](http://api.irishrail.ie/realtime/). Every prediction is written down before the train
+arrives and scored against the real arrival the following night, so the accuracy page is a
+record rather than a claim.
 
-## The result
+**Built with** Python, LightGBM, FastAPI, AWS Lambda, S3, CloudFront, EventBridge and
+CloudWatch, CloudFormation and SAM, GitHub Actions with OIDC, Tailwind CSS and TypeScript.
 
-Measured against Irish Rail's own `ExpectedArrival`, on matched events where both the model
-and the operator answered for the same train, station and moment.
+## Results
+
+Against Irish Rail's own `ExpectedArrival`, on matched events where both answered for the same
+train, station and moment:
 
 | | RailCast | Irish Rail | Improvement | Matched events |
 |---|---|---|---|---|
-| Offline, held-out validation | 80.1s | 109.7s | **27%** | 9,077 |
+| Held-out validation | 80.1s | 109.7s | **27%** | 9,077 |
 | Live, launch to 9 Sept 2026 | 86.8s | 116.8s | **25.7%** | 27,984 |
 | Live, 3 to 9 Sept 2026 | 88.5s | 117.7s | 24.8% | 20,761 |
 
-The live figures come from predictions logged before their outcomes existed, against a
-baseline that was moving at the same time. The claim survived production on three times the
-offline sample.
+The live rows come from predictions logged before their outcomes existed. They are a snapshot:
+the [accuracy page](https://dc9icf7494up8.cloudfront.net/accuracy.html) recomputes every live
+figure each morning.
 
-Every live number in this README is a snapshot of the week to 9 September 2026. The
-[accuracy page](https://dc9icf7494up8.cloudfront.net/accuracy.html) recomputes all of them every morning, so
-expect it to differ from what is written here.
-
-### The sealed week
-
-A week of data (20 to 26 July) was held out at the start and **never looked at**, not once,
-through every model change. An analysis plan was committed to the repository first, saying
-what would be measured and what would count as a failure. It was then opened once, on
-2026-09-10:
-
-- MAE **58.3s**, median 29.1s, on **217,290** unseen predictions
-- Interval coverage **80.0%** against the 80.0% the model claims
-- Misses split 10.4% above and 9.6% below, against 10 and 10 expected
-- **32.1%** better than a persistence baseline
-
-The intervals were honestly calibrated. That matters for the section below, because it means
-the live shortfall is the railway changing, not the model having been optimistic. The week
-cannot be used again.
+**A sealed test week.** One week of July was held out at the start and not looked at through
+any model change. An analysis plan was committed first, then the week was opened once, on
+2026-09-10: MAE **58.3s** on **217,290** unseen predictions, interval coverage **80.0%**
+against the 80.0% claimed, misses split 10.4% above and 9.6% below, and **32.1%** better than
+a persistence baseline. The intervals were calibrated as claimed, which is why the shortfall
+below reads as the railway changing rather than the model being optimistic.
 
 ## Where it is wrong
 
-These are on the live site next to the good numbers, not buried here.
+The live site shows these beside the good numbers.
 
 **Interval coverage was 75.0% against a nominal 80% over 3 to 9 September 2026, and the
 shortfall is not evenly spread.**
@@ -66,18 +56,18 @@ shortfall is not evenly spread.**
 | `commuter_kildare` | **62.9%** |
 | `intercity_other` | **57.0%** |
 
-A single blended 75.0% would hide two corridors in the sixties, so coverage is never
-published as one figure. A degradation trigger written in advance fired on these corridors,
-and the decision was to publish the degradation rather than widen the intervals until the
-number looked better. Reasoning in decision D64.
+A single blended figure would hide two corridors in the sixties, so coverage is always
+published per group. A degradation trigger written in advance fired on those corridors, and
+the decision was to publish the degradation rather than widen the intervals until the number
+looked better ([D64](docs/decisions.md)).
 
-**The intervals cover 0% of real delays over an hour.** Every one of those trains was two to
-seven minutes late at the moment of asking. No delay-so-far feature can see a disruption that
-has not started yet.
+**The intervals cover 0% of real delays over an hour.** Each of those trains was a few minutes
+late at the moment of asking, and nothing in how late a train is now can see a disruption that
+has not started.
 
 **It only answers for a train already running that has reported at an earlier stop.** That was
-92.9% of sampled in-service trains in the same week, but a station board also lists trains that have not
-departed, and for those there is nothing to go on.
+92.9% of sampled in-service trains in the same week, but a station board also lists trains
+that have not left yet, and for those there is nothing to go on.
 
 ## How it works
 
@@ -97,7 +87,7 @@ flowchart LR
         SCORE["scorer<br/>nightly, 06:15 UTC"]
     end
 
-    subgraph buckets["S3, both buckets fully private"]
+    subgraph buckets["S3, private"]
         DATA[("data bucket<br/>raw boards, prediction log, scores")]
         SITE[("site bucket<br/>readable only by CloudFront")]
     end
@@ -112,17 +102,12 @@ flowchart LR
     SCORE -->|accuracy.json| SITE
 ```
 
-Four Lambda functions, two S3 buckets, six CloudFormation stacks, nine CloudWatch alarms.
-**No database** (the reasoning is decision D40, because "why no database?" is an interview
-question), no EC2, no RDS, no VPC, no queues. It costs about **$0.10 a month**, almost all of
-it S3 PUT requests.
-
-The site deploys itself from GitHub Actions using OIDC, so **no long-lived AWS key exists in
-the repository or in GitHub's secrets**. The public endpoint is capped at five concurrent
-executions, which bounds both the bill and the load this project can put on someone else's
-free API.
-
-### Why the accuracy page can be trusted
+Four Lambda functions: a poller that captures station boards every five minutes, the API, a
+generator that samples running trains so the scoreboard has input, and a nightly scorer.
+Three private S3 buckets, for data, the site and access logs. No database
+([D40](docs/decisions.md)), no servers, about **$0.10 a month**. The site deploys from GitHub
+Actions over OIDC, so **no long-lived AWS key exists in the repository or in GitHub's
+secrets**, and the public endpoint is capped at five concurrent executions.
 
 ```mermaid
 sequenceDiagram
@@ -134,33 +119,21 @@ sequenceDiagram
     V->>A: which train, which station
     A->>A: build features from upstream delays
     A->>L: write prediction, quantiles, model version
-    Note over L: Written before the outcome exists.<br/>A failed write fails the invocation,<br/>so a broken log cannot go unnoticed.
+    Note over L: Written before the outcome exists.<br/>A failed write fails the request.
     A-->>V: 80% interval
     N->>L: read yesterday's predictions
     N->>N: join to realised arrivals
     N->>L: write scores, never touching predictions
 ```
 
-Historical predictions are never regenerated. Recomputing what the model "would have said"
-uses today's model against a known outcome, which is leakage. This is enforced by IAM rather
-than by discipline: the API may write the prediction prefix and cannot read it, and the
-scorer may read it and cannot write it.
+Predictions are never regenerated after the fact, and IAM enforces it rather than habit: the
+API can write the prediction log and cannot read it, and the scorer can read it and cannot
+write it.
 
-## Techniques
-
-LightGBM quantile regression at the 10th, 50th and 90th percentiles, twelve features, all
-computable at request time. The load-bearing rule is that **features describe the situation,
-not the identity**: train code is not an input, because a model that learned "A218 runs two
-minutes down" has nothing to say about a service launched next March.
-
-The ingestion path is deliberately defensive, because the expensive resource is elapsed time
-against someone else's server. Fixed-interval request pacing rather than a token bucket, so an
-idle period cannot bank credit and fire a burst. AIMD rate control, the same shape as TCP
-congestion control. Server-directed backoff when a `Retry-After` arrives. An error taxonomy
-that treats a timeout, a 429 and a 404 differently, which is the difference between handling
-errors and retrying a rate limit at the same rate. Atomic write-then-rename, so an interrupted
-run cannot leave a half-written file that the resume check reads as complete. Full reasoning
-and the rejected alternatives are in the decision log.
+**The model.** LightGBM quantile regression at the 10th, 50th and 90th percentiles, twelve
+features, all known at the moment of asking. Features describe the situation rather than the
+identity: a train's code is not an input, so a service launched next year works on its first
+day ([docs/feature-ideas.md](docs/feature-ideas.md)).
 
 ## Running it
 
@@ -170,70 +143,52 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 ```
 
-Collect, parse, train, evaluate. All idempotent.
-
-```powershell
-python src\harvest_codes.py
-python src\backfill.py --start 2026-06-25 --end 2026-07-24
-python src\parse_raw.py
-python src\build_examples.py
-python src\train_quantile.py --save
-python scripts\compare_to_operator.py
-```
-
-Serve locally, or score a past day.
+Serve the API locally, then the site against it:
 
 ```powershell
 uvicorn api:app --app-dir src
-python src\score.py --date 2026-08-31 --dry-run
+python scripts\dev_site.py
 ```
 
-`data/` splits in two and the split is a rule rather than a list of exceptions. Raw XML,
-Parquet and poll output are never committed, because they are large and re-fetchable. The
-small artifacts a build needs are. The test of that rule is not reading it: clone to a temp
-directory and run the build scripts.
+Each module carries an assert-based self-check that runs with no network, for example
+`python src\api.py`. CI runs them, together with a stylesheet drift check, a type check and a
+WCAG contrast check, before every deploy.
 
-## Layout
+The offline pipeline is `harvest_codes.py`, `backfill.py`, `parse_raw.py`, `build_examples.py`
+and `train_quantile.py --save` in `src/`, in that order. Collection takes hours, because it is
+throttled to one or two requests a second against a free public API.
+
+## Where things are
 
 ```
-src/          collection, features, model, API, generator, nightly scorer
-scripts/      read-only probes and surveys, plus the Lambda build scripts
-infra/        CloudFormation and SAM templates
-site/         the four pages, Tailwind compiled ahead of time, no framework
-docs/         decision log, data dictionary, label quality, feature design
+src/       collection, features, model, API, generator, nightly scorer
+scripts/   the analyses behind published findings, and the Lambda build scripts
+infra/     CloudFormation and SAM templates
+site/      the four pages; Tailwind compiled ahead of time, no framework
+docs/      the write-ups below
 ```
 
-## Documentation
-
-The decision log is the primary record. Code comments point at entry numbers rather than
-repeating the reasoning.
-
-- **[docs/decisions.md](docs/decisions.md)**. 81 entries: what was chosen, what was rejected,
-  and why. It opens with a short guide and a list of the ones worth a stranger's time.
-- [docs/story.md](docs/story.md). The whole project as a narrative, written for someone who
-  does not code and does not know trains.
-- [docs/label-quality.md](docs/label-quality.md). The feed often reports an arrival exactly
-  equal to the schedule, which usually means nobody recorded a real time. The obvious fix, to
-  distrust the lines the official documentation flags, was tried, appeared to work, and was
-  wrong. Simpson's paradox.
-- [docs/data-dictionary.md](docs/data-dictionary.md). Every field, tagged by provenance.
-  Useful to anyone else trying to use this feed.
-- [docs/feature-ideas.md](docs/feature-ideas.md). The rule that admits a feature, the twelve
-  that are in, and what was rejected.
-- [docs/aws-web-layer.md](docs/aws-web-layer.md). How the public layer is secured, and why
-  each control is there.
+- **[docs/decisions.md](docs/decisions.md).** 81 decisions: what was chosen, what was rejected
+  and why. Opens with a guide and the ten worth a stranger's time.
+- [docs/story.md](docs/story.md). The whole project as a narrative, for someone who does not
+  code and does not know trains.
+- [docs/label-quality.md](docs/label-quality.md). Why the feed's arrival times cannot be taken
+  at face value, and why the obvious fix was Simpson's paradox.
+- [docs/data-dictionary.md](docs/data-dictionary.md). Every field in the feed, tagged by how
+  its meaning is known. Useful to anyone else building on it.
+- [docs/aws-web-layer.md](docs/aws-web-layer.md). How the public layer is secured, and why.
+- [docs/optimization-revision.pdf](docs/optimization-revision.pdf). A separate piece: timetable
+  padding redistributed by linear programming, with the proof that the relaxation is exact.
+  Nothing in the live service depends on it.
 - [CLAUDE.md](CLAUDE.md). The working rules for changing this repository.
 
-### One theme worth reading for
+## One thread through all of it
 
-Eleven failures in this project shared a shape: **none raised an error, and every one produced
-output that looked like a correct result.** Arrival times identical to the schedule. 420
-successful fetches that were a captive portal. An alarm topic with no subscribers. A model
-with a 22-minute average error and a 48-second median. A harvester reporting "0 new codes"
-from a folder nothing had written to. An alarm that could not fire, beside a template comment
-asserting that it did.
-
-Each was caught the same way: taking a number and asking what it should have been.
+Eleven failures in this project shared a shape: **none raised an error, and each produced
+output that looked like a correct result.** Arrival times identical to the schedule, successful
+downloads that were a captive portal, an alarm with no subscribers, an alarm that could not
+fire beside a comment saying it did. Each was caught the same way: by taking a number and
+asking what it should have been.
 
 ## Licence
 

@@ -38,10 +38,11 @@ data/live/*
 # Pulled from S3 for local preview; the scorer publishes the real one to the site bucket
 site/accuracy.json
 
-# Agent skills installed with `npx skills add` (see skills-lock.json to reinstall).
-# 14 MB of third-party instruction files; the lockfile is what belongs in git.
+# AI assistant tooling: installed skills, their lockfile, and local preview config. None of
+# it is part of the project, so none of it belongs in the public repo.
 .agents/
-.claude/skills/
+.claude/
+skills-lock.json
 
 # npm
 node_modules/
