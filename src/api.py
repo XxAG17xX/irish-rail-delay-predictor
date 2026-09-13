@@ -42,7 +42,7 @@ import json
 import os
 import sys
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import lightgbm as lgb
@@ -155,6 +155,53 @@ def journey(session, pacer, train_code, when):
     return stops
 
 
+# A service is filed under the date it left its origin, so for a while after midnight a
+# train still on the move belongs to yesterday's TrainDate. Asked for under today's date, the
+# feed returns either nothing or tonight's run of the same code, and a train that is plainly
+# running declines as not_in_service or no_upstream_report. Quiet hours begin at 00:30, so a
+# three-hour window is generous; outside it no second request is ever made.
+ROLLOVER_SEC = 3 * 3600
+
+
+def wall_seconds(now):
+    """Seconds on the Dublin wall clock, the same scale as the feed's HH:MM:SS times."""
+    now = now.astimezone(DUBLIN)
+    return now.hour * 3600 + now.minute * 60 + now.second
+
+
+def service_now(now, service_date):
+    """`now` on the unwrapped timeline of a journey filed under `service_date`.
+
+    journey() unwraps a service's times past midnight, so a train that left at 23:30 reaches
+    a 00:15 stop at 87,300 seconds rather than 900. A clock reading has to be on the same
+    timeline before it can be compared with them.
+    """
+    return wall_seconds(now) + 86400 * (now.astimezone(DUBLIN).date() - service_date).days
+
+
+def running_journey(session, pacer, train_code, now):
+    """(stops, service_date) for the run of `train_code` in progress at `now`.
+
+    Today's run is the answer whenever it has reported anywhere or it is past the rollover
+    hour, which is almost always and costs one request. Only a train with nothing reported,
+    asked about shortly after midnight, costs a second, and yesterday's run wins only if it
+    has started and not yet reached its last stop. Failing to fetch yesterday falls back to
+    today rather than failing a request today's answer can still serve.
+    """
+    today = now.astimezone(DUBLIN).date()
+    stops = journey(session, pacer, train_code, today)
+    if wall_seconds(now) >= ROLLOVER_SEC or any(s["arr"] is not None for s in stops):
+        return stops, today
+    yesterday = today - timedelta(days=1)
+    try:
+        earlier = journey(session, pacer, train_code, yesterday)
+    except Failure:
+        return stops, today
+    if any(s["arr"] is not None for s in earlier) and earlier[-1]["arr"] is None:
+        return earlier, yesterday
+    return stops, today
+
+
 def hhmmss(seconds):
     seconds %= 86400
     return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
@@ -255,7 +302,7 @@ def health():
             "metrics": st["manifest"]["metrics"]}
 
 
-def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=None):
+def predict_row(st, train, station, service_date=None, now_s=None, stops=None, extra=None):
     """One prediction, or one reasoned decline. Returns the row; logging is the caller's.
 
     Split out of the HTTP handler so the scheduled generator calls this identical function
@@ -265,16 +312,25 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
     `stops` is accepted pre-fetched because the generator predicts several stations per
     train and must not refetch the journey once per station. `extra` carries provenance
     the caller knows and this function cannot — which sampling scheme selected this row.
+
+    `service_date` is the TrainDate the journey is filed under, which shortly after midnight
+    can be yesterday (running_journey). A caller passing `stops` passes the date it fetched
+    them under, so the date logged, the weekday feature and the clock all agree.
     """
     train, station = train.strip().upper(), station.strip().upper()
-    if today is None:
-        today = datetime.now(DUBLIN).date()
+    now, failure = datetime.now(DUBLIN), None
+    if stops is None:
+        try:
+            stops, service_date = running_journey(st["session"], st["pacer"], train, now)
+        except Failure as f:
+            failure = f
+    if service_date is None:
+        service_date = now.date()
     if now_s is None:
-        now_s = (datetime.now(DUBLIN) - datetime.combine(
-            today, datetime.min.time(), DUBLIN)).total_seconds()
+        now_s = service_now(now, service_date)
 
     base = {"outcome": "declined", "train": train, "station": station,
-            "train_date": feed_train_date(today), "train_code": train,
+            "train_date": feed_train_date(service_date), "train_code": train,
             "station_code": station, "predicted": None,
             "model_version": st["manifest"]["version"],
             # Groupable route handles. `confidence` says the same thing in prose, which
@@ -287,12 +343,9 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
     if extra:
         base.update(extra)
 
-    if stops is None:
-        try:
-            stops = journey(st["session"], st["pacer"], train, today)
-        except Failure as f:
-            return {**base, "reason": "upstream_unavailable",
-                    "explanation": f"Could not reach Irish Rail for {train} ({f.kind})."}
+    if failure is not None:
+        return {**base, "reason": "upstream_unavailable",
+                "explanation": f"Could not reach Irish Rail for {train} ({failure.kind})."}
 
     if not stops:
         return {**base, "reason": "not_in_service",
@@ -367,7 +420,10 @@ def predict_row(st, train, station, today=None, now_s=None, stops=None, extra=No
                                f"{-stops[vi]['delay'] // 60} minutes early, which no "
                                f"scheduled service is; that arrival belongs to another train."}
 
-    dow = DAY_NAMES[today.weekday()]
+    # The weekday of the service date, not of the clock: build_examples takes day_of_week
+    # from the TrainDate partition, so a train running at 00:15 on Sunday that left on
+    # Saturday was a Saturday train in every example the model learned from.
+    dow = DAY_NAMES[service_date.weekday()]
     x = featurise(stops, vi, ti, dow, st["vocabs"]).reshape(1, -1)
     q = np.sort(np.vstack([st["boosters"][a].predict(x) for a in QUANTILES]), axis=0)
     q10, q50, q90 = (int(round(v)) for v in q[:, 0])
@@ -506,9 +562,9 @@ def board(request: Request,
         except ValueError:
             return 999
 
-    # Computed once and passed down, so the journey fetch and the prediction cannot end up
-    # on opposite sides of midnight within one board.
-    today = datetime.now(DUBLIN).date()
+    # Read once and passed down, so every train on one board is judged at the same instant
+    # and a board read at 23:59:59 cannot straddle midnight.
+    now = datetime.now(DUBLIN)
 
     entries, to_log, spent = [], [], 0
     for rec in sorted(recs, key=due):
@@ -555,20 +611,23 @@ def board(request: Request,
             # Fetched here rather than inside predict_row so the same download serves both
             # the prediction and the calling pattern below. It is one request either way;
             # previously the journey was parsed, used and discarded.
+            service_date = None
             try:
-                stops = journey(st["session"], st["pacer"], entry["train"], today)
+                stops, service_date = running_journey(st["session"], st["pacer"],
+                                                      entry["train"], now)
             except Failure:
                 stops = None  # predict_row retries once and reports upstream_unavailable
+            now_s = service_now(now, service_date) if service_date else None
 
-            row = predict_row(st, entry["train"], code, stops=stops,
-                              extra={"source": "api_board"})
+            row = predict_row(st, entry["train"], code, service_date=service_date,
+                              now_s=now_s, stops=stops, extra={"source": "api_board"})
             # This train may report under one of the station's other codes. Retried only on
             # that one reason, and now free: the journey is already in hand.
             for alt in st["aliases"].get(code, []):
                 if row.get("reason") != "station_not_on_route":
                     break
-                row = predict_row(st, entry["train"], alt, stops=stops,
-                                  extra={"source": "api_board"})
+                row = predict_row(st, entry["train"], alt, service_date=service_date,
+                                  now_s=now_s, stops=stops, extra={"source": "api_board"})
             entry["journey"] = calling_pattern(stops, [code, *st["aliases"].get(code, [])])
             to_log.append(row)
             entry["prediction"] = (None if row.get("outcome") != "predicted" else
@@ -610,7 +669,7 @@ def journey_endpoint(request: Request,
     enforce(JOURNEY_LIMITER, request)
 
     try:
-        stops = journey(st["session"], st["pacer"], code, datetime.now(DUBLIN).date())
+        stops, _ = running_journey(st["session"], st["pacer"], code, datetime.now(DUBLIN))
     except Failure as f:
         raise HTTPException(status_code=502,
                             detail=f"Irish Rail did not answer for {code} ({f.kind})")
@@ -768,6 +827,43 @@ def _self_check():
     for code, others in al.items():
         for o in others:
             assert code in al[o], f"aliasing must be symmetric: {code} <-> {o}"
+
+    # --- a train still running after midnight belongs to yesterday's TrainDate
+    real_journey, calls, feed = journey, [], {}
+    d_yday, d_today = date(2026, 9, 13), date(2026, 9, 14)
+    running = [{"arr": 84000}, {"arr": None}]      # left last night, still going
+    finished = [{"arr": 84000}, {"arr": 85500}]    # left last night, already arrived
+    unstarted = [{"arr": None}, {"arr": None}]     # tonight's run of the same code
+
+    def fake_journey(session, pacer, code, when):
+        calls.append(when)
+        if feed.get(when) == "fail":
+            raise Failure("transport", "simulated")
+        return feed.get(when, [])
+
+    globals()["journey"] = fake_journey
+    try:
+        just_after = datetime(2026, 9, 14, 0, 15, tzinfo=DUBLIN)
+        feed.update({d_yday: running, d_today: unstarted})
+        assert running_journey(None, None, "D226", just_after) == (running, d_yday), \
+            "a train still running at 00:15 is last night's service"
+        assert service_now(just_after, d_yday) == 86400 + 15 * 60, "00:15 reads as 24:15"
+        feed[d_yday] = finished
+        assert running_journey(None, None, "D226", just_after)[1] == d_today, \
+            "a service that has already reached its last stop is not the one running"
+        feed[d_yday] = "fail"
+        assert running_journey(None, None, "D226", just_after)[1] == d_today, \
+            "failing to fetch yesterday falls back instead of failing the request"
+        calls.clear(); feed[d_today] = running
+        assert running_journey(None, None, "D226", just_after)[1] == d_today \
+            and calls == [d_today], "today's run has reported, so yesterday is never asked"
+        calls.clear(); feed[d_today] = unstarted
+        midday = datetime(2026, 9, 14, 12, 0, tzinfo=DUBLIN)
+        assert running_journey(None, None, "D226", midday)[1] == d_today \
+            and calls == [d_today], "outside the rollover window there is no second request"
+        assert service_now(midday, d_today) == 12 * 3600
+    finally:
+        globals()["journey"] = real_journey
 
     print("api.py self-check passed")
 

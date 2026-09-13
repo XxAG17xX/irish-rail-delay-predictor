@@ -61,7 +61,10 @@ class PredictionLog:
         self.backoff = backoff
 
     def write(self, rows, request_id=None):
-        """Log one request's predictions. Returns the S3 key. Raises LogWriteFailed."""
+        """Log one request's predictions. Returns the S3 keys written, usually one.
+
+        Raises LogWriteFailed.
+        """
         if not rows:
             raise LogWriteFailed("no rows to log")
 
@@ -79,29 +82,46 @@ class PredictionLog:
             row.setdefault("api_request_id", request_id)
 
         # Partitioned by SERVICE date, not prediction date: the scorer joins on the train
-        # date, so scoring one day reads exactly one prefix.
-        day = iso_train_date(rows[0]["train_date"])
-        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        key = f"{self.prefix}/date={day}/{stamp}-{request_id}.jsonl"
-        body = "".join(json.dumps(r, sort_keys=True) + "\n" for r in rows).encode("utf-8")
+        # date, so scoring one day reads exactly one prefix. Grouped per row rather than taken
+        # from the first row, because a batch read shortly after midnight can hold yesterday's
+        # service and today's (D81), and a row filed under the wrong date is joined to the
+        # wrong journey.
+        groups = {}
+        for row in rows:
+            try:
+                day = iso_train_date(row["train_date"])
+            except (ValueError, IndexError) as e:
+                raise LogWriteFailed(f"unparseable train_date {row['train_date']!r}") from e
+            groups.setdefault(day, []).append(row)
 
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        written = []
+        for day, group in groups.items():
+            key = f"{self.prefix}/date={day}/{stamp}-{request_id}.jsonl"
+            body = "".join(json.dumps(r, sort_keys=True) + "\n" for r in group).encode("utf-8")
+            self._put(key, body)
+            written.append((key, group))
+
+        # After every durable write, so a CloudWatch line means the prediction was logged
+        # AND served. Printing first would leave lines for predictions nobody received. If a
+        # later date's write fails, the earlier object stays in S3 unserved, which is
+        # harmless: it still predates its outcome.
+        for key, group in written:
+            for row in group:
+                print(json.dumps({"log": "prediction", "key": key, **row}, sort_keys=True))
+        return [key for key, _ in written]
+
+    def _put(self, key, body):
         last = None
         for attempt in range(self.retries + 1):
             try:
                 self.client.put_object(Bucket=self.bucket, Key=key, Body=body)
-                break
+                return
             except Exception as e:
                 last = e
                 if attempt < self.retries:
                     time.sleep(self.backoff)
-        else:
-            raise LogWriteFailed(f"S3 write failed after {self.retries + 1} attempts: {last}")
-
-        # After the durable write, so a CloudWatch line means the prediction was logged
-        # AND served. Printing first would leave lines for predictions nobody received.
-        for row in rows:
-            print(json.dumps({"log": "prediction", "key": key, **row}, sort_keys=True))
-        return key
+        raise LogWriteFailed(f"S3 write failed after {self.retries + 1} attempts: {last}")
 
 
 def _self_check():
@@ -126,8 +146,8 @@ def _self_check():
     }
 
     s = Stub()
-    key = PredictionLog("b", "predictions", s, backoff=0).write([dict(base)])
-    assert key.startswith("predictions/date=2026-08-25/"), key
+    keys = PredictionLog("b", "predictions", s, backoff=0).write([dict(base)])
+    assert len(keys) == 1 and keys[0].startswith("predictions/date=2026-08-25/"), keys
     assert len(s.puts) == 1
     logged = json.loads(s.puts[0][1].decode().strip())
     assert logged["prediction_id"] and logged["api_request_id"], "ids not filled in"
@@ -181,6 +201,15 @@ def _self_check():
         raise AssertionError("should have rejected the unknown outcome")
     except LogWriteFailed:
         pass
+
+    # a batch straddling midnight is filed under each row's own service date (D81)
+    s = Stub()
+    last_night = {**base, "train_date": "24 Aug 2026"}
+    keys = PredictionLog("b", "predictions", s, backoff=0).write([dict(base), last_night])
+    assert sorted(k.split("/")[1] for k in keys) == ["date=2026-08-24", "date=2026-08-25"], keys
+    assert len(s.puts) == 2, "one object per service date"
+    for put_key, body in s.puts:
+        assert body.decode().count("\n") == 1, "each object holds only its own date's row"
 
     print("prediction_log self-check passed")
 

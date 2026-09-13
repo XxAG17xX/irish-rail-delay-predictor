@@ -75,7 +75,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime
 
-from api import journey, predict_row, state
+from api import predict_row, running_journey, service_now, state
 from feedtime import LEAD_BANDS, MAX_LEAD_SEC, lead_band
 from poll_live import DUBLIN, TIME_BUDGET_FLOOR_MS, Failure, fetch, in_quiet_hours
 
@@ -167,8 +167,6 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
     stats = Counter()
     session, pacer = st["session"], st["pacer"]
     now = datetime.now(DUBLIN)
-    today = now.date()
-    now_s = (now - datetime.combine(today, datetime.min.time(), DUBLIN)).total_seconds()
 
     body = fetch(session, "getCurrentTrainsXML", {}, pacer, "objtrainpositions")
     fleet = running_trains(body)
@@ -189,7 +187,7 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
             stats["trains_skipped"] += 1
             continue
         try:
-            stops = journey(session, pacer, code, today)
+            stops, service_date = running_journey(session, pacer, code, now)
         except Failure as f:
             stats["trains_failed"] += 1
             print(f"  ! {code} movements {f.kind}: {f.detail}")
@@ -197,9 +195,11 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
         stats["trains_sampled"] += 1
         if not stops:
             continue
+        # Per train, because two trains in one sample can be filed under different dates.
+        now_s = service_now(now, service_date)
         for target in choose_targets(stops, now_s, rng, max_per_train):
-            row = predict_row(st, code, target["loc"], today=today, now_s=now_s,
-                              stops=stops, extra=extra)
+            row = predict_row(st, code, target["loc"], service_date=service_date,
+                              now_s=now_s, stops=stops, extra=extra)
             rows.append(row)
             stats[row["outcome"]] += 1
             if row["outcome"] == "declined":
@@ -232,12 +232,12 @@ def lambda_handler(event, context):
     # rather than one row. For generated predictions that is the better failure. Nothing
     # is being served to anyone, so the loss is uniform across the cycle rather than a
     # subset selected by whatever was in flight when S3 faltered.
-    key = st["log"].write(rows) if rows else None
+    keys = st["log"].write(rows) if rows else []
 
     duration = time.monotonic() - started
     emit_metrics({"PredictionsLogged": len(rows), "Declined": stats["declined"],
                   "TrainsFailed": stats["trains_failed"]})
-    return {"status": "ok", "key": key, "logged": len(rows),
+    return {"status": "ok", "keys": keys, "logged": len(rows),
             "predicted": stats["predicted"], "declined": stats["declined"],
             "fleet": stats["fleet"], "trains_sampled": stats["trains_sampled"],
             "reasons": {k[len("reason_"):]: v for k, v in stats.items()
