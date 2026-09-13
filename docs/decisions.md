@@ -1,6 +1,6 @@
 # Decision log
 
-Seventy-eight entries, one per significant design choice in RailCast: what was decided,
+Eighty-one entries, one per significant design choice in RailCast: what was decided,
 what else was on the table, why it lost, and the date. The file is append-only. An entry is
 never edited to reflect a changed mind, because the value of a dated record is that it was
 written as the work happened; a later entry supersedes it and both say so. A wrong *number*
@@ -19,7 +19,7 @@ Three conventions worth knowing before reading:
 - Code comments in this repo point at entry numbers rather than repeating the argument. A
   comment reading `see D52` means the reasoning is here, in full, once.
 - Nobody reads this file end to end and nobody is meant to. **Start here** is ten entries
-  that stand alone; the index below covers all seventy-eight, one line each.
+  that stand alone; the index below covers all eighty-one, one line each.
 - **Dates mean different things either side of D11.** D1 to D10 were written together on
   2026-07-25 and cover decisions made up to that point, a few settled slightly earlier the
   same week. From D11 on, the date is the day the decision was actually made.
@@ -41,7 +41,7 @@ ran: model, data, exact command, what would be reported whatever it said, no pas
 D74 is the result, opened once: coverage **80.0%** against a claimed 80.0% on
 **217,290** unseen predictions, MAE **58.3s**, **32.1%** better than persistence. Test came
 out slightly better than validation, the opposite of the overfitting signature, so the
-75.0% seen live is the railway changing rather than a model that was never as good as advertised.
+75.0% seen live in the week to 9 September is the railway changing rather than a model that was never as good as advertised.
 
 **[D46](#d46--how-the-head-to-head-against-the-operator-is-kept-fair), how the head-to-head is kept fair.** The headline claim is that the model beats
 the operator's own `ExpectedArrival`. This entry names the four ways that comparison could
@@ -71,9 +71,10 @@ old one's apparent competence there was garbage labels matched by garbage-wide i
 counts as the intervals failing their promise. It fired six weeks after training, on two
 corridors that share track, while DART and the Dublin hubs held, and the decision was to
 publish the degradation rather than widen the intervals until the number looked right. The
-accuracy page shows **62.9%** on the Kildare corridor beside the nominal 80%. The point
-estimates did not move with the spread: the live head-to-head is **25.7%** better than the
-operator over **27,984** matched events.
+accuracy page showed **62.9%** on the Kildare corridor beside the nominal 80% in the week to
+9 September. The point
+estimates did not move with the spread: the live head-to-head was **25.7%** better than
+the operator over **27,984** matched events from launch to that date.
 
 **[D40](#d40--no-database-s3-and-parquet-instead), why there is no database.** Raw responses are gzipped objects, parsed records are
 Parquet, and the API reads what it needs per request. Three reasons in order of weight: a
@@ -212,14 +213,17 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D72](#d72--the-oidc-subject-carries-numeric-ids-and-cloudtrail-is-the-only-thing-that-says-so) The OIDC subject carries numeric ids, and CloudTrail is the only thing that says so. When an error names no value, go and find the value.
 - [D77](#d77--one-requirements-file-could-not-say-what-the-project-uses) One requirements file could not say what the project uses. A freeze cannot tell a linter's dependency from the project's, and the file was missing every API dependency.
 - [D78](#d78--raise-the-ceiling-in-order-to-be-allowed-to-build-a-floor-under-it) Raise the ceiling in order to be allowed to build a floor under it. Raising the account limit is what made capping the public endpoint possible.
+- [D80](#d80--cloudfront-access-logs-a-separate-private-bucket-acls-on-30-days) CloudFront access logs: a separate private bucket, ACLs on, 30 days. The traffic alarm could say something was hammering the endpoint and nothing could say who; IP addresses are personal data, so they expire.
+- [D81](#d81--a-train-still-running-after-midnight-is-yesterdays-service) A train still running after midnight is yesterday's service. Journeys resolve their own TrainDate, and the prediction log files each row under its own date rather than the batch's first.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
 - [D59](#d59--buffer-allocation-not-delay-management-the-formulation-and-why-the-other-was-rejected) Buffer allocation, not delay management: the formulation and why the other was rejected. Delay management needs passenger weights that do not exist and that sit inside the objective.
-- [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses. The usual one-line justification fails under terminus-only weighting, which is one of the two published.
+- [D60](#d60--the-linearisation-is-exact-only-under-a-condition-the-naive-argument-misses) The linearisation is exact only under a condition the naive argument misses. The usual one-line justification fails under terminus-only weighting, which is one of the two published. **Argument corrected by D79.**
 - [D61](#d61--evaluation-bootstrap-over-days-report-both-weightings-declare-the-cap) Evaluation: bootstrap over days, report both weightings, declare the cap. The independent unit is the day, and choosing one weighting would reintroduce invented numbers.
 - [D62](#d62--the-buffer-lp-is-built-and-works-the-result-is-under-powered-and-mostly-negative) The buffer LP is built and works; the result is under-powered and mostly negative. More freedom than evidence, diagnosed by fitting days per decision variable.
 - [D63](#d63--shrinkage-toward-the-timetable-turns-the-buffer-lp-positive-and-says-where-the-padding-is-wrong) Shrinkage toward the timetable turns the buffer LP positive, and says where the padding is wrong. The timetable is tuned for terminal punctuality, so the available gain is all at intermediate stops.
+- [D79](#d79--the-buffers-are-exact-the-lateness-is-not-d60s-argument-corrected) The buffers are exact, the lateness is not. D60's condition was neither needed nor enough; a least-element argument holds under any non-negative weights, and lateness is exact only where a stop is weighted.
 
 ---
 
@@ -1192,6 +1196,15 @@ The third is the important one and the slowest: `not-running` needs six consecut
 five-minute periods. It is also the only alarm that catches the silent failure, since a
 poller that stops being invoked produces no error anywhere.
 
+**Record completed 2026-09-13.** The plan above lists three breaks and two were run. Test A
+replaced the planned S3-permission break with a nonexistent bucket, which exercises the same
+`function-errors` alarm. The `Timeout: 3` break was never run. That value has never been
+committed to the repository, and the poller's CloudWatch logs contain no `Task timed out` line
+on any date; retention is 30 days and the poller first ran on 23 August, so that is its whole
+history. The only failure logged on 26 August is the single `NoSuchBucket` from Test A at
+18:28 UTC. What went unexercised is the "maybe `partial-cycle`" line in the plan, not an
+alarm: both alarms the test existed to verify fired and cleared.
+
 **Comparison method.** The local poller is the **control and is not modified**: it keeps
 writing to local disk exactly as it does today. The Lambda's S3 prefix is synced down and
 diffed against those files. Giving the local poller an S3 sink too would be symmetric, but
@@ -1305,6 +1318,32 @@ Second, `ExpectedArrival` is *supposed* to change across 85 seconds — that is 
 revising its estimate as the train approaches, which is the entire signal this project
 captures. Measured agreement is **89.2% across 743 shared events**, and the missing 11% is
 mostly legitimate revision rather than error. Do not read that number as an error rate.
+
+**Claim tested 2026-09-13, and it does not hold.** "Mostly legitimate revision" was asserted,
+not measured. Measured over the whole parallel run, 23 to 30 August, with
+`scripts/parallel_value_direction.py`: 374,196 shared events in cycle pairs within 150
+seconds, 89.6% identical, 38,943 disagreements. Local fired 85 seconds before the Lambda, so a
+revision in that gap has a direction. The Lambda's newer value should turn up in local's next
+capture of the same event, and should not be what local showed on its previous capture. Of
+the 35,575 disagreements local captured again within ten minutes, the Lambda's value was:
+
+| | share |
+|---|---|
+| local's next value only, the signature of a revision | 21.5% |
+| local's previous value only, which a revision cannot produce | 29.5% |
+| both local's previous and next value | 12.3% |
+| never seen by local on either side | 36.7% |
+
+The backwards case outnumbers the forwards one. As an independent bound, local's own value
+changes between captures five minutes apart 21.3% of the time, so revision at that rate
+accounts for roughly 6.0 points of the 10.4 observed, not most of them.
+
+The likelier reading is that the feed sometimes serves different answers to near-simultaneous
+requests, not that either poller mis-records. That is the best fit, not an established cause.
+It does not touch the cutover call, which rested on schema identity and 99.9% event overlap
+rather than on value agreement. It does sharpen what the head-to-head's baseline is: the value
+the public feed served at the moment of polling, which is what any app built on the feed
+shows. Whether Irish Rail's own station boards read the same source is not known.
 
 **Why a provisional floor rather than a verdict.** The first run printed "DOES NOT MEET
 the D36 bar" off twelve minutes of data, where every number was edge-dominated. That would
@@ -2649,6 +2688,12 @@ requires a separate non-negative variable with its own non-negative cost, not a 
 pushes it down" invites the follow-up *"what if that stop has zero weight?"*, and the answer
 has to be ready.
 
+**Superseded 2026-09-13 by D79.** The condition above is neither needed nor enough. The buffers
+and the cost are exact under any non-negative weights with no further condition, and the
+lateness variables are exact only where `w_i > 0`, because the forward propagation described
+above stops wherever a downstream zero floor binds. D79 has the counterexample and the
+argument that holds.
+
 **Date.** 2026-09-08
 
 ---
@@ -3796,3 +3841,137 @@ traffic alarm because a cap was impossible at the time. The cap now exists, and 
 stays: it catches the flood, the reservation bounds what the flood can do.
 
 **Date.** 2026-09-11
+
+---
+
+## D79 — The buffers are exact, the lateness is not: D60's argument, corrected
+
+**Why this matters.** The optimisation component's claim to be a formulation rather than a
+solver call rests on one step, and D60's defence of that step was wrong in a way a careful
+questioner could find in a few minutes. The result it defended was right; the reason given
+for it was not, and one of its claims was false.
+
+**What D60 said.** That the relaxation of `L_i = max(0, L_{i-1} + d_i - b_i)` into two
+inequalities is tight at stop `i` whenever every weight is non-negative and the weights from
+`i` onward sum to something positive, because lowering `L_i` propagates forward along the
+chain with coefficient 1 at every step until it reaches a weighted stop.
+
+**Why that is wrong.** The propagation stops wherever the zero floor binds further down the
+route. An early train waits, so a later stretch with plenty of buffer absorbs any excess
+arriving from upstream, and nothing reaches the terminus. The smallest case: three stops,
+terminus-only weights, no initial lateness, primary delays (10, 0, 5), budget 100, buffers
+(0, 50, 50). The true lateness is (10, 0, 0) and costs 0. The point (30, 0, 0) meets every
+constraint and also costs 0, which is the optimum. D60's condition holds at stop 1 and its
+conclusion fails there. `_self_check` in `src/buffer_lp.py` now builds exactly this point.
+
+**What is true, and it needs less.** For a fixed buffer vector, the true lateness is the
+smallest point the constraints allow. By induction along the route: `L_1 >= max(0, l0 + d_1 -
+b_1)`, which is the true value, and if `L_{i-1}` is at least its true value then
+`L_i >= max(0, L_{i-1} + d_i - b_i)` is at least the true `L_i`. With non-negative weights
+the program can therefore never cost less than reality for those buffers, and the real
+lateness attains that cost. So the relaxed optimum equals the true optimum, and every optimal
+buffer vector the solver returns is truly optimal, under **any** non-negative weights. No
+positivity condition; terminus-only needs nothing special. Checked on 300 random instances
+with zero weights mixed in: the LP minimum over lateness at fixed buffers matched the
+simulated cost to 1.1e-13.
+
+**What is not guaranteed.** The lateness values the solver hands back. Swapping them for the
+true recursion changes the cost by `sum_i w_i (L_i - true_i)`, which is non-negative and zero
+at an optimum, so lateness is exact wherever `w_i > 0` and can sit anywhere above the truth
+wherever `w_i = 0`. Under uniform weighting that is nowhere. Under terminus-only it is every
+intermediate stop.
+
+**What changes.** No published number. `solve` has only ever returned the buffers, and every
+cost in D61 to D63 comes from replaying those buffers through `simulate`, the true recursion.
+The assertion that the LP objective equals the simulated cost, which has run since D60, is
+exactly the corollary above: it was checking the right thing for a better reason than the one
+written beside it. Corrected alongside this entry: the `buffer_lp.py` docstring and
+self-check, `docs/optimization-revision.tex` and its PDF, and one sentence in
+`docs/story.md`. D60's warning about negative weights stands: a negative weight breaks the
+monotonicity the lemma relies on.
+
+**The version to give if pushed.** "For fixed buffers, the real lateness is the least point
+the constraints allow, so with non-negative weights the program cannot look cheaper than
+reality. The buffers are exactly optimal under either weighting. Lateness is never read off
+the solver."
+
+**Found by** the decision-log index pass, which flagged D60's propagation step as sketched
+rather than argued. Writing the step out in full is what broke it.
+
+**Date.** 2026-09-13
+
+---
+
+## D80 — CloudFront access logs: a separate private bucket, ACLs on, 30 days
+
+**Why this matters.** The traffic alarm could say that something was hammering the public
+endpoint, and nothing in the project could say who. Logging every request answers that, and
+logging every request means storing visitors' IP addresses, which is personal data.
+
+**Decision.** CloudFront standard logging into `railcast-site-kg-logs` under `cloudfront/`,
+cookies excluded, every object expired after 30 days. Deployed 2026-09-13 in `infra/site.yaml`.
+
+**Why a separate bucket.** Logs are neither site content nor collected data. A prefix on the
+site bucket would put request logs one `aws s3 sync --delete` away from the public origin, and
+the data bucket holds only what the project's own functions write.
+
+**Why ACLs are enabled on this one bucket.** CloudFront standard logging delivers through an
+ACL grant to AWS's log-delivery account and cannot write to a bucket with ACLs disabled.
+`BucketOwnerPreferred` keeps every object owned by this account, and the grant names one AWS
+account rather than the public, so all four public-access blocks still hold. Verified after
+the deploy: all four blocks on, ownership `BucketOwnerPreferred`, the 30-day rule enabled.
+
+**Why 30 days.** The logs exist to answer "who was that" while an incident is recent. Thirty
+days matches the Lambda log groups, and keeping IP addresses longer would need a reason nobody
+has.
+
+**Cost.** Expected to be negligible at tens of visits a day with a monthly expiry. Not yet
+measured.
+
+**Date.** 2026-09-13
+
+
+---
+
+## D81 — A train still running after midnight is yesterday's service
+
+**Why this matters.** For up to half an hour each night, the API and the generator asked Irish
+Rail about a running train under the wrong date, got nothing useful back, and declined a train
+that was plainly moving. Anything that did get through would have carried the wrong weekday
+into the model.
+
+**Decision.** Journeys are fetched through `api.running_journey(session, pacer, code, now)`,
+which returns the stops and the `TrainDate` they are filed under. Today's run is the answer
+whenever it has reported anywhere or it is past 03:00. Otherwise yesterday's run is fetched,
+and it wins only if it has started and not yet reached its last stop. `service_now` puts the
+clock on the journey's unwrapped timeline, so 00:15 reads as 24:15 for a train that left at
+23:30. `predict_row` takes `service_date` and uses it for the logged `train_date` and for
+`day_of_week`, which training takes from the `TrainDate` partition. The board, `/predict`,
+`/journey` and the generator all go through it.
+
+**A second change the fix forced.** `prediction_log.write` filed a whole batch under the first
+row's `train_date`. While every row in a batch shared one date that was harmless. A board read
+shortly after midnight can now hold yesterday's service and today's, and the scorer reads one
+date partition and fetches that date's journeys, so a row filed under the wrong partition would
+have been joined to the wrong journey. The writer now groups rows by service date and writes
+one object per date. Found by checking every caller of the changed code before writing this
+entry, not by a failure.
+
+**Why a second request rather than a smarter first one.** The feed has no way to ask for "the
+run of D226 that is moving now". Checking today's run for reports first means the second
+request happens only for a train with nothing reported, shortly after midnight, which is a
+handful of requests a night.
+
+**Why 03:00.** Quiet hours begin at 00:30, so a three-hour window costs nothing and leaves room.
+
+**What it does not change.** The scorer already read two partitions of operator data for this
+reason (D50), and it keys predictions on `train_date`, so correctly filed rows need no scorer
+change. No wrong-date predictions were observed in scores before the fix.
+
+**Tested** by the self-checks. `api.py`, against a fake feed: a train still running at 00:15
+resolves to yesterday and reads 00:15 as 24:15; a finished run from yesterday does not win; a
+failed fetch of yesterday falls back to today; and neither a reported run nor a midday request
+makes a second request. `prediction_log.py`: a batch mixing two service dates is written as two
+objects, each under its own date.
+
+**Date.** 2026-09-13

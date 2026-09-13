@@ -206,8 +206,8 @@ ahead on each, logging the answers as a visitor's would be logged. The accuracy 
 plainly that these are scheduled samples rather than user traffic. Random selection avoids
 favouring whichever routes sort first, and it is honestly random: trains that cannot be
 answered, because they have not reported anywhere yet, are asked anyway and logged as declined,
-since screening them out would delete the denominator. **92.9%** of sampled in-service trains
-get an answer (124,216 answered against 9,557 declined). The share a visitor meets on a station
+since screening them out would delete the denominator. In the week to 9 September **92.9%** of
+sampled in-service trains got an answer (124,216 answered against 9,557 declined). The share a visitor meets on a station
 board is lower, because a board also lists trains that have not departed and those cannot be
 answered at all. Both populations are named wherever coverage is quoted.
 
@@ -260,16 +260,20 @@ statistical power, not from the group that happened to fail.
 
 ## 9. What the live numbers say
 
-Against the operator's own expected arrival, since launch: **86.8s** average error against
-**116.8s**, **25.7%** better over **27,984** matched events. On the rolling seven days,
+These figures are a snapshot of the week to 9 September 2026. The accuracy page recomputes
+them every morning, so they will have moved by the time this is read.
+
+Against the operator's own expected arrival, from launch to 9 September: **86.8s** average
+error against **116.8s**, **25.7%** better over **27,984** matched events. Over 3 to 9
+September,
 **88.5s** against **117.7s**, **24.8%** over **20,761** matched events, of which the model
 wins 11,154, the operator wins 5,705 and 3,902 are ties. The advantage holds across horizons:
 **27.8%** at 0 to 5 minutes ahead (58.3s against 80.7s over 5,923 matched) and **23.6%** at 15
 to 30 minutes (100.7s against 131.8s over 4,695). The offline claim was 27% over 9,077
 comparisons. Live, on three times the sample and against a live baseline, it held.
 
-The intervals did not. Rolling seven-day coverage is **75.0%** against a nominal 80%, and the
-spread is the finding:
+The intervals did not. Over 3 to 9 September coverage was **75.0%** against a nominal 80%,
+and the spread is the finding:
 
 | station group | coverage | nominal |
 |---|---|---|
@@ -294,8 +298,8 @@ scoreboard and destroy the evidence: the point of writing the rule in advance wa
 whether it would ever fire, and quietly patching it away answers the question by deleting it.
 So coverage is published per group, beside the 80% it claims, and the reasoning is in D64.
 Recovery, or its absence, then became a measurement in itself. The reading taken on 11
-September found no recovery, and daily coverage has sat between **73.9%** and **76.2%** every
-day since 2 September, so the shift is persistent and flat rather than noise.
+September found no recovery, and daily coverage sat between **73.9%** and **76.2%** on every
+day from 2 to 9 September, so the shift is persistent and flat rather than noise.
 
 Two further limits belong beside those numbers. **The intervals cover 0% of real delays over
 an hour**, for the serving model and the one before it (53 validation rows, plus 16 Sligo-line
@@ -313,7 +317,7 @@ against, and one week, 20 to 26 July, sealed and never opened. Every choice in t
 checked against the validation week, and each look leaks a little of that week into the model,
 so after dozens of decisions a validation figure partly measures how well the model was tuned
 to that particular week. The sealed week had none of that, and it could settle one question
-nothing else could. Validation said coverage was 80.2%, live September said 75.0%. Either the
+nothing else could. Validation said coverage was 80.2%, the week to 9 September said 75.0%. Either the
 railway changed or the validation figure was flattering itself, and those have opposite
 meanings.
 
@@ -361,8 +365,10 @@ forward from stop to stop.
 
 Two things went wrong and both are recorded. Lateness is "however late, but never negative",
 because an early train waits, and that bend is not a linear relationship; the standard
-replacement works only if every downstream stop counts for something, and under one of the two
-weightings it does not, so the condition is stated rather than waved at (D60). And the first
+replacement is exact for the buffers under any weighting that never rewards lateness, but under
+terminus-only weighting the solver's own lateness figures at intermediate stops can come out
+too high, so every reported number is recomputed from the buffers instead (D60, corrected in
+D79). And the first
 answer was worse than the timetable it was improving on, fitting the sampled days and doing
 worse on new ones, which is ordinary overfitting in an unexpected place. Charging it for every
 second it moves anything fixes that, after which all five trains improve, three of them by an
@@ -396,5 +402,5 @@ introduced after the system was already working, while writing up the others. Th
 "be more careful". It is that a system which works and a system that can be *shown* to be
 working are different things, and most of the effort here went into the second.
 
-The reasoning behind every decision above is in `docs/decisions.md`, 78 entries, including the
+The reasoning behind every decision above is in `docs/decisions.md`, 81 entries, including the
 ones that were wrong.

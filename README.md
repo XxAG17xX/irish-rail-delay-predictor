@@ -22,12 +22,16 @@ and the operator answered for the same train, station and moment.
 | | RailCast | Irish Rail | Improvement | Matched events |
 |---|---|---|---|---|
 | Offline, held-out validation | 80.1s | 109.7s | **27%** | 9,077 |
-| Live, cumulative since launch | 86.8s | 116.8s | **25.7%** | 27,984 |
-| Live, rolling 7 days | 88.5s | 117.7s | 24.8% | 20,761 |
+| Live, launch to 9 Sept 2026 | 86.8s | 116.8s | **25.7%** | 27,984 |
+| Live, 3 to 9 Sept 2026 | 88.5s | 117.7s | 24.8% | 20,761 |
 
 The live figures come from predictions logged before their outcomes existed, against a
 baseline that was moving at the same time. The claim survived production on three times the
 offline sample.
+
+Every live number in this README is a snapshot of the week to 9 September 2026. The
+[accuracy page](https://dc9icf7494up8.cloudfront.net/accuracy.html) recomputes all of them every morning, so
+expect it to differ from what is written here.
 
 ### The sealed week
 
@@ -49,8 +53,8 @@ cannot be used again.
 
 These are on the live site next to the good numbers, not buried here.
 
-**Interval coverage is currently 75.0% against a nominal 80%, and the shortfall is not
-evenly spread.**
+**Interval coverage was 75.0% against a nominal 80% over 3 to 9 September 2026, and the
+shortfall is not evenly spread.**
 
 | Station group | Coverage |
 |---|---|
@@ -71,8 +75,8 @@ number looked better. Reasoning in decision D64.
 seven minutes late at the moment of asking. No delay-so-far feature can see a disruption that
 has not started yet.
 
-**It only answers for a train already running that has reported at an earlier stop.** That is
-92.9% of sampled in-service trains, but a station board also lists trains that have not
+**It only answers for a train already running that has reported at an earlier stop.** That was
+92.9% of sampled in-service trains in the same week, but a station board also lists trains that have not
 departed, and for those there is nothing to go on.
 
 ## How it works
@@ -204,7 +208,7 @@ docs/         decision log, data dictionary, label quality, feature design
 The decision log is the primary record. Code comments point at entry numbers rather than
 repeating the reasoning.
 
-- **[docs/decisions.md](docs/decisions.md)**. 78 entries: what was chosen, what was rejected,
+- **[docs/decisions.md](docs/decisions.md)**. 81 entries: what was chosen, what was rejected,
   and why. It opens with a short guide and a list of the ones worth a stranger's time.
 - [docs/story.md](docs/story.md). The whole project as a narrative, written for someone who
   does not code and does not know trains.

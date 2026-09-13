@@ -188,7 +188,20 @@ The role can read the site stack's outputs, write objects to the site bucket, an
 CloudFront invalidation. It cannot call `UpdateDistribution`, so a compromised workflow cannot
 repoint the site at a different origin, and it has no access to the data bucket.
 
-## 7. Cost
+## 7. Access logs
+
+The distribution writes a line per request to a third private bucket,
+`railcast-site-kg-logs`, under `cloudfront/`: time, client IP, path, status and user agent.
+The traffic alarm on the API can say that the endpoint is being hammered; these logs say who.
+
+Two settings are deliberate. It is the one bucket in the project with ACLs enabled, because
+CloudFront standard logging delivers through an ACL grant to AWS's log-delivery account and
+cannot write to a bucket with ACLs disabled. Object ownership stays with this account and all
+four public-access blocks stay on, since the grant names one AWS account rather than the
+public. And objects expire after 30 days: an IP address is personal data, and the logs exist
+to answer questions about a recent incident, not to build a history (D80).
+
+## 8. Cost
 
 Measured cost for the whole project is about **$0.10 a month**, effectively all of it S3 PUT
 requests from the poller. The web layer contributes close to nothing: under a megabyte of

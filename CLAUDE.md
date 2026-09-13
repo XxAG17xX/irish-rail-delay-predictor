@@ -180,10 +180,13 @@ loss. FastAPI. AWS, serverless by default.
   fails to resolve; `--python-version 3.13`, because the build machine runs 3.14; and a vendored
   `libgomp.so.1`, because lightgbm links against OpenMP and the Lambda runtime does not ship it.
   Without the last one the import dies at `ctypes.LoadLibrary`.
-- Two free-tier thresholds move quietly and both have already been crossed: custom metrics and
-  alarms are past or near the free ten. **Count them rather than trusting any prose**, with
-  `aws cloudwatch list-metrics --namespace RailDelay` and `aws cloudwatch describe-alarms`.
-  That is exactly how the previous numbers in this file went stale.
+- Custom metrics and alarms both sit at the free-tier line of ten. `QuietSkip` was dropped on
+  2026-09-13 because it was always exactly 1, which brings metrics from 11 to 10; a dropped
+  metric keeps appearing in listings for about two weeks after its last data point, and stops
+  billing as soon as nothing is published to it. Alarms are at 9. **Count them rather than
+  trusting any prose**, with `aws cloudwatch list-metrics --namespace RailDelay` and
+  `aws cloudwatch describe-alarms`. That is exactly how earlier numbers in this file went
+  stale.
 
 ### Web layer
 
@@ -197,6 +200,9 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   to the site bucket by the scorer rather than served from where it is written.
 - **The bucket policy gets reviewed before it deploys.** It is the only deliberately public
   grant in the project.
+- **CloudFront access logs** go to a third, private bucket and expire after 30 days, because
+  they hold visitors' IP addresses. It is the one bucket with ACLs enabled, which CloudFront
+  standard logging requires (D80).
 - Built with Tailwind v4 compiled ahead of time, TypeScript in `checkJs` mode as a check rather
   than a compiler, and no framework. **This amends D41**, which originally said no build step
   and no npm; the amendment and its reasoning are in D66. The compiled `site/app.css` is
@@ -244,11 +250,11 @@ laptops sleep, networks drop.
   checks that an alarm has a live subscriber. Verify with `aws sns
   list-subscriptions-by-topic --topic-arn <arn>` rather than assuming a successful deploy gave
   you working alerting.
-- **`api.predict_row` asks for the journey under today's Dublin date.** A train that departed
-  yesterday and is still running between 00:00 and 00:30 is fetched under the wrong `TrainDate`
-  and declines instead of predicting. Quiet hours start at 00:30, so the window is half an hour
-  a night. The scorer already reads two partitions for this reason; the API and generator do
-  not. Found by reading the code, not yet observed in scores.
+- **A service is filed under the date it left, not the date it is now.** Shortly after
+  midnight a train still running belongs to yesterday's `TrainDate`, and so does its weekday
+  feature. Fetch journeys through `api.running_journey`, never `journey(..., today)`, put clock
+  readings on the journey's timeline with `service_now`, and never assume every row in a batch
+  shares a date: `prediction_log.write` files each row under its own (D81).
 - **`harvest_codes.py --from-snapshots` refuses an archive whose newest snapshot is over 24h
   old**, exiting 3. Every local archive is frozen since the cutover, so every future run trips
   the guard. That is the point: "0 new codes" from a dead folder is indistinguishable from a
