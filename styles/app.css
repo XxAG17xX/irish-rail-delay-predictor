@@ -266,9 +266,18 @@
 
   /* ── scrollytelling ─────────────────────────────────────────────────────── */
 
-  .step { min-height: 72vh; display: flex; flex-direction: column; justify-content: center;
-          opacity: .25; transition: opacity .45s ease; }
-  .step.on { opacity: 1; }
+  /* The step being read stands out and the rest recede, by colour and not by opacity.
+     Fading them to 25% left four of the five steps below WCAG contrast at rest, every
+     Lighthouse run failed on it, and no fade could pass: ink-3 labels clear 4.5:1 only at
+     full strength. Every colour below is a pairing scripts/contrast.py already checks. */
+  .step { min-height: 72vh; display: flex; flex-direction: column; justify-content: center; }
+  .step h3, .step p { transition: color .45s ease; }
+  .step h3       { color: var(--color-ink-2); }
+  .step p        { color: var(--color-ink-3); }
+  .step .step-n  { color: var(--color-ink-3); }
+  .step.on h3    { color: var(--color-ink); }
+  .step.on p     { color: var(--color-ink-2); }
+  .step.on .step-n { color: var(--color-clear); }
 
   .rail-progress { display: none; }
   @media (min-width: 56rem) {

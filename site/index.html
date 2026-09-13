@@ -127,45 +127,45 @@
         <div class="rail-progress"><i></i></div>
 
         <article class="step" data-step="0">
-          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">01</p>
+          <p class="step-n mb-3 text-xs tracking-[0.12em]">01</p>
           <h3 class="mb-2 text-lg font-bold">It only answers about a train already moving</h3>
-          <p class="max-w-md text-ink-2">Every input describes a journey in progress. A service
+          <p class="max-w-md">Every input describes a journey in progress. A service
             that has not left its origin has reported nowhere, so there is nothing to reason
             from. RailCast declines and says so, rather than producing a number that looks
             like an answer.</p>
         </article>
 
         <article class="step" data-step="1">
-          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">02</p>
+          <p class="step-n mb-3 text-xs tracking-[0.12em]">02</p>
           <h3 class="mb-2 text-lg font-bold">It reads how late the train already is</h3>
-          <p class="max-w-md text-ink-2">At each stop behind you the operator records an actual
+          <p class="max-w-md">At each stop behind you the operator records an actual
             arrival. The gap between that and the timetable is the strongest signal there is,
             because lateness carries forward along a journey. Twelve inputs in total, and every
             one of them exists for a service that started running yesterday.</p>
         </article>
 
         <article class="step" data-step="2">
-          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">03</p>
+          <p class="step-n mb-3 text-xs tracking-[0.12em]">03</p>
           <h3 class="mb-2 text-lg font-bold">It answers with a range, not a time</h3>
-          <p class="max-w-md text-ink-2">Three models are trained rather than one, each learning
+          <p class="max-w-md">Three models are trained rather than one, each learning
             a different point of the distribution: the tenth percentile, the middle, the
             ninetieth. The gap between the outer two is the 80% range. That is what a quantile
             model buys you and an ordinary one does not.</p>
         </article>
 
         <article class="step" data-step="3">
-          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">04</p>
+          <p class="step-n mb-3 text-xs tracking-[0.12em]">04</p>
           <h3 class="mb-2 text-lg font-bold">The further ahead you ask, the wider it gets</h3>
-          <p class="max-w-md text-ink-2">This is the honest part. Asking about the next stop is a
+          <p class="max-w-md">This is the honest part. Asking about the next stop is a
             different problem from asking about one an hour away, and the range widens to say
             so. A model whose intervals stayed the same width across the whole horizon would be
             the suspicious one.</p>
         </article>
 
         <article class="step" data-step="4">
-          <p class="mb-3 text-xs tracking-[0.12em] text-ink-3">05</p>
+          <p class="step-n mb-3 text-xs tracking-[0.12em]">05</p>
           <h3 class="mb-2 text-lg font-bold">Then the night scores it</h3>
-          <p class="max-w-md text-ink-2">Every prediction is written down before the outcome
+          <p class="max-w-md">Every prediction is written down before the outcome
             exists. The next morning a job fetches what actually happened and marks each one
             hit or miss. The arrival lands inside the range about three quarters of the time
             against the 80% it claims, and that shortfall is
