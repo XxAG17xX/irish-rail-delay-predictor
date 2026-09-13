@@ -119,7 +119,7 @@ def emit_metrics(stage: str, values: dict) -> None:
                     ("ThrottleEvents", "Count"), ("RequestFailures", "Count"),
                     ("StationsCompleted", "Count"), ("StationsSkipped", "Count"),
                     ("RecordsCaptured", "Count"), ("PartialCycle", "Count"),
-                    ("CycleDurationSec", "Seconds"), ("QuietSkip", "Count"),
+                    ("CycleDurationSec", "Seconds"),
                 ) if k in values],
             }],
         },
@@ -136,7 +136,10 @@ def lambda_handler(event, context):
     now = datetime.now()
 
     if os.environ.get("POLL_NO_QUIET") != "1" and in_quiet_hours(now):
-        emit_metrics(stage, {"QuietSkip": 1, "RecordsCaptured": 0})
+        # No QuietSkip metric. It was always exactly 1, so it said only "this invocation
+        # fell in quiet hours", which the timestamp already says, and it was the eleventh
+        # custom metric against a free tier of ten. RecordsCaptured=0 still marks the skip.
+        emit_metrics(stage, {"RecordsCaptured": 0})
         return {"status": "quiet_hours", "dublin_time": in_dublin(now).isoformat()}
 
     started = time.monotonic()
