@@ -56,6 +56,39 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
 
+  # CloudFront access logs: one line per request, with the caller's IP, path, status and
+  # user agent. Added because the flood alarm in api.yaml can say that something is hammering
+  # the public endpoint, and until this bucket existed nothing in the project could say who.
+  #
+  # A separate bucket, not a prefix on either existing one. Logs are neither site content nor
+  # collected data, and the data bucket keeps its rule of holding nothing written from outside.
+  #
+  # Expired after 30 days. An IP address is personal data, the logs exist to answer "who was
+  # that" while an incident is recent, and 30 days matches the Lambda log groups.
+  AccessLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${SiteBucketName}-logs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # The one place in the project ACLs stay enabled. CloudFront standard logging delivers
+      # through an ACL grant to its own log-delivery account and cannot write to a bucket with
+      # ACLs disabled. BucketOwnerPreferred still makes this account own every object, and the
+      # grant is to a named AWS account, not to the public, so all four blocks above hold.
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerPreferred }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-access-logs
+            Status: Enabled
+            ExpirationInDays: 30
+
   # The whole of the public access this project grants, in one statement: read one bucket,
   # by one distribution, for GetObject only. No ListBucket -- a caller who guesses a key
   # gets it, a caller who wants an inventory of the bucket does not.
@@ -170,6 +203,10 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: RailCast
+        Logging:
+          Bucket: !GetAtt AccessLogBucket.DomainName
+          Prefix: cloudfront/
+          IncludeCookies: false   # the site sets no cookies, and would log none if it did
         DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100   # Europe and North America; the audience is one CV reader
@@ -228,6 +265,9 @@ Resources:
 Outputs:
   SiteUrl:
     Value: !Sub https://${Distribution.DomainName}
+  AccessLogBucket:
+    Value: !Ref AccessLogBucket
+    Description: CloudFront access logs, expired after 30 days.
   SiteBucket:
     Value: !Ref SiteBucket
     Description: Sync the site here; the scorer writes accuracy.json into it.
