@@ -232,6 +232,11 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   worth recording.
 - **Write down what was tested and what the evidence was, not just the conclusion.** Several
   claims in this file were wrong until tested against raw records.
+- **Static text never chases live numbers.** The README, the docs and the GitHub description
+  carry only figures that cannot change, such as offline validation and the sealed test
+  week, or live figures stamped with the period they measure ("25.7%, launch to 9 Sept
+  2026"). Current figures live only on the accuracy page, which recomputes them nightly.
+  Re-quoting today's number into a static file is how the README went stale.
 - Commit small and often. The history is itself evidence of the work.
 
 ## Reliability principle
