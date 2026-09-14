@@ -157,7 +157,7 @@ station boards every five minutes, which is the only way to capture Irish Rail's
 arrivals; the **prediction service**; a **generator**, in section 7; and a **scorer** that runs
 nightly and checks the previous day's predictions against what actually happened. Storage is
 **S3**, with public access blocked. There is no database and no always-on server, the whole
-thing costs about **$0.10 a month**, and the public endpoint is capped at **5 simultaneous
+thing cost about **$0.10 a month** when measured on 23 August 2026, before the site existed, and the public endpoint is capped at **5 simultaneous
 executions**, so a flood is rejected before any code runs and cannot starve the poller or the
 scorer. The infrastructure is declared in text files and rebuilt from the repository rather
 than clicked together, and the site deploys itself using short-lived credentials, so **no

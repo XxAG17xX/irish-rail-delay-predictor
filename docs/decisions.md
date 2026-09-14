@@ -78,7 +78,7 @@ the operator over **27,984** matched events from launch to that date.
 
 **[D40](#d40--no-database-s3-and-parquet-instead), why there is no database.** Raw responses are gzipped objects, parsed records are
 Parquet, and the API reads what it needs per request. Three reasons in order of weight: a
-24/7 instance would be more than 99% of a bill measured at about **$0.10 a month**, the data
+24/7 instance would be more than 99% of a bill measured at about **$0.10 a month** on 23 August 2026, the data
 is file-shaped and read-mostly, and nothing joins across entities at request time. The entry
 names what is given up and the condition under which the answer changes.
 

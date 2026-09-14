@@ -106,7 +106,8 @@ flowchart LR
 Four Lambda functions: a poller that captures station boards every five minutes, the API, a
 generator that samples running trains so the scoreboard has input, and a nightly scorer.
 Three private S3 buckets, for data, the site and access logs. No database
-([D40](docs/decisions.md)), no servers, about **$0.10 a month**. The site deploys from GitHub
+([D40](docs/decisions.md)), no servers. Running cost was **$0.10 a month** when measured on 23 August 2026, before the web
+layer existed. The site deploys from GitHub
 Actions over OIDC, so **no long-lived AWS key exists in the repository or in GitHub's
 secrets**, and the public endpoint is capped at five concurrent executions.
 

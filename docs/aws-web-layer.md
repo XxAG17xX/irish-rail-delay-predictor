@@ -203,8 +203,9 @@ to answer questions about a recent incident, not to build a history (D80).
 
 ## 8. Cost
 
-Measured cost for the whole project is about **$0.10 a month**, effectively all of it S3 PUT
-requests from the poller. The web layer contributes close to nothing: under a megabyte of
+Measured on 23 August 2026, before the web layer existed, the whole project cost about
+**$0.10 a month**, effectively all of it S3 PUT requests from the poller. The web layer has not
+been re-measured. It is expected to add close to nothing: under a megabyte of
 static objects, CloudFront and its edge function inside permanent free tiers, and Lambda
 invocations in the tens per day. A budget alarm predates the first deploy and is what will say
 otherwise.
