@@ -120,6 +120,7 @@ function showBand() {
   need("rBet").textContent = "+" + b.better.toFixed(1) + "%";
   need("rCov").textContent = b.cov.toFixed(1) + "%";
   need("rN").textContent = b.n.toLocaleString("en-IE");
+  need("rMatched").textContent = b.matched.toLocaleString("en-IE");
 
   const low = b.cov < 70;
   need("rCov").classList.toggle("text-caution", low);
