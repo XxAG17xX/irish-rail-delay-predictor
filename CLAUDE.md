@@ -217,6 +217,11 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
   it cannot catch this: check both states of anything that dims.
 - **The Lighthouse audit can turn a run red.** It runs after the deploy, so it never blocks one.
   Accessibility and best-practices failures are errors; performance is only a warning.
+- **A page shows the claim; the explanation sits behind a question.** Each section keeps a
+  short lead, its diagram or table and its limitation with the number beside it visible, and
+  puts the why and the how in `.qa` dropdowns (native `<details>`, no script). How-it-works
+  went from about 2,480 words on screen to 1,115 this way with nothing removed. Never put a
+  limitation's number or a chart inside a dropdown: a chart measures zero width while closed.
 
 ## Conventions
 

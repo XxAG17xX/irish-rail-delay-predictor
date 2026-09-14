@@ -28,84 +28,103 @@
 <main class="read mx-auto max-w-5xl px-6 pt-10 pb-16">
 
   <h1 class="max-w-[16ch] text-4xl font-extrabold md:text-5xl">How it works.</h1>
-  <p class="mt-4 max-w-2xl text-lg text-ink-2">Five minutes for the whole thing. Anything marked
-    with an arrow can be opened for the detail, and skipped without losing the argument.</p>
+  <p class="mt-4 max-w-2xl text-lg text-ink-2">Two minutes for the outline. The questions under
+    each section open for the detail, and any of them can be skipped.</p>
+
+  <nav class="toc mt-6" aria-label="Sections">
+    <a href="#question"><b>1</b>The question</a>
+    <a href="#data"><b>2</b>The data</a>
+    <a href="#echo"><b>3</b>The echo problem</a>
+    <a href="#model"><b>4</b>The model</a>
+    <a href="#measured"><b>5</b>How it is measured</a>
+    <a href="#running"><b>6</b>What runs</a>
+    <a href="#limits"><b>7</b>What it cannot do</a>
+    <a href="#failures"><b>8</b>Silent failures</a>
+  </nav>
 
   <!-- ══ 1 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="question" class="mt-14">
     <h2 class="text-h2 font-extrabold">1. The question</h2>
-    <p class="mt-3">Station boards tell you a train is expected at 17:27. They do not tell you
-      how sure they are. A train that has been steadily two minutes late for five stops and a
-      train that has just picked up an unexplained delay both get the same kind of estimate: one
-      time, stated with the same confidence.</p>
-    <p>RailCast answers with a <b>range</b> instead. Not "17:27" but "most likely 17:26,
-      probably between 17:22 and 17:34". The range is the useful part. If you have a four minute
-      connection at the other end, a two minute range says you are fine and a twelve minute range
-      says you might not be. A single number cannot tell you that.</p>
-    <p>The formal name is a <b>prediction interval</b>: a low bound and a high bound, chosen so
-      the true answer falls between them a stated share of the time. This one aims for 80%, so
-      the claim is "four times in five". That is a claim you can check, which is the whole point
-      of <a href="accuracy.html" class="text-clear underline underline-offset-2">the accuracy
-      page</a>.</p>
+    <p class="mt-3">Station boards say a train is expected at 17:27, with no sign of how sure
+      that is. RailCast answers with a <b>range</b> instead: most likely 17:26, probably between
+      17:22 and 17:34. The arrival should land inside that range four times in five, and
+      <a href="accuracy.html" class="text-clear underline underline-offset-2">every night that
+      claim is checked</a>.</p>
 
     <div class="panel mt-6 px-5 py-5">
       <div class="flex items-start gap-3">
         <span class="lamp lamp-out mt-1.5"></span>
-        <p class="!max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">What it
-          refuses to answer.</b> It does not forecast future dated services. Every input describes
-          a journey in progress, so a train that has not departed leaves nothing to reason from.
-          Ask about tomorrow's 08:15 and the honest answer is that this system has nothing to
-          say, so it declines instead of guessing. A visitor expecting next week's forecast will
-          think it is broken. It answers about trains that are already running.</p>
+        <p class="!max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">It only
+          answers about trains already running.</b> Every input describes a journey in progress,
+          so for tomorrow's 08:15 it has nothing to reason from, and it declines instead of
+          guessing.</p>
       </div>
+    </div>
+
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>Why is a range more useful than a single time?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>A train that has been steadily two minutes late for five stops and a train that has
+            just picked up an unexplained delay both get the same kind of estimate on a board: one
+            time, stated with the same confidence.</p>
+          <p>The range is what separates them. With a four minute connection at the other end, a
+            two minute range says you are fine and a twelve minute range says you might not be. A
+            single number cannot tell you that.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>What does "four times in five" mean exactly?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>The formal name is a <b class="text-ink">prediction interval</b>: a low bound and a
+            high bound, chosen so the true answer falls between them a stated share of the time.
+            This one aims for 80%. That is a claim anyone can check against what actually
+            happened, which is the whole point of the accuracy page.</p>
+        </div></details>
     </div>
   </section>
 
   <!-- ══ 2 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="data" class="mt-16">
     <h2 class="text-h2 font-extrabold">2. Where the numbers come from</h2>
-    <p class="mt-3">Irish Rail publish a realtime feed. No sign up, no key, and no promises: they
-      state it is provided as is, with no support. Four parts of it are in use.</p>
+    <p class="mt-3">Irish Rail's public realtime feed: no sign up, no key, and provided as is with
+      no support. Four parts of it are in use.</p>
     <ul class="mt-3 list-disc pl-5">
-      <li><b>One train's full journey on one date.</b> Every stop, the scheduled time, and the
-        actual arrival if one was recorded. This is the whole project. It is the record of what
-        really happened, and it is what the model learns from.</li>
-      <li><b>A station's board.</b> What is due in the next ninety minutes, including Irish
-        Rail's own expected arrival. That field is the baseline being competed against, and it
-        has to be captured live because it cannot be recovered later.</li>
-      <li><b>Which trains are running right now</b>, which is how the system knows what it can be
-        asked about.</li>
+      <li><b>One train's full journey on one date</b>, with every stop, the scheduled time and
+        the actual arrival. It is the record of what really happened, and what the model learns
+        from.</li>
+      <li><b>A station's board</b>, including Irish Rail's own expected arrival, the baseline
+        being competed against. It exists only live, so it is captured every five minutes.</li>
+      <li><b>Which trains are running right now</b>, so the system knows what it can be asked
+        about.</li>
       <li><b>The station list</b>, fetched once and cached.</li>
     </ul>
 
-    <details class="more">
-      <summary>How do you know the feed serves real history rather than replaying a timetable?</summary>
-      <div>
-        <p class="text-ink-2">By asking for the same train on the same date in 2020, 2024, 2025
-          and 2026. The times all differ, and the 2020 version has three fewer stops and a
-          different scheduled arrival at Cork, which is the 2020 timetable on 2020
-          infrastructure. It is genuine history, back to at least 2007.</p>
-        <p class="text-ink-2">That single check is what makes a missed collection run
-          recoverable. It does not apply to the operator's expected arrival, which exists only
-          live and can never be backfilled, which is why a poller has been running every five
-          minutes since August.</p>
-        <p class="text-ink-2">The training archive is 28,706 gzipped responses covering 1,087
-          train codes across 34 dates, about half a million stop level records, collected once at
-          two requests per second, overnight, backing off whenever the server complained.</p>
-      </div>
-    </details>
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>How do you know the feed serves real history, not a replayed timetable?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>By asking for the same train on the same date in 2020, 2024, 2025 and 2026. The times
+            all differ, and the 2020 version has three fewer stops and a different scheduled
+            arrival at Cork, which is the 2020 timetable on 2020 infrastructure. It is genuine
+            history, back to at least 2007.</p>
+          <p>That single check is what makes a missed collection run recoverable. It does not
+            apply to the operator's expected arrival, which exists only live and can never be
+            backfilled, which is why a poller has been running every five minutes since
+            August.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>How much data was it trained on?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>28,706 gzipped responses covering 1,087 train codes across 34 dates, about half a
+            million stop level records. They were collected once, at two requests per second,
+            overnight, backing off whenever the server complained.</p>
+        </div></details>
+    </div>
   </section>
 
   <!-- ══ 3 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="echo" class="mt-16">
     <h2 class="text-h2 font-extrabold">3. The problem that shaped everything</h2>
-    <p class="mt-3">To learn how late trains are, you need to know how late trains <i>were</i>.
-      That true arrival time is the <b>label</b>, the right answer a model is trained against.
-      The feed has a field for it. But on parts of the network the operator does not actually
-      observe arrivals, and the field comes back holding <b>the timetable</b>, presented as
-      though it were an observation.</p>
-    <p>It looks completely normal. Nothing marks it. Train on it and the model learns that those
-      lines are perfectly punctual.</p>
+    <p class="mt-3">A model learns lateness from true arrival times, its <b>labels</b>. On parts
+      of the network the feed's arrival field holds <b>the timetable</b> instead, presented as
+      though it were observed. Nothing marks it. Train on it and the model learns those lines are
+      perfectly punctual.</p>
 
     <div class="panel mt-6 px-5 py-6">
       <svg class="diagram" viewBox="0 0 620 132" role="img"
@@ -125,18 +144,11 @@
       </svg>
     </div>
 
-    <p class="mt-5">Call it an <b>echo</b>: the schedule reflected back, dressed as a measurement.
-      You can look for it, because a real arrival almost never lands on exactly the scheduled
-      second. Across the whole archive, <b>2.92%</b> of arrivals are identical to the scheduled
-      time.</p>
-    <p>Irish Rail document this and publish a list of ten lines where the query returns the
-      scheduled time only. So the obvious fix is to distrust those lines. Tested, it looked like
-      clean confirmation: the flagged lines matched exactly 21% of the time against under 3%
-      everywhere else. An eightfold difference.</p>
-    <p><b class="text-caution">It was the wrong conclusion.</b> Every arrival record also carries
-      a flag saying whether the time was captured automatically by the signalling equipment.
-      Split by that instead, and the comparison reverses: among machine captured records, the
-      flagged lines echo <i>less</i> than the rest of the network.</p>
+    <p class="mt-5">Call it an <b>echo</b>. Irish Rail publish a list of ten lines where this
+      happens, and it looked like the answer: those lines echo 21% of the time against under 3%
+      elsewhere. <b class="text-caution">It was the wrong conclusion.</b> Split instead by whether
+      signalling equipment captured the time automatically, and among machine captured records
+      the flagged lines echo <i>less</i> than the rest of the network.</p>
 
     <div class="panel mt-6 px-5 py-6">
       <svg class="diagram" viewBox="0 0 620 156" role="img"
@@ -155,121 +167,143 @@
       </svg>
     </div>
 
-    <p class="mt-5">What made the flagged lines look bad is that far more of their records were
-      not machine captured: 47% against 1.5% elsewhere. The non-automatic ones are where echoes
-      live. Among machine-captured records the flagged lines echo less, not more; among hand-entered
-      records they echo more. The line name was standing in for how the data was captured.</p>
-    <p>A comparison that reverses when you split it has a name: <b>Simpson's paradox</b>. Three
-      quarters of the suspect records sit on lines the documentation never mentions, so a line
-      filter would have thrown away good data and kept bad. The rule became: use the per record
-      capture flag, never the published line list.</p>
+    <p class="mt-5">So the rule became: trust the capture flag on each record, never the
+      published line list.</p>
 
-    <details class="more">
-      <summary>Why nothing is deleted, even when it looks obviously wrong</summary>
-      <div>
-        <p class="text-ink-2">An exact match is suspicious, not proof. About 2.4% of the most
-          trustworthy records genuinely do land on the scheduled second. Part of the reason is
-          that every time in the feed is rounded to six seconds, so there are only ten possible
-          second values in a minute and coincidences are commoner than they look.</p>
-        <p class="text-ink-2">So nothing is deleted at ingestion. The flag is carried through,
-          what to exclude is decided when evaluating, and the numbers are reported both ways.
-          A result that agrees with the documentation is exactly the one nobody checks carefully
-          enough, and this one was wrong.</p>
-      </div>
-    </details>
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>How can an echo be spotted at all?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>A real arrival almost never lands on exactly the scheduled second. Across the whole
+            archive, <b class="text-ink">2.92%</b> of arrivals are identical to the scheduled
+            time.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Why did the line list look so convincing?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Far more of the flagged lines' records were not machine captured: 47% against 1.5%
+            elsewhere, and the non-automatic records are where echoes live. Among machine captured
+            records the flagged lines echo less; among hand-entered records they echo more. The
+            line name was standing in for how the data was captured.</p>
+          <p>A comparison that reverses when you split it has a name: <b class="text-ink">Simpson's
+            paradox</b>. Three quarters of the suspect records sit on lines the documentation never
+            mentions, so a line filter would have thrown away good data and kept bad.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Why is nothing deleted, even when it looks obviously wrong?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>An exact match is suspicious, not proof. About 2.4% of the most trustworthy records
+            genuinely do land on the scheduled second. Part of the reason is that every time in the
+            feed is rounded to six seconds, so there are only ten possible second values in a
+            minute and coincidences are commoner than they look.</p>
+          <p>So nothing is deleted at ingestion. The flag is carried through, what to exclude is
+            decided when evaluating, and the numbers are reported both ways. A result that agrees
+            with the documentation is exactly the one nobody checks carefully enough, and this one
+            was wrong.</p>
+        </div></details>
+    </div>
   </section>
 
   <!-- ══ 4 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="model" class="mt-16">
     <h2 class="text-h2 font-extrabold">4. The model</h2>
-    <p class="mt-3">One model for the whole network, not one per train. It is a set of
-      <b>gradient boosted trees</b>, a method that builds many small decision trees where each
-      one corrects what the ones before it got wrong.</p>
-    <p>What makes a range possible is the loss function. An ordinary model is trained to be wrong
-      by as little as possible in both directions, which gives you a middle. A <b>quantile</b>
-      model is trained with lopsided penalties: to learn the ninetieth percentile, being too low
-      is punished nine times as heavily as being too high, so it settles where 90% of outcomes
-      fall below. Train three of them, at the tenth, fiftieth and ninetieth, and you have a low
-      bound, a most likely value, and a high bound.</p>
+    <p class="mt-3">One model for the whole network, not one per train, trained three times: at
+      the 10th, 50th and 90th percentile. That gives a low bound, a most likely time and a high
+      bound.</p>
 
     <div class="panel mt-6 px-5 py-5">
       <div class="flex items-start gap-3">
         <span class="lamp lamp-clear mt-1.5"></span>
-        <div>
-          <p class="!max-w-2xl font-semibold">The rule that governs every input</p>
-          <p class="mt-1.5 !max-w-2xl text-sm leading-relaxed text-ink-2">Features describe the
-            situation, never the identity. The train code is not an input. A service launched
-            next March would arrive as an unknown category, and a model that had learned "A218
-            runs two minutes down" would have nothing to say about it, or about the same service
-            after a renumbering.</p>
-          <p class="mt-2 !max-w-2xl text-sm leading-relaxed text-ink-2">What it uses instead:
-            delay accumulated upstream today, stops and minutes remaining, time of day, day of
-            week, and a route proxy. All twelve inputs exist for a train that started running
-            yesterday. The strongest by far is the delay at the previous stop, because lateness
-            carries forward along a journey.</p>
-        </div>
+        <p class="!max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">Inputs
+          describe the situation, never the identity.</b> The train code is not an input, so a
+          service launched next March, or renumbered, gets a prediction like any other.</p>
       </div>
     </div>
 
-    <details class="more">
-      <summary>The three models are trained separately, so what stops them disagreeing?</summary>
-      <div>
-        <p class="text-ink-2">Nothing forces them to agree, so occasionally the tenth percentile
-          comes out above the ninetieth. That is called quantile crossing. The fix is to sort the
-          three values at prediction time, which is provably no worse than leaving them
-          crossed.</p>
-        <p class="text-ink-2">There is also a rule about what is never allowed as an input: the
-          operator's own expected arrival. It is the baseline being compared against, so feeding
-          it in would make the comparison meaningless.</p>
-      </div>
-    </details>
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>How can a model learn a percentile?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>With lopsided penalties. An ordinary model is trained to be wrong by as little as
+            possible in both directions, which gives a middle. To learn the 90th percentile, being
+            too low is punished nine times as heavily as being too high, so the model settles
+            where 90% of outcomes fall below. This is called <b class="text-ink">quantile</b>
+            loss.</p>
+          <p>The models themselves are <b class="text-ink">gradient boosted trees</b>: many small
+            decision trees, each correcting what the ones before it got wrong.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>What does it look at?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Delay accumulated upstream today, stops and minutes remaining, time of day, day of
+            week, and a route proxy. All twelve inputs exist for a train that started running
+            yesterday. The strongest by far is the delay at the previous stop, because lateness
+            carries forward along a journey.</p>
+          <p>A model that had learned "A218 runs two minutes down" would have nothing to say about
+            a new service, which would arrive as an unknown category, or about the same service
+            after a renumbering.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>The three models are trained separately. What stops them disagreeing?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Nothing forces them to agree, so occasionally the 10th percentile comes out above the
+            90th. That is called quantile crossing. The three values are sorted at prediction
+            time, which is provably no worse than leaving them crossed.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Why is Irish Rail's own estimate not an input?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>It is the baseline being compared against, so feeding it in would make the comparison
+            meaningless.</p>
+        </div></details>
+    </div>
   </section>
 
   <!-- ══ 5 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="measured" class="mt-16">
     <h2 class="text-h2 font-extrabold">5. How it is measured</h2>
-    <p class="mt-3">The headline claim is a head to head against Irish Rail's own expected
-      arrival time. That is the right baseline because it is what a passenger would otherwise be
-      reading. Beating a naive guess would prove nothing.</p>
-    <p>Three rules make the comparison fair, and each exists because ignoring it produces a
-      flattering wrong number.</p>
-    <ul class="mt-3 list-disc pl-5">
-      <li><b>Matched events only.</b> A result counts only where both the model and the operator
-        produced a prediction for the same train, at the same station, at the same moment.
-        Comparing all of one against all of the other compares populations, not methods.</li>
-      <li><b>One result per event, not per poll.</b> A single arrival is polled about eighteen
-        times as the train approaches. Treating those as eighteen independent results inflates
-        the sample size roughly eighteenfold and makes noise look significant.</li>
-      <li><b>Matched precision.</b> The operator publishes to the minute and the model to the
-        second. Scoring second precision against a minute rounded baseline hands the model an
-        advantage it did not earn, so its answer is rounded to match before either is scored.</li>
-    </ul>
-    <p class="mt-4">A week of data, 20 to 26 July, was held back from the start and <b>not looked
-      at through any model change</b>. The analysis was written down and committed before the
-      week was opened, and it was opened once, on 10 September 2026: interval coverage 80.0%
-      against the 80.0% claimed, on 217,290 predictions the model had never seen. It cannot be
-      used again. A test set you have looked at is no longer a test set.</p>
+    <p class="mt-3">Head to head against Irish Rail's own expected arrival, the number a passenger
+      would otherwise be reading. Beating a naive guess would prove nothing.</p>
+    <p>One week of data, 20 to 26 July, was sealed from the start and opened once, on 10
+      September 2026: <b>80.0%</b> of arrivals inside the range against the 80.0% claimed, on
+      217,290 predictions the model had never seen.</p>
 
     <div class="panel mt-6 px-5 py-5">
       <div class="flex items-start gap-3">
         <span class="lamp lamp-clear mt-1.5"></span>
         <p class="!max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">Nothing is
-          reconstructed after the fact.</b> Every prediction is written to storage the moment it
-          is made, with a timestamp and the model version. The nightly scorer can read that log
-          and has no permission to write to it, and that is enforced by the AWS credentials the
-          job runs with rather than by anyone remembering. It is the difference between a claim
-          and a checkable claim.</p>
+          reconstructed after the fact.</b> Every prediction is logged the moment it is made, with
+          a timestamp and the model version. The nightly scorer can read that log and has no
+          permission to write to it, enforced by the AWS credentials it runs with.</p>
       </div>
+    </div>
+
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>What makes the comparison fair?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Three rules, each there because ignoring it produces a flattering wrong number.</p>
+          <ul class="list-disc pl-5">
+            <li><b class="text-ink">Matched events only.</b> A result counts only where both the
+              model and the operator produced a prediction for the same train, at the same
+              station, at the same moment. Comparing all of one against all of the other compares
+              populations, not methods.</li>
+            <li><b class="text-ink">One result per event, not per poll.</b> A single arrival is
+              polled about eighteen times as the train approaches. Counting those as eighteen
+              independent results inflates the sample size roughly eighteenfold and makes noise
+              look significant.</li>
+            <li><b class="text-ink">Matched precision.</b> The operator publishes to the minute
+              and the model to the second, so the model's answer is rounded to the minute before
+              either is scored.</li>
+          </ul>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Why can the sealed week only be used once?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>It was not looked at through any model change, and the analysis was written down and
+            committed before it was opened. Once opened, every later decision would be made
+            knowing the result. A test set that has been looked at is no longer a test set, so
+            any future held-out check needs new data.</p>
+        </div></details>
     </div>
   </section>
 
   <!-- ══ 6 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="running" class="mt-16">
     <h2 class="text-h2 font-extrabold">6. What is actually running</h2>
     <p class="mt-3">Everything is a scheduled function writing to object storage. There is no
-      database and no server that stays up: the read pattern is "give me one whole day", the write
-      pattern is append only, and neither needs one. Measured on 23 August 2026, before the
-      site was added, it cost about ten cents a month, almost all of it storage requests.</p>
+      database and no server that stays up.</p>
 
     <div class="panel mt-6 px-5 py-6">
       <svg class="diagram mx-auto max-w-md" viewBox="0 0 446 474" role="img"
@@ -316,68 +350,84 @@
       </svg>
     </div>
 
-    <details class="more">
-      <summary>Why is there a generator asking the service questions?</summary>
-      <div>
-        <p class="text-ink-2">Because almost nobody visits this site, and an accuracy page built
-          on a handful of the author's own test queries would be worthless. So a scheduled job
-          asks the live service a spread of questions every five minutes, one per lead band,
-          sampled across whatever is in service rather than favouring any route.</p>
-        <p class="text-ink-2">Those are real predictions, made before the outcome existed. They
-          are simply not anyone's. The accuracy page says so rather than implying traffic that
-          does not exist. Predictions requested by this site's boards carry a different source tag,
-          so the two can always be told apart.</p>
-      </div>
-    </details>
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>Why no database?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>The read pattern is "give me one whole day" and the write pattern is append only.
+            Neither needs one, and a database that stays up bills by the hour whether or not
+            anyone asks it anything.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>What does it cost to run?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Measured on 23 August 2026, before the site was added, about ten cents a month, almost
+            all of it storage requests.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Why is there a generator asking the service questions?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>An accuracy page built on a handful of the author's own test queries would be
+            worthless, and almost nobody visits this site. So a scheduled job asks the live service
+            a spread of questions every five minutes, one per lead band, sampled across whatever is
+            in service rather than favouring any route.</p>
+          <p>Those are real predictions, made before the outcome existed. They are simply not
+            anyone's, and the accuracy page says so. Predictions requested by this site's boards
+            carry a different source tag, so the two can always be told apart.</p>
+        </div></details>
+    </div>
   </section>
 
   <!-- ══ 7 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="limits" class="mt-16">
     <h2 class="text-h2 font-extrabold">7. What it cannot do</h2>
 
     <div class="panel mt-5 px-5 py-5">
       <div class="flex items-start gap-3">
         <span class="lamp lamp-danger mt-1.5"></span>
-        <div>
-          <p class="!max-w-2xl font-semibold">The ranges do not cover disruptions</p>
-          <p class="mt-1.5 !max-w-2xl text-sm leading-relaxed text-ink-2">On real delays over an
-            hour, coverage is <b class="text-ink">zero</b>, and it was zero for the previous model
-            too. When three Sligo line trains each lost 75 to 89 minutes in a
-            single stretch, the service had been asked sixteen times across those journeys, and
-            at every one of those moments the train was two to seven minutes late.</p>
-          <p class="mt-2 !max-w-2xl text-sm leading-relaxed text-ink-2">This is a limit of the
-            approach rather than a bug to be tuned out. A wider range would mean being wrong
-            about ordinary days to hedge against rare ones. The ranges are calibrated for
-            ordinary lateness.</p>
-        </div>
+        <p class="!max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">The ranges
+          do not cover disruptions.</b> On real delays over an hour, coverage is
+          <b class="text-ink">zero</b>, and it was zero for the previous model too.</p>
       </div>
     </div>
 
     <ul class="mt-5 list-disc pl-5">
-      <li><b>No upstream report, no prediction.</b> Every input is derived from where the train
-        has already been, so the service declines rather than guessing, and the decline rate is
-        published beside the accuracy rather than left out of it.</li>
-      <li><b>Coverage has two honest denominators.</b> Given a train actually in service, it
-        answers about nine times in ten. Standing in front of a station board the figure is far
-        lower, because only about four in ten board entries are trains that have already left.</li>
+      <li><b>No upstream report, no prediction.</b> The service declines rather than guessing,
+        and the decline rate is published beside the accuracy.</li>
+      <li><b>Fewer answers on a station board.</b> Given a train in service it answers about nine
+        times in ten, but only about four in ten board entries are trains that have already
+        left.</li>
       <li><b>Some lines are below the promise.</b> In the seven days to 8 September 2026 the
-        range held 67.1% of the time on the Cork corridor, 63.9% on the Kildare line and
-        56.8% on other intercity routes, against 80% claimed. What changed on those lines has
-        not been established. Coverage is
-        <a href="accuracy.html" class="text-clear underline underline-offset-2">published per
-        line</a> rather than blended into one number.</li>
-      <li><b>It is not a route planner.</b> No map, no accounts, no notifications. Each of those
-        costs a week and answers nothing this project set out to answer.</li>
+        range held 67.1% of the time on the Cork corridor, 63.9% on the Kildare line and 56.8% on
+        other intercity routes, against 80% claimed.
+        <a href="accuracy.html" class="text-clear underline underline-offset-2">Published per
+        line</a>.</li>
+      <li><b>It is not a route planner.</b> No map, no accounts, no notifications.</li>
     </ul>
+
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>Why can't it see a disruption coming?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>On 2 September 2026 three Sligo line trains each lost 75 to 89 minutes in a single
+            stretch. The service had been asked sixteen times across those journeys, and at every
+            one of those moments the train was two to seven minutes late. Nothing in "how late is
+            it now, how far is left to go" can see that coming.</p>
+          <p>A range wide enough to catch it would be wrong about ordinary days to hedge against
+            rare ones, so the ranges are calibrated for ordinary lateness.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>What changed on the lines below the promise?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>That has not been established. The retraining rule fired on those three groups, and
+            the ranges were not widened to hide it: coverage is published per line, recomputed
+            every night, rather than blended into one number.</p>
+        </div></details>
+    </div>
   </section>
 
   <!-- ══ 8 ═══════════════════════════════════════════════════════════════ -->
-  <section class="mt-14">
+  <section id="failures" class="mt-16">
     <h2 class="text-h2 font-extrabold">8. The thing that kept happening</h2>
     <p class="mt-3">Eleven separate failures in this project shared one shape. None raised an
-      error. None appeared in a log as a problem. Every one produced output that looked exactly
-      like a correct, unremarkable result, and every one was caught the same way: by taking a
-      number and asking what it should have been.</p>
+      error. Every one produced output that looked exactly like a correct, unremarkable result,
+      and every one was caught the same way: by taking a number and asking what it should have
+      been.</p>
 
     <div class="mt-6 overflow-x-auto">
       <table class="rec">
@@ -419,23 +469,24 @@
       </table>
     </div>
 
-    <p class="mt-5">Four of these were introduced by the author, after the system was working, while
-      writing up the others. The lesson is not "be more careful". It is that a system which works
-      and a system you can <i>tell</i> is working are different things, and most of the effort
-      here went into the second.</p>
+    <p class="mt-5">A system which works and a system you can <i>tell</i> is working are
+      different things, and most of the effort here went into the second.</p>
 
-    <details class="more">
-      <summary>The uncomfortable version of the question</summary>
-      <div>
-        <p class="text-ink-2">How many failures of this shape are still in the project,
-          undetected, right now?</p>
-        <p class="text-ink-2">Almost certainly some. The honest answer is that the count of
-          eleven is a count of the ones that were caught, and the only reason any of them were
-          caught is that each published number has a denominator attached to it and a check that
-          asks what it should have been. That is the design, and it is the argument for
-          publishing where the model loses rather than only where it wins.</p>
-      </div>
-    </details>
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>Where did these failures come from?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Four of them were introduced by the author, after the system was working, while
+            writing up the others. The lesson drawn was not "be more careful". It was to attach a
+            denominator and a check to every published number.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>How many are still in the project, undetected?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>Almost certainly some. Eleven is a count of the ones that were caught, and each was
+            caught only because the number it touched had a denominator attached and a check that
+            asked what it should have been. That is the design, and it is the argument for
+            publishing where the model loses rather than only where it wins.</p>
+        </div></details>
+    </div>
   </section>
 
 </main>

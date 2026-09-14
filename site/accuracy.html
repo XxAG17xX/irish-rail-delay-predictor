@@ -46,24 +46,27 @@
       <div class="flex items-start gap-3">
         <span class="lamp lamp-out mt-1.5"></span>
         <p class="max-w-2xl text-sm leading-relaxed text-ink-2"><b class="text-ink">These are
-          scheduled samples, not visitor traffic.</b> Almost nobody visits this site, so a
-          scheduled job asks the live service a spread of questions every five minutes, one per
-          lead band, sampled across whatever is in service rather than favouring any route.
-          Every prediction below is real and was logged before the arrival happened. Almost none
-          of them is anyone's actual query.</p>
+          scheduled samples, not visitor traffic.</b> A scheduled job asks the live service a
+          spread of questions every five minutes, across whatever is in service. Every prediction
+          below is real and was logged before the arrival happened.</p>
       </div>
     </div>
 
+    <nav class="toc mt-8" aria-label="Sections">
+      <a href="#sealed">The sealed week</a>
+      <a href="#lines">By line</a>
+      <a href="#days">Day by day</a>
+      <a href="#ahead">How far ahead</a>
+      <a href="#answers">How often it answers</a>
+      <a href="#launch">Since launch</a>
+    </nav>
+
     <!-- The sealed week. Static, not from accuracy.json: it is a one-off measurement on
          fixed historical data and will never change. -->
+    <section id="sealed">
     <h2 class="mt-14 text-h2 font-extrabold">The week nobody looked at</h2>
-    <p class="mt-3 max-w-2xl text-ink-2">Everything above is live. This is different, and it is
-      the strongest number here.</p>
-    <p class="mt-3 max-w-2xl text-ink-2">In June the data was cut three ways: one part to learn
-      from, one part to check every decision against, and one week sealed and never opened.
-      Every choice made since was tested against the middle one, and each of those looks leaks
-      a little into the result. The sealed week had none of that done to it. It was opened on
-      10 September 2026, once, against a plan written down beforehand.</p>
+    <p class="mt-3 max-w-2xl text-ink-2">The strongest number here. One week of data was sealed
+      in June and opened once, on 10 September 2026, against a plan written down beforehand.</p>
 
     <div class="mt-5 overflow-x-auto">
       <table class="rec">
@@ -84,28 +87,43 @@
         <span class="lamp lamp-clear mt-1.5 shrink-0"></span>
         <div class="max-w-2xl">
           <h3 class="text-base font-bold">Why this settles something</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">The range claims 80%. On data the
-            model had never seen it delivered <b class="text-ink">80.0%</b>, and the misses split
-            10.4% below the low bound against 9.6% above, where 10 and 10 is perfect. A model can
-            reach 80% with badly lopsided tails. This one does not.</p>
-          <p class="mt-2 text-sm leading-relaxed text-ink-2">That matters because live coverage
-            was 75.1% over 2 to 8 September 2026. There were two possible explanations: the model was never as
-            calibrated as claimed, or the railway changed after it was trained. The sealed week
-            rules out the first, which leaves the second.</p>
-          <p class="mt-2 text-sm leading-relaxed text-ink-3">It also beats the naive predictor
-            that assumes the current delay simply carries forward by 32.1%, and the known
-            weakness reappears unchanged: coverage falls to 73.3% when asked more than an hour
-            ahead. No operator comparison is possible for that week, because their estimate
-            exists only live and cannot be recovered afterwards.</p>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">On data the model had never seen,
+            the range held <b class="text-ink">80.0%</b> against 80% claimed. Live coverage was
+            75.1% over 2 to 8 September 2026. So the model was calibrated when trained, which
+            leaves the railway having changed since.</p>
         </div>
       </div>
     </div>
 
+    <div class="qa mt-6">
+      <details><summary><span class="lamp lamp-out"></span>What does "sealed" mean here?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>In June the data was cut three ways: one part to learn from, one part to check every
+            decision against, and one week sealed and never opened. Every choice made since was
+            tested against the middle part, and each of those looks leaks a little into the
+            result. The sealed week had none of that done to it.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Were the misses lopsided?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>No. They split 10.4% below the low bound against 9.6% above, where 10 and 10 is
+            perfect. A model can reach 80% with badly lopsided tails. This one does not.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>How did it do against a simpler predictor, and further ahead?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>It beats the naive predictor that assumes the current delay simply carries forward by
+            32.1%, and the known weakness reappears unchanged: coverage falls to 73.3% when asked
+            more than an hour ahead.</p>
+          <p>No operator comparison is possible for that week, because Irish Rail's estimate exists
+            only live and cannot be recovered afterwards.</p>
+        </div></details>
+    </div>
+    </section>
+
     <!-- ══ by line ═══════════════════════════════════════════════════════ -->
+    <section id="lines">
     <h2 class="mt-14 text-h2 font-extrabold">By line</h2>
-    <p class="mt-3 max-w-2xl text-ink-2">Blended into a single number this looks like a small
-      shortfall. Split by line it is uneven: some lines sit close to what the range claims and
-      others well below it. Each line is listed on its own below.</p>
+    <p class="mt-3 max-w-2xl text-ink-2">Blended into one number this looks like a small
+      shortfall. Split by line it is uneven, so each line is listed on its own.</p>
 
     <div class="mt-5 overflow-x-auto">
       <table class="rec">
@@ -116,35 +134,40 @@
         <tbody id="groups"></tbody>
       </table>
     </div>
-    <p class="mt-3 text-sm text-ink-3">The mark on each section of track is the 80% the range
-      claims. Amber is below the 70% at which the retraining policy requires investigation.
-      <span class="text-ink-2">Stations off the board sample</span> shows no operator comparison
-      because the poller archives only 30 stations, so there is no operator estimate on record to
-      compare against. Those predictions are still scored against the real arrival.</p>
+
+    <div class="qa mt-5">
+      <details><summary><span class="lamp lamp-out"></span>How to read this table<span class="chev"></span></summary>
+        <div class="ans">
+          <p>The mark on each section of track is the 80% the range claims. Amber is below the 70%
+            at which the retraining policy requires investigation.</p>
+          <p><b class="text-ink">Stations off the board sample</b> shows no operator comparison
+            because the poller archives only 30 stations, so there is no operator estimate on record
+            to compare against. Those predictions are still scored against the real arrival.</p>
+        </div></details>
+    </div>
 
     <div class="panel mt-6 px-5 py-5">
       <div class="flex items-start gap-3">
         <span class="lamp lamp-caution mt-1.5"></span>
         <div class="max-w-2xl">
           <h3 class="text-base font-bold">The rule fired, and nothing was patched</h3>
-          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">It was written in advance: if
-            coverage on any line stays below 70% for a week, something has to be done. On 8
-            September it fired on three groups, the Cork corridor, the Kildare line and other
-            intercity routes, six weeks after the model was trained, while the DART and the
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-2">A rule written in advance says a
+            line below 70% for a week needs action. On 8 September 2026 it fired on three groups,
+            the Cork corridor, the Kildare line and other intercity routes, while the DART and the
             Dublin hubs held. What changed on those lines has not been established.</p>
-          <p class="mt-2 text-sm leading-relaxed text-ink-2">The ranges on those lines could have
-            been widened until the number came back to 80%. That would have produced a better
-            looking page and hidden the shift instead of explaining it. So the number is
-            published per line instead, recomputed every night.</p>
+          <p class="mt-2 text-sm leading-relaxed text-ink-2">The ranges could have been widened
+            until the number came back to 80%. That would have hidden the shift instead of
+            explaining it, so the number is published per line, recomputed every night.</p>
         </div>
       </div>
     </div>
+    </section>
 
     <!-- ══ day by day ════════════════════════════════════════════════════ -->
+    <section id="days">
     <h2 class="mt-14 text-h2 font-extrabold">Day by day</h2>
-    <p class="mt-3 max-w-2xl text-ink-2">Average error against the operator's own expected
-      arrival, on matched events only: the same train, the same station, the same moment, with
-      both answers rounded to the minute so neither gets an unearned edge.</p>
+    <p class="mt-3 max-w-2xl text-ink-2">Average error against Irish Rail's own expected arrival,
+      on matched events only.</p>
 
     <div class="panel mt-5 px-5 py-5">
       <div id="chart-mae"></div>
@@ -171,19 +194,27 @@
         <tbody id="daily"></tbody>
       </table>
     </div>
-    <p class="mt-3 max-w-3xl text-sm text-ink-3">A dagger marks a day with fewer than 100 matched
-      events, which is noise rather than a trend; those days stay in the table with their sample
-      size and out of the chart. <b class="text-ink-2">Scored</b> counts every prediction with a
-      real arrival to check against. <b class="text-ink-2">Matched</b> counts the subset where the
-      operator also published an estimate for the same train, station and moment, which is the
-      only fair comparison.</p>
+
+    <div class="qa mt-5">
+      <details><summary><span class="lamp lamp-out"></span>What do Scored, Matched and the dagger mean?<span class="chev"></span></summary>
+        <div class="ans">
+          <p><b class="text-ink">Scored</b> counts every prediction with a real arrival to check
+            against. <b class="text-ink">Matched</b> counts the subset where the operator also
+            published an estimate for the same train, station and moment, with both answers
+            rounded to the minute so neither gets an unearned edge. That is the only fair
+            comparison.</p>
+          <p>A dagger marks a day with fewer than 100 matched events, which is noise rather than a
+            trend. Those days stay in the table with their sample size and out of the chart.</p>
+        </div></details>
+    </div>
+    </section>
 
     <!-- ══ by horizon ════════════════════════════════════════════════════ -->
+    <section id="ahead">
     <h2 class="mt-14 text-h2 font-extrabold">By how far ahead you ask</h2>
-    <p class="mt-3 max-w-2xl text-ink-2">Asking about the next stop is a different problem from
-      asking about one an hour away, and the numbers should show that. They do: the error roughly
-      triples across the range and coverage decays. A model whose ranges did not widen with the
-      horizon would be the suspicious one.</p>
+    <p class="mt-3 max-w-2xl text-ink-2">The next stop is an easier question than one an hour
+      away. The error roughly triples across the range and coverage decays, which is what an
+      honest model should show.</p>
 
     <div class="mt-5 overflow-x-auto">
       <table class="rec">
@@ -201,22 +232,33 @@
         <div class="max-w-2xl">
           <h3 class="text-base font-bold">On real delays over an hour, coverage is zero</h3>
           <p class="mt-1.5 text-sm leading-relaxed text-ink-2">Not low. Zero. It was zero for the
-            previous model too, which appeared to cover a quarter of them until the labels behind
-            that figure turned out to belong to other trains.</p>
-          <p class="mt-2 text-sm leading-relaxed text-ink-2">When a train loses seventy five
-            minutes in one stretch, it was two to seven minutes late at every moment the service
-            was asked. Nothing in "how late is it now, how far is left to go" can see that
-            coming. The ranges are calibrated for ordinary lateness, and a wider one would mean
-            being wrong about ordinary days to hedge against rare ones.</p>
+            previous model too.</p>
         </div>
       </div>
     </div>
 
+    <div class="qa mt-5">
+      <details><summary><span class="lamp lamp-out"></span>Why can't it see those coming?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>When three Sligo line trains lost 75 to 89 minutes in one stretch on 2 September
+            2026, each was two to seven minutes late at every moment the service was asked.
+            Nothing in "how late is it now, how far is left to go" can see that coming. A range
+            wide enough to catch it would be wrong about ordinary days to hedge against rare
+            ones.</p>
+        </div></details>
+      <details><summary><span class="lamp lamp-out"></span>Didn't the previous model cover some?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>It appeared to cover a quarter of them, until the labels behind that figure turned
+            out to belong to other trains.</p>
+        </div></details>
+    </div>
+    </section>
+
     <!-- ══ coverage ══════════════════════════════════════════════════════ -->
+    <section id="answers">
     <h2 class="mt-14 text-h2 font-extrabold">How often it answers at all</h2>
-    <p class="mt-3 max-w-2xl text-ink-2">Accuracy without coverage is the misleading half of the
-      story. A system that answers rarely and well is not the same product as one that answers
-      often and well.</p>
+    <p class="mt-3 max-w-2xl text-ink-2">A system that answers rarely and well is a different
+      product from one that answers often and well.</p>
 
     <p id="coverage" class="mt-5 max-w-3xl text-lg leading-relaxed"></p>
 
@@ -226,16 +268,25 @@
         <tbody id="states"></tbody>
       </table>
     </div>
-    <p class="mt-3 max-w-3xl text-sm text-ink-3">A prediction that could not be scored is reported
-      here, not dropped. <i>No arrival recorded</i> means the operator never logged one for that
-      stop. <i>Arrival identical to the timetable</i> is the signature of a scheduled time echoed
-      back as though it were an observation, which is the data problem that shaped this whole
-      project.</p>
+
+    <div class="qa mt-5">
+      <details><summary><span class="lamp lamp-out"></span>What do the outcomes mean?<span class="chev"></span></summary>
+        <div class="ans">
+          <p>A prediction that could not be scored is reported here, not dropped.
+            <i>No arrival recorded</i> means the operator never logged one for that stop.
+            <i>Arrival identical to the timetable</i> is the signature of a scheduled time echoed
+            back as though it were an observation, which is the data problem that shaped this whole
+            project.</p>
+        </div></details>
+    </div>
+    </section>
 
     <!-- ══ since launch ══════════════════════════════════════════════════ -->
+    <section id="launch">
     <h2 class="mt-14 text-h2 font-extrabold">Since launch</h2>
     <p id="cumulative" class="mt-3 max-w-3xl text-lg leading-relaxed"></p>
     <p id="models" class="mt-3 max-w-3xl text-sm text-ink-3"></p>
+    </section>
 
   </div>
 
