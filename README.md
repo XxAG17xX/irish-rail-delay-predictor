@@ -56,10 +56,11 @@ shortfall is not evenly spread.**
 | `commuter_kildare` | **62.9%** |
 | `intercity_other` | **57.0%** |
 
-A single blended figure would hide two corridors in the sixties, so coverage is always
-published per group. A degradation trigger written in advance fired on those corridors, and
-the decision was to publish the degradation rather than widen the intervals until the number
-looked better ([D64](docs/decisions.md)).
+A single blended figure would hide the lines in the fifties and sixties, so coverage is always
+published per group. A degradation trigger written in advance fired on 8 September, and the
+decision was to publish the degradation rather than widen the intervals until the number
+looked better ([D64](docs/decisions.md)). What changed on those lines has not been
+established.
 
 **The intervals cover 0% of real delays over an hour.** Each of those trains was a few minutes
 late at the moment of asking, and nothing in how late a train is now can see a disruption that
@@ -168,7 +169,7 @@ site/      the four pages; Tailwind compiled ahead of time, no framework
 docs/      the write-ups below
 ```
 
-- **[docs/decisions.md](docs/decisions.md).** 82 decisions: what was chosen, what was rejected
+- **[docs/decisions.md](docs/decisions.md).** 83 decisions: what was chosen, what was rejected
   and why. Opens with a guide and the ten worth a stranger's time.
 - [docs/story.md](docs/story.md). The whole project as a narrative, for someone who does not
   code and does not know trains.

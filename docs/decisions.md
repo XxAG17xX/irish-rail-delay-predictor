@@ -1,6 +1,6 @@
 # Decision log
 
-Eighty-two entries, one per significant design choice in RailCast: what was decided,
+Eighty-three entries, one per significant design choice in RailCast: what was decided,
 what else was on the table, why it lost, and the date. The file is append-only. An entry is
 never edited to reflect a changed mind, because the value of a dated record is that it was
 written as the work happened; a later entry supersedes it and both say so. A wrong *number*
@@ -19,7 +19,7 @@ Three conventions worth knowing before reading:
 - Code comments in this repo point at entry numbers rather than repeating the argument. A
   comment reading `see D52` means the reasoning is here, in full, once.
 - Nobody reads this file end to end and nobody is meant to. **Start here** is ten entries
-  that stand alone; the index below covers all eighty-two, one line each.
+  that stand alone; the index below covers all eighty-three, one line each.
 - **Dates mean different things either side of D11.** D1 to D10 were written together on
   2026-07-25 and cover decisions made up to that point, a few settled slightly earlier the
   same week. From D11 on, the date is the day the decision was actually made.
@@ -68,8 +68,8 @@ sharpest limitation: on real delays over an hour neither model covers a single c
 old one's apparent competence there was garbage labels matched by garbage-wide intervals.
 
 **[D64](#d64--the-coverage-trigger-fired-on-two-corridors-and-the-answer-is-to-publish-it-rather-than-patch-it), a pre-registered trigger firing.** The retraining policy fixed in advance what
-counts as the intervals failing their promise. It fired six weeks after training, on two
-corridors that share track, while DART and the Dublin hubs held, and the decision was to
+counts as the intervals failing their promise. It fired six weeks after training, on three
+station groups while DART and the Dublin hubs held, and the decision was to
 publish the degradation rather than widen the intervals until the number looked right. The
 accuracy page showed **62.9%** on the Kildare corridor beside the nominal 80% in the week to
 9 September. The point
@@ -216,6 +216,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D80](#d80--cloudfront-access-logs-a-separate-private-bucket-acls-on-30-days) CloudFront access logs: a separate private bucket, ACLs on, 30 days. The traffic alarm could say something was hammering the endpoint and nothing could say who; IP addresses are personal data, so they expire.
 - [D81](#d81--a-train-still-running-after-midnight-is-yesterdays-service) A train still running after midnight is yesterday's service. Journeys resolve their own TrainDate, and the prediction log files each row under its own date rather than the batch's first.
 - [D82](#d82--the-method-steps-recede-by-colour-and-the-audit-is-allowed-to-fail-a-run) The method steps recede by colour, and the audit is allowed to fail a run. Opacity dimming failed WCAG contrast on every audit while continue-on-error kept each run green.
+- [D83](#d83--the-shared-track-explanation-for-the-coverage-drop-was-never-measured) The shared-track explanation for the coverage drop was never measured. Withdrawn: `intercity_other` fired too, and a permanent property of the track cannot explain a change over time.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -2324,6 +2325,10 @@ is not enough to say what. Misses are skewed upward — 12.9% / 14.3% above q90 
 / 10.2% below, where offline was balanced at 9.6 / 10.2 — so trains are running later than
 the interval's top more often than they did in July.
 
+**Corrected 2026-09-14 (D83).** Sharing track is a property of the rails, not a measured cause
+of this change, and `intercity_other` fell as well. The inference in this paragraph is
+withdrawn.
+
 **One population difference that cannot be checked from the logs.** Offline evaluation
 requires `AutoArrival=1` at the vantage *and* the target. Live scoring requires it only at
 the target; the generator's vantage selection does not look at the flag, and vantage
@@ -3045,6 +3050,11 @@ baseline, and it held. The intervals are miscalibrated; the point estimates are 
 than they were. Those are separate properties and only one of them moved, which is itself
 evidence that this is a spread problem rather than a model that has gone bad.
 
+**Corrected 2026-09-14 (D83).** The diagnosis above, a change confined to shared track with the
+rest of the network unaffected, was never measured, and this entry's own table shows
+`intercity_other` firing too. The causal reading is withdrawn. The per-group coverage and the
+decision to publish stand.
+
 **Date.** 2026-09-08, amended 2026-09-11
 
 ---
@@ -3601,6 +3611,9 @@ unseen data means the 80.2% was genuine, so **the live 75.1% is distribution shi
 argued that from the shape of the evidence, two shared-track corridors moving while the rest
 of the network held. This confirms it from a direction D64 could not reach.
 
+**Corrected 2026-09-14 (D83).** The shared-track reading of D64 cited here was never measured
+and is withdrawn. The test-week result stands without it.
+
 **The calibration is better than "80% overall" suggests.** The misses split
 **10.4% below the low bound and 9.6% above the high bound**, against 10% and 10% expected. A
 model can hit 80% coverage with badly lopsided tails; this one does not.
@@ -4007,3 +4020,42 @@ still only warns. Run 14 passed all three jobs, the first run where a pass meant
 that still passes, and check both states.
 
 **Date.** 2026-09-13
+
+---
+
+## D83 — The shared-track explanation for the coverage drop was never measured
+
+**Why this matters.** The site, the story and three decision entries said the coverage drop sat
+on two corridors that share track, with the rest of the network unaffected. Nobody measured
+that, and the project's own numbers contradict part of it.
+
+**What was claimed.** D56 noted that the Cork corridor and the Kildare line share track, a fact
+D29 recorded when it chose Kildare for that reason, and read the coverage drop as a change on
+that stretch of railway. D64 made it the diagnosis: a change confined to shared infrastructure,
+with the rest of the network unaffected. D74, `docs/story.md`, and the landing, how-it-works and
+accuracy pages carried it forward.
+
+**Why it does not hold.**
+
+- D64's own table shows a third group firing: `intercity_other` at 56.7% for the week to
+  7 September, below 70% and the lowest of all, and not one of the two corridors. "The rest of
+  the network unaffected" was contradicted by the table that stated it.
+- Sharing track is a permanent property. Both corridors covered 79% in July (D56:
+  `commuter_kildare` 79.3%, `intercity_cork_corridor` 79.1% on offline validation). A fixed
+  property cannot by itself explain a change between July and September. Only an event on that
+  track could, and none was identified.
+- No test was run that could separate a shared-track cause from any other. Engineering works, a
+  speed restriction or a timetable change were named in D64 as candidates, and none was checked.
+
+**What stands.** The coverage drop is real, persistent (D64 amendment) and published per group.
+The sealed test week (D74) shows the intervals were calibrated as claimed on unseen July data.
+That conclusion does not depend on the shared-track reading.
+
+**Decision.** Withdraw the causal claim everywhere it was published. State coverage per group
+with dates, `intercity_other` included, and attach no cause. D56, D64 and D74 carry dated notes
+pointing here.
+
+**Found by** an audit in a separate session, restated in a defect brief, and verified against
+D64's table and D56's July figures before anything was edited.
+
+**Date.** 2026-09-14

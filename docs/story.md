@@ -287,13 +287,13 @@ and the spread is the finding:
 
 A retraining rule written months in advance said that if coverage fell below 70% on any
 station group with enough scored events, and stayed there for a week, something had to be
-done. On 8 September it fired, on the Cork corridor and the Kildare line and nowhere else.
-Those two share track. A change confined to shared rails, six weeks after training, with the
-DART and the Dublin hubs steady, reads as something that happened on that stretch of railway
-rather than as a model that has gone bad.
+done. On 8 September it fired on three groups: the Cork corridor and the Kildare line, and
+other intercity routes on their weekly count, while the DART and the Dublin hubs held. What
+changed on those lines has not been established. The sealed week in section 10 is what shows
+the model itself was calibrated as claimed.
 
 The choice at that point is the most revealing one in the project. The ranges could have been
-widened on those two lines until the number returned to 80%. That would produce a better
+widened on those lines until the number returned to 80%. That would produce a better
 scoreboard and destroy the evidence: the point of writing the rule in advance was to find out
 whether it would ever fire, and quietly patching it away answers the question by deleting it.
 So coverage is published per group, beside the 80% it claims, and the reasoning is in D64.
@@ -339,9 +339,9 @@ lopsided, and the model is **32.1%** better than persistence, the honest floor f
 
 Test came out marginally better than validation, which is the opposite of the overfitting
 signature. That answers the question: the calibration was genuine, so the live shortfall is
-the railway changing and not a model that was never as good as advertised. D64 had argued the
-same thing from the shape of the evidence, two shared-track corridors moving while the rest of
-the network held; the sealed week confirms it from a direction D64 could not reach.
+the railway changing and not a model that was never as good as advertised. D64 had read the
+same thing into which groups fired, but that reading was never measured and has been withdrawn
+(D83); the sealed week does not depend on it.
 
 The week is now spent. It cannot be used again, and no number in this project will ever be
 tuned against it. Full result in D74, raw output kept verbatim in
@@ -402,5 +402,5 @@ introduced after the system was already working, while writing up the others. Th
 "be more careful". It is that a system which works and a system that can be *shown* to be
 working are different things, and most of the effort here went into the second.
 
-The reasoning behind every decision above is in `docs/decisions.md`, 82 entries, including the
+The reasoning behind every decision above is in `docs/decisions.md`, 83 entries, including the
 ones that were wrong.
