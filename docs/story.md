@@ -135,7 +135,9 @@ Irish Rail's own expected arrival, the number on the station board, and beating 
 beating the operator using the operator's own data. On matched events (same train, same
 station, same moment, both producing a prediction), the offline measurement was **80.1s**
 average error against **109.7s**, a **27%** improvement over **9,077** comparisons spanning
-**2,654** distinct events.
+**2,654** distinct events, on station boards captured on 1 and 2 August. It covers only trains
+RailCast would answer, those already running and reported somewhere; the operator also
+answered trains that had not reported, and those are outside it.
 
 Four ways that comparison could have been rigged, each handled. The operator estimated at a
 specific instant, so the model may use only what was knowable then, never a stop that reported
@@ -270,7 +272,8 @@ September,
 wins 11,154, the operator wins 5,705 and 3,902 are ties. The advantage holds across horizons:
 **27.8%** at 0 to 5 minutes ahead (58.3s against 80.7s over 5,923 matched) and **23.6%** at 15
 to 30 minutes (100.7s against 131.8s over 4,695). The offline claim was 27% over 9,077
-comparisons. Live, on three times the sample and against a live baseline, it held.
+comparisons. Live, on three times the sample and against a live baseline, it held. All of these cover only
+the trains RailCast answered, 92.9% of sampled in-service trains that week (section 7).
 
 The intervals did not. Over 3 to 9 September coverage was **75.0%** against a nominal 80%,
 and the spread is the finding:

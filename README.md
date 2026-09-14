@@ -20,7 +20,10 @@ CloudWatch, CloudFormation and SAM, GitHub Actions with OIDC, Tailwind CSS and T
 ## Results
 
 Against Irish Rail's own `ExpectedArrival`, on matched events where both answered for the same
-train, station and moment:
+train, station and moment. These cover only trains RailCast answers: ones already running that
+have reported at an earlier stop. The operator also answers trains that have not, and those are
+outside the comparison. In the week of 3 to 9 September 2026 RailCast answered 92.9% of
+sampled in-service trains.
 
 | | RailCast | Irish Rail | Improvement | Matched events |
 |---|---|---|---|---|

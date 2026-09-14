@@ -172,6 +172,8 @@ function render(a) {
       text:
         " matched predictions, " +
         `${secs(r.head_to_head.model_mae_sec)} of average error against ${secs(r.head_to_head.operator_mae_sec)}. ` +
+        `Those are only trains RailCast answers, ${pct(r.coverage.in_service_pct)} of sampled in-service trains; ` +
+        "the operator also answers trains that have not reported yet. " +
         "The arrival landed inside the range ",
     }),
     el("b", { class: r.interval_coverage_pct < NOMINAL ? "text-caution" : "text-clear",
@@ -325,7 +327,7 @@ function render(a) {
     el("b", { class: "text-clear", text: pct(c.head_to_head.improvement_pct) }),
     el("span", {
       text:
-        ` closer overall. Coverage across the whole period is ${pct(c.interval_coverage.interval_coverage_pct)} ` +
+        ` closer overall, counting only trains RailCast answered. Coverage across the whole period is ${pct(c.interval_coverage.interval_coverage_pct)} ` +
         `against the ${NOMINAL}% claimed.`,
     })
   );
