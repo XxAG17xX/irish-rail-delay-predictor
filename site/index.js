@@ -89,17 +89,20 @@ watchSteps(document.querySelectorAll(".step"), (i) => paint(i));
 /* ── the lead control ───────────────────────────────────────────────────── */
 
 /**
- * Measured over the seven days to 2026-09-08, one row per lead band. These are the same
- * figures accuracy.json carries under rolling.by_lead_band; they are inlined here so the
- * landing page needs no fetch, and they change only when the rollup is regenerated.
- * @type {{name: string, mae: number, op: number, better: number, cov: number, n: number}[]}
+ * Measured over the seven days to 2026-09-08, one row per lead band, from that day's
+ * accuracy.json (rolling.by_lead_band); inlined so the landing page needs no fetch.
+ * `mae`, `op` and `better` are the matched set: RailCast and the operator on the same events.
+ * `cov` and `n` cover every scored prediction in the band. The first version put the
+ * all-scored error beside the matched operator error, so the hour-plus band read 194.9s
+ * against 193.0s while claiming +23.5%.
+ * @type {{name: string, mae: number, op: number, better: number, matched: number, cov: number, n: number}[]}
  */
 const BANDS = [
-  { name: "the next 5 minutes", mae: 59.7, op: 79.2, better: 28.2, cov: 75.7, n: 27304 },
-  { name: "5 to 15 minutes", mae: 82.9, op: 109.2, better: 29.4, cov: 75.9, n: 24465 },
-  { name: "15 to 30 minutes", mae: 111.1, op: 131.4, better: 25.2, cov: 76.6, n: 19571 },
-  { name: "30 to 60 minutes", mae: 140.9, op: 148.7, better: 20.7, cov: 73.4, n: 12856 },
-  { name: "an hour or more", mae: 194.9, op: 193.0, better: 23.5, cov: 65.7, n: 4340 },
+  { name: "the next 5 minutes", mae: 56.8, op: 79.2, better: 28.2, matched: 6078, cov: 75.7, n: 27304 },
+  { name: "5 to 15 minutes", mae: 77.1, op: 109.2, better: 29.4, matched: 5574, cov: 75.9, n: 24465 },
+  { name: "15 to 30 minutes", mae: 98.3, op: 131.4, better: 25.2, matched: 4778, cov: 76.6, n: 19571 },
+  { name: "30 to 60 minutes", mae: 117.9, op: 148.7, better: 20.7, matched: 3219, cov: 73.4, n: 12856 },
+  { name: "an hour or more", mae: 147.7, op: 193.0, better: 23.5, matched: 1133, cov: 65.7, n: 4340 },
 ];
 
 const lead = /** @type {HTMLInputElement} */ (need("lead"));

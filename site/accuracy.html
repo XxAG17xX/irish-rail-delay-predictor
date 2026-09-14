@@ -71,7 +71,7 @@
           <tr><th></th><th>Checked against</th><th>Sealed week</th><th>Live now</th></tr>
         </thead>
         <tbody>
-          <tr><td>Average error</td><td>59.7s</td><td class="over">58.3s</td><td>86.2s</td></tr>
+          <tr><td>Average error</td><td>59.7s</td><td class="over">58.3s</td><td>95.9s</td></tr>
           <tr><td>Median error</td><td>29.0s</td><td class="over">29.1s</td><td>48s</td></tr>
           <tr><td>Inside the range</td><td>80.2%</td><td class="over">80.0%</td><td class="under">75.1%</td></tr>
           <tr><td>Predictions</td><td>217,653</td><td>217,290</td><td>88,576</td></tr>
@@ -110,7 +110,7 @@
     <div class="mt-5 overflow-x-auto">
       <table class="rec">
         <thead>
-          <tr><th>Line</th><th>Scored</th><th>Error</th><th>vs operator</th><th>Coverage</th>
+          <tr><th>Line</th><th>Scored</th><th>Error, all scored</th><th>vs operator, matched</th><th>Coverage</th>
               <th class="hidden md:table-cell">against 80% claimed</th></tr>
         </thead>
         <tbody id="groups"></tbody>
@@ -189,8 +189,8 @@
     <div class="mt-5 overflow-x-auto">
       <table class="rec">
         <thead>
-          <tr><th>Asked</th><th>Scored</th><th>Error</th><th>Operator</th><th>Better by</th>
-              <th>Coverage</th></tr>
+          <tr><th>Asked</th><th>Scored</th><th>Matched</th><th>RailCast</th><th>Operator</th>
+              <th>Better by</th><th>Coverage</th></tr>
         </thead>
         <tbody id="bands"></tbody>
       </table>

@@ -274,7 +274,8 @@ function render(a) {
       return el("tr", {}, [
         el("td", { text: b.replace("-", " to ").replace("+", " or more") + " ahead" }),
         el("td", { text: int(g.accuracy.n) }),
-        el("td", { text: secs(g.accuracy.mae_sec) }),
+        el("td", { text: int(g.head_to_head.matched_events) }),
+        el("td", { text: secs(g.head_to_head.model_mae_sec) }),
         el("td", { text: secs(g.head_to_head.operator_mae_sec) }),
         el("td", {
           class: g.head_to_head.improvement_pct >= 0 ? "over" : "under",
