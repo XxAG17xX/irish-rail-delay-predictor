@@ -24,7 +24,7 @@ train, station and moment:
 
 | | RailCast | Irish Rail | Improvement | Matched events |
 |---|---|---|---|---|
-| Held-out validation | 80.1s | 109.7s | **27%** | 9,077 |
+| Offline, boards of 1 to 2 Aug 2026 | 80.1s | 109.7s | **27%** | 9,077 |
 | Live, launch to 9 Sept 2026 | 86.8s | 116.8s | **25.7%** | 27,984 |
 | Live, 3 to 9 Sept 2026 | 88.5s | 117.7s | 24.8% | 20,761 |
 
@@ -35,7 +35,7 @@ figure each morning.
 **A sealed test week.** One week of July was held out at the start and not looked at through
 any model change. An analysis plan was committed first, then the week was opened once, on
 2026-09-10: MAE **58.3s** on **217,290** unseen predictions, interval coverage **80.0%**
-against the 80.0% claimed, misses split 10.4% above and 9.6% below, and **32.1%** better than
+against the 80.0% claimed, misses split 10.4% below the range and 9.6% above, and **32.1%** better than
 a persistence baseline. The intervals were calibrated as claimed, which is why the shortfall
 below reads as the railway changing rather than the model being optimistic.
 
