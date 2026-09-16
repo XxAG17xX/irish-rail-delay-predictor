@@ -3,7 +3,9 @@
 #
 #   pip install -r requirements-dev.txt
 #
-# Nothing here is imported by src/ or scripts/, and nothing here ships to Lambda. That is
+# Nothing here ships to Lambda, and nothing here is imported by src/. The one import is
+# scripts/make_og_image.py, which redraws the link preview card and runs on a laptop. That
+# is
 # the whole reason for the split: cfn-lint alone accounts for six of these packages, and
 # with them mixed into requirements.txt it looked as though the project used a computer
 # algebra system.
@@ -22,3 +24,6 @@ networkx==3.6.1
 PyYAML==6.0.3
 regex==2026.7.19
 sympy==1.14.0
+
+# Draws site/og.png, the link preview card. Laptop only: the card is committed.
+pillow==12.3.0
