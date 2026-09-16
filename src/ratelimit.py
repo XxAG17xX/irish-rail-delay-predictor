@@ -16,8 +16,8 @@ when that container is recycled, so a caller spread across several concurrent co
 gets several buckets. That is a real ceiling and it is the right trade anyway:
 
 - it costs nothing, adds no service, and cannot itself fail;
-- the account's concurrency limit is 10, so the worst case is bounded at roughly ten times
-  the per-container rate rather than unbounded;
+- the public function reserves 5 concurrent executions (D78), so the worst case is bounded
+  at roughly five times the per-container rate rather than unbounded;
 - the second bucket below is global to the container and caps outbound fan-out regardless
   of how many distinct callers are involved, which is the part Irish Rail actually feels.
 
