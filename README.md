@@ -9,6 +9,8 @@ answers with an **80% range rather than a single number**.
 > Kildare, Portarlington and Portlaoise. Asked about Thurles, the service answers: expected
 > 17:07 to 17:14, most likely 17:09, 80% confidence.
 
+[![The landing page: one journey, with the shaded section where the arrival is expected to land](docs/img/landing.png)](https://dc9icf7494up8.cloudfront.net)
+
 One model for the whole network, trained on the public [Irish Rail Realtime
 API](http://api.irishrail.ie/realtime/). Every prediction is written down before the train
 arrives and scored against the real arrival the following night, so the accuracy page is a
@@ -48,6 +50,8 @@ The live site shows these beside the good numbers.
 
 **Interval coverage was 75.0% against a nominal 80% over 3 to 9 September 2026, and the
 shortfall is not evenly spread.**
+
+[![Coverage per line on the accuracy page, amber where it sits below 70%](docs/img/coverage-by-line.png)](https://dc9icf7494up8.cloudfront.net/accuracy.html)
 
 | Station group | Coverage |
 |---|---|
@@ -194,6 +198,12 @@ output that looked like a correct result.** Arrival times identical to the sched
 downloads that were a captive portal, an alarm with no subscribers, an alarm that could not
 fire beside a comment saying it did. Each was caught the same way: by taking a number and
 asking what it should have been.
+
+The first of them is drawn on the site: the lines Irish Rail flag for unreliable reporting echo
+the timetable 21% of the time against 3% elsewhere, and splitting the same records by how the
+time was captured reverses the comparison.
+
+[![Two diagrams: split by line the flagged lines look far worse, split by capture method they do not](docs/img/label-quality.png)](https://dc9icf7494up8.cloudfront.net/how-it-works.html#echo)
 
 ## Licence
 
