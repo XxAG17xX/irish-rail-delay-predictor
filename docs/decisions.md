@@ -217,6 +217,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D81](#d81--a-train-still-running-after-midnight-is-yesterdays-service) A train still running after midnight is yesterday's service. Journeys resolve their own TrainDate, and the prediction log files each row under its own date rather than the batch's first.
 - [D82](#d82--the-method-steps-recede-by-colour-and-the-audit-is-allowed-to-fail-a-run) The method steps recede by colour, and the audit is allowed to fail a run. Opacity dimming failed WCAG contrast on every audit while continue-on-error kept each run green.
 - [D83](#d83--the-shared-track-explanation-for-the-coverage-drop-was-never-measured) The shared-track explanation for the coverage drop was never measured. Withdrawn: `intercity_other` fired too, and a permanent property of the track cannot explain a change over time.
+- [D84](#d84--error-alarms-wait-fifteen-minutes-before-they-page) Error alarms wait fifteen minutes before they page. One upstream outage sent two emails for something that needed no action.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4059,3 +4060,33 @@ pointing here.
 D64's table and D56's July figures before anything was edited.
 
 **Date.** 2026-09-14
+
+## D84 — Error alarms wait fifteen minutes before they page
+
+**Why this matters:** an alarm that fires on one bad minute trains you to ignore it, and the
+first thing ignored is the one that mattered.
+
+**What happened.** On 2026-09-17 `api.irishrail.ie` stopped accepting connections for roughly
+ten minutes. The generator's 14:39 cycle spent 92 seconds on retries, raised a transport
+failure, and Lambda counted an error. The poller hit the same wall a few minutes later. Both
+error alarms were set to `EvaluationPeriods: 1` on a 300-second period, so each sent an email
+for what was, from this project's side, nothing to do: every job retries on its own schedule
+and the system recovered by itself when the feed came back.
+
+**Decision.** Both Lambda error alarms now need **three consecutive 300-second periods**, so
+fifteen minutes of continuous failure. `EvaluationPeriods: 3` with `DatapointsToAlarm: 3` on
+`rail-delay-api-generator-errors` and `rail-delay-poller-function-errors`.
+
+**What this trades away.** A short outage no longer pages, and if one happens to straddle the
+boundary the alarm can stay quiet for a full fifteen minutes before it speaks. That is the
+point: the generator produces scheduled samples, and a missed cycle costs one cycle. The
+poller's unrecoverable-data risk is covered by `NotRunningAlarm`, which watches invocations
+rather than errors and is untouched here.
+
+**How it was applied.** The deployed templates were fetched with `get-template`, the two alarm
+resources patched, and each stack updated through a change set that was inspected first. A
+plain `sam deploy` would have repackaged and republished Lambda code to change an alarm; the
+code timestamps confirm nothing was republished. The templates in `infra/` carry the same
+values, so the next real deploy is a no-op for these resources.
+
+**Date.** 2026-09-17

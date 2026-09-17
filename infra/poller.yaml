@@ -238,7 +238,11 @@ Resources:
       Dimensions: [{ Name: FunctionName, Value: !Ref PollerFunction }]
       Statistic: Sum
       Period: 300
-      EvaluationPeriods: 1
+      # Fifteen minutes of continuous failure, not one blip. Irish Rail's feed went
+      # unreachable for about ten minutes on 2026-09-17 and a single bad cycle sent an
+      # email from each stack. A real outage still pages; a transient one does not (D84).
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
