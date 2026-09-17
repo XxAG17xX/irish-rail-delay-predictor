@@ -81,6 +81,20 @@ function remembered() {
   }
 }
 
+/**
+ * The station code in the page's own URL, so a board can be linked to and shared.
+ * Upper-cased because station codes are, and validated against the real list before it
+ * reaches the feed.
+ * @returns {string} the code asked for, or "" when the URL names none
+ */
+function askedFor() {
+  try {
+    return (new URL(location.href).searchParams.get("station") || "").trim().toUpperCase();
+  } catch {
+    return "";
+  }
+}
+
 /** @param {string} code */
 function remember(code) {
   try {
@@ -450,7 +464,7 @@ async function showBoard(code) {
           `: ${b.trains.length} ${b.trains.length === 1 ? "train stops" : "trains stop"} here in ` +
           `the next ${b.board_minutes} minutes. ${predicted} of them ` +
           `${predicted === 1 ? "has" : "have"} a RailCast range` +
-          (waiting ? `; ${waiting} have not started their journey yet` : "") +
+          (waiting ? `; ${waiting} ${waiting === 1 ? "has" : "have"} not started their journey yet` : "") +
           `. Read at ${hhmm(b.generated_at.slice(11))}.`,
       })
     );
@@ -526,10 +540,21 @@ get("/stations")
       (s.polled ? watched : rest).append(el("option", { value: s.code, text: s.name }));
     }
     select.replaceChildren(watched, rest);
-    select.value = remembered();
+    const codes = new Set(stations.map((s) => s.code));
+    const asked = askedFor();
+    const linked = codes.has(asked);
+    select.value = linked ? asked : remembered();
     if (!select.value && stations[0]) select.value = stations[0].code;
     need("status").textContent = "Pick a station and press Show board.";
     need("intro").hidden = false;
+    // A ?station= link is somebody asking for that board, so it loads without a second
+    // click. It is the one case where opening a page costs Irish Rail requests, and it is
+    // still a deliberate ask rather than a drive-by. A code that is not on the list is
+    // ignored rather than handed to the feed.
+    if (linked) {
+      remember(asked);
+      void showBoard(asked);
+    }
   })
   .catch((err) => {
     need("status").textContent = "";
@@ -539,5 +564,14 @@ get("/stations")
 need("picker").addEventListener("submit", (ev) => {
   ev.preventDefault();
   remember(select.value);
+  // The address bar becomes a link to this board. replaceState rather than pushState: the
+  // back button should leave the page, not walk back through every station tried.
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set("station", select.value);
+    history.replaceState(null, "", url);
+  } catch {
+    /* an unwritable history is a lost convenience, not a broken board */
+  }
   void showBoard(select.value);
 });
