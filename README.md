@@ -19,6 +19,17 @@ record rather than a claim.
 **Built with** Python, LightGBM, FastAPI, AWS Lambda, S3, CloudFront, EventBridge and
 CloudWatch, CloudFormation and SAM, GitHub Actions with OIDC, Tailwind CSS and TypeScript.
 
+A station board: the timetable, what Irish Rail currently expects, and what RailCast expects
+with the range it should land inside. A dash is the service declining, because that train has
+not reported anywhere yet and there is nothing to predict from.
+
+[![A Galway board with three times side by side for each train, and a dash where RailCast declines](docs/img/board.png)](https://dc9icf7494up8.cloudfront.net/predictions.html?station=GALWY)
+
+Open a row and the journey behind the prediction is there. This one left Dublin 1.4 minutes
+down and had lost 52 by Athenry, which is why the range it is given runs an hour wide.
+
+[![The route behind one train, the delay at each stop growing from plus 1.4 to plus 52.2 minutes](docs/img/board-route.png)](https://dc9icf7494up8.cloudfront.net/predictions.html?station=GALWY)
+
 ## Results
 
 Against Irish Rail's own `ExpectedArrival`, on matched events where both answered for the same
