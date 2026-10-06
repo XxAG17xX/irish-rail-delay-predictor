@@ -8,7 +8,7 @@ still open, so that an engineer writing a parser against the feed meets the trap
 rather than in production.
 
 It came out of RailCast, a delay predictor built on the feed
-(https://dc9icf7494up8.cloudfront.net), but everything below is about the feed itself.
+(https://railcast.ag17.dev), but everything below is about the feed itself.
 
 ## Provenance marking
 

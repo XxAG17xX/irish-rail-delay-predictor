@@ -3,13 +3,13 @@
 Predicts how late an Irish Rail train will arrive at a stop further along its route, and
 answers with an **80% range rather than a single number**.
 
-**Live: https://dc9icf7494up8.cloudfront.net**
+**Live: https://railcast.ag17.dev**
 
 > It is 16:30. A220 left Heuston at 16:00 for Cork and has been one to two minutes down at
 > Kildare, Portarlington and Portlaoise. Asked about Thurles, the service answers: expected
 > 17:07 to 17:14, most likely 17:09, 80% confidence.
 
-[![The landing page: one journey, with the shaded section where the arrival is expected to land](docs/img/landing.png)](https://dc9icf7494up8.cloudfront.net)
+[![The landing page: one journey, with the shaded section where the arrival is expected to land](docs/img/landing.png)](https://railcast.ag17.dev)
 
 One model for the whole network, trained on the public [Irish Rail Realtime
 API](http://api.irishrail.ie/realtime/). Every prediction is written down before the train
@@ -23,12 +23,12 @@ A station board: the timetable, what Irish Rail currently expects, and what Rail
 with the range it should land inside. A dash is the service declining, because that train has
 not reported anywhere yet and there is nothing to predict from.
 
-[![A Galway board with three times side by side for each train, and a dash where RailCast declines](docs/img/board.png)](https://dc9icf7494up8.cloudfront.net/predictions.html?station=GALWY)
+[![A Galway board with three times side by side for each train, and a dash where RailCast declines](docs/img/board.png)](https://railcast.ag17.dev/predictions.html?station=GALWY)
 
 Open a row and the journey behind the prediction is there. This one left Dublin 1.4 minutes
 down and had lost 52 by Athenry, which is why the range it is given runs an hour wide.
 
-[![The route behind one train, the delay at each stop growing from plus 1.4 to plus 52.2 minutes](docs/img/board-route.png)](https://dc9icf7494up8.cloudfront.net/predictions.html?station=GALWY)
+[![The route behind one train, the delay at each stop growing from plus 1.4 to plus 52.2 minutes](docs/img/board-route.png)](https://railcast.ag17.dev/predictions.html?station=GALWY)
 
 ## Results
 
@@ -45,7 +45,7 @@ sampled in-service trains.
 | Live, 3 to 9 Sept 2026 | 88.5s | 117.7s | 24.8% | 20,761 |
 
 The live rows come from predictions logged before their outcomes existed. They are a snapshot:
-the [accuracy page](https://dc9icf7494up8.cloudfront.net/accuracy.html) recomputes every live
+the [accuracy page](https://railcast.ag17.dev/accuracy.html) recomputes every live
 figure each morning.
 
 **A sealed test week.** One week of July was held out at the start and not looked at through
@@ -62,7 +62,7 @@ The live site shows these beside the good numbers.
 **Interval coverage was 75.0% against a nominal 80% over 3 to 9 September 2026, and the
 shortfall is not evenly spread.**
 
-[![Coverage per line on the accuracy page, amber where it sits below 70%](docs/img/coverage-by-line.png)](https://dc9icf7494up8.cloudfront.net/accuracy.html)
+[![Coverage per line on the accuracy page, amber where it sits below 70%](docs/img/coverage-by-line.png)](https://railcast.ag17.dev/accuracy.html)
 
 | Station group | Coverage |
 |---|---|
@@ -214,7 +214,7 @@ The first of them is drawn on the site: the lines Irish Rail flag for unreliable
 the timetable 21% of the time against 3% elsewhere, and splitting the same records by how the
 time was captured reverses the comparison.
 
-[![Two diagrams: split by line the flagged lines look far worse, split by capture method they do not](docs/img/label-quality.png)](https://dc9icf7494up8.cloudfront.net/how-it-works.html#echo)
+[![Two diagrams: split by line the flagged lines look far worse, split by capture method they do not](docs/img/label-quality.png)](https://railcast.ag17.dev/how-it-works.html#echo)
 
 ## Licence
 

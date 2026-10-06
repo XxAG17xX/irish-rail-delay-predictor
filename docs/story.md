@@ -2,7 +2,7 @@
 
 Written for someone who does not code and does not know trains. Every technical term is
 explained the first time it appears. The system is live at
-https://dc9icf7494up8.cloudfront.net.
+https://railcast.ag17.dev.
 
 About twenty minutes end to end. Sections 1 and 2 are what the thing is and where the data
 comes from. **If time is short, read section 3, section 9 and section 10**: a result that
