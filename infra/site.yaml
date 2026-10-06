@@ -34,6 +34,23 @@ Parameters:
       source. This does not make the endpoint private -- it is AuthType NONE and still
       reachable directly by anyone who knows it -- but it does mean the site does not
       publish it, and a throttle or WAF now has one place to live.
+  DomainName:
+    Type: String
+    Default: ""
+    Description: >-
+      Optional hostname for the site, e.g. railcast.ag17.dev. Empty serves it on the
+      distribution's own cloudfront.net name only, which still works either way.
+  CertificateArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:aws:acm:us-east-1:\d{12}:certificate/.+$'
+    ConstraintDescription: must be empty, or an ACM certificate in us-east-1
+    Description: >-
+      ACM certificate covering DomainName. It must live in us-east-1, the only region
+      CloudFront reads certificates from, whatever region the rest of the stack is in.
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref DomainName, ""]]
 
 Resources:
 
@@ -152,7 +169,8 @@ Resources:
         Name: !Sub ${AWS::StackName}-security
         SecurityHeadersConfig:
           # 2 years, and the site is served over https only anyway. Not preloaded: preload
-          # is a one-way door on an apex domain, and this is a cloudfront.net subdomain.
+          # is a one-way door on an apex domain, and the site lives on subdomains only.
+          # Under .dev it is moot: the whole TLD is on the browsers' preload list already.
           StrictTransportSecurity:
             AccessControlMaxAgeSec: 63072000
             IncludeSubdomains: true
@@ -203,6 +221,7 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: RailCast
+        Aliases: !If [HasDomain, [!Ref DomainName], !Ref AWS::NoValue]
         Logging:
           Bucket: !GetAtt AccessLogBucket.DomainName
           Prefix: cloudfront/
@@ -259,12 +278,21 @@ Resources:
             ResponseCode: 404
             ResponsePagePath: /404.html
             ErrorCachingMinTTL: 60
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+        # SNI only: the dedicated-IP alternative bills about $600 a month for supporting
+        # browsers too old to send a hostname during the TLS handshake.
+        ViewerCertificate: !If
+          - HasDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
 
 Outputs:
   SiteUrl:
-    Value: !Sub https://${Distribution.DomainName}
+    Value: !If
+      - HasDomain
+      - !Sub https://${DomainName}
+      - !Sub https://${Distribution.DomainName}
   AccessLogBucket:
     Value: !Ref AccessLogBucket
     Description: CloudFront access logs, expired after 30 days.

@@ -218,6 +218,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D82](#d82--the-method-steps-recede-by-colour-and-the-audit-is-allowed-to-fail-a-run) The method steps recede by colour, and the audit is allowed to fail a run. Opacity dimming failed WCAG contrast on every audit while continue-on-error kept each run green.
 - [D83](#d83--the-shared-track-explanation-for-the-coverage-drop-was-never-measured) The shared-track explanation for the coverage drop was never measured. Withdrawn: `intercity_other` fired too, and a permanent property of the track cannot explain a change over time.
 - [D84](#d84--error-alarms-wait-fifteen-minutes-before-they-page) Error alarms wait fifteen minutes before they page. One upstream outage sent two emails for something that needed no action.
+- [D85](#d85--the-site-gets-a-real-hostname-railcastag17dev) The site gets a real hostname, railcast.ag17.dev. GitHub Pages was rejected for RailCast: it cannot forward /api or receive the nightly scoreboard.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4090,3 +4091,34 @@ code timestamps confirm nothing was republished. The templates in `infra/` carry
 values, so the next real deploy is a no-op for these resources.
 
 **Date.** 2026-09-17
+
+## D85 — The site gets a real hostname: railcast.ag17.dev
+
+**Why this matters:** a URL like `dc9icf7494up8.cloudfront.net` reads as unfinished on a CV,
+and the address is the first thing anyone sees of the project.
+
+**Decision.** The CloudFront distribution serves `railcast.ag17.dev`, under a personal domain
+registered on 2026-10-06 through the GitHub Student Developer Pack (free for the first year,
+then about €21 a year). The project sits on a subdomain so the bare `ag17.dev` stays free for
+a portfolio, and every later project can take a subdomain of its own. A custom domain was
+declined on 2026-09-13; the author reversed that once a free first year was available.
+
+**Rejected: GitHub Pages for RailCast.** It was suggested, and it serves static files only.
+The board calls `/api/*`, which CloudFront forwards to the Lambda Function URL, and the
+accuracy page reads `accuracy.json`, which the nightly scorer writes into the site bucket.
+On Pages the board would fail and the scoreboard would freeze. Pages is the right host for a
+static portfolio at the apex, not for this.
+
+**How.** An ACM certificate in `us-east-1`, the only region CloudFront reads certificates
+from, validated by a DNS record at the registrar. `infra/site.yaml` takes the hostname and
+certificate as optional parameters: empty keeps the default `cloudfront.net` name, so a fresh
+clone still deploys, and `AllowedPattern` rejects a certificate from any other region at
+deploy time. SNI only, TLS 1.2 minimum. The old hostname keeps working.
+
+**Applied** through a change set inspected before execution. Its only property changes were
+the alias and the certificate. It also listed `SiteBucketPolicy`, flagged as a dynamic
+re-evaluation of `SiteBucket.Arn`; the policy document was compared with the deployed one and
+is identical, as CLAUDE.md requires before any deploy touching it. Five resources lost the
+`SamResourceId` metadata the previous SAM deploy had stamped on them, which changes nothing.
+
+**Date.** 2026-10-06

@@ -76,7 +76,7 @@ One response headers policy is attached to both cache behaviours.
 
 | Header | Value | What it stops |
 |---|---|---|
-| `Strict-Transport-Security` | 2 years, `includeSubDomains`, no preload | a downgrade to plain http. Preload is a one-way door and this is a `cloudfront.net` subdomain |
+| `Strict-Transport-Security` | 2 years, `includeSubDomains`, no preload | a downgrade to plain http. Preload is a one-way door on an apex domain, and the site lives on subdomains only. Under `.dev` it is moot: the whole TLD is preloaded |
 | `X-Content-Type-Options` | `nosniff` | a browser guessing a `.json` is really HTML and running it |
 | `X-Frame-Options` | `DENY` | clickjacking; nothing here should ever be framed |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | full URLs leaking to other sites |
