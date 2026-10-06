@@ -36,7 +36,7 @@ env:
   # failure it produced was "Not authorized to perform sts:AssumeRoleWithWebIdentity",
   # which names neither the value nor the variable.
   DEPLOY_ROLE_ARN: arn:aws:iam::707865775405:role/rail-delay-ci-github-deploy
-  SITE_DOMAIN: dc9icf7494up8.cloudfront.net
+  SITE_DOMAIN: railcast.ag17.dev
 
 jobs:
   check:
