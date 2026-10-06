@@ -203,6 +203,12 @@ toggle. Each costs a week and adds nothing an interviewer will ask about.
 - **CloudFront access logs** go to a third, private bucket and expire after 30 days, because
   they hold visitors' IP addresses. It is the one bucket with ACLs enabled, which CloudFront
   standard logging requires (D80).
+- **The site answers on two names, and both must keep working.** `railcast.ag17.dev` is
+  the published one (D85). `dc9icf7494up8.cloudfront.net` is the distribution's own name, and
+  it is printed on CVs already sent. It lives exactly as long as this distribution does, so
+  **never replace or recreate the distribution**: a change set showing `Replacement: True` on
+  `Distribution` kills every old link. The certificate renews itself only while its
+  validation CNAME stays at the registrar, and the domain itself renews each October.
 - Built with Tailwind v4 compiled ahead of time, TypeScript in `checkJs` mode as a check rather
   than a compiler, and no framework. **This amends D41**, which originally said no build step
   and no npm; the amendment and its reasoning are in D66. The compiled `site/app.css` is
