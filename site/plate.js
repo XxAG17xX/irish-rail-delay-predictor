@@ -33,7 +33,7 @@ function s(tag, attrs = {}, text) {
  * @typedef {{code: string, name: string, scheduled: string, arrived: string|null, expected: string|null, here: boolean}} PatternStop
  * @typedef {{train: string, station_code: string, predicted: string, interval_80pct: [string, string], vantage_location: string, predicted_at: string}} LivePrediction
  * @typedef {{generated_at: string, model_version: string|null, quiet_hours: boolean, fleet: FleetTrain[], journeys: Record<string, PatternStop[]>, predictions: LivePrediction[]}} Live
- * @typedef {{train: string, route: string, report: string, asOf: string, target?: {name: string, code: string, lo: string, hi: string, operator: string|null}, href: string}} TrainInfo
+ * @typedef {{train: string, route: string, report: string, asOf: string, board: string, target?: {name: string, code: string, lo: string, hi: string, operator: string|null}, href: string}} TrainInfo
  */
 
 /** Places always named, by the feed's own station names, in order of precedence. */
@@ -68,7 +68,7 @@ export function lastReport(message) {
  * @param {Network} net
  * @param {Live|null} live
  * @param {Tracks|null} tracks
- * @param {{onTrain?: (info: TrainInfo|null, el: Element|null) => void, irish?: Record<string, {ga: string}>}} [opts]
+ * @param {{onTrain?: (info: TrainInfo|null, el: Element|null, pin?: boolean) => void, irish?: Record<string, {ga: string}>}} [opts]
  */
 export function drawPlate(host, net, live, tracks, opts = {}) {
   const irish = opts.irish || {};
@@ -104,7 +104,9 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
   svg.append(s("title", { id: "plate-title" }, "Ireland's railway network, with each running train at the place it last reported"));
 
   const land = s("g", { class: "plate-land" });
-  for (const ring of net.coast) land.append(s("path", { d: d(ring) + "Z" }));
+  /** @param {number[][][]} rings */
+  const drawCoast = (rings) => land.replaceChildren(...rings.map((ring) => s("path", { d: d(ring) + "Z" })));
+  drawCoast(net.coast);
   svg.append(land);
 
   // A link seen on one service only is a diversion, not a line: one run of A523 round the
@@ -153,6 +155,12 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
   const running = (live?.fleet || []).filter((t) => t.status === "R");
   result.running = running.length;
   const preds = new Map((live?.predictions || []).map((p) => [p.train, p]));
+  // A tap has no hover: on touch the first tap pins the train's card (which carries the link
+  // to its board) and only a second tap on the same train follows the link. A mouse click
+  // and a keyboard Enter follow it at once, as any link does.
+  let pointer = "mouse";
+  /** @type {Element|null} */
+  let pinned = null;
   /** @type {{g: Element, x: number, y: number, angle: number}[]} */
   const trainEls = [];
 
@@ -171,6 +179,7 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
     /** @type {TrainInfo} */
     const info = {
       train: t.train, route, report: `${rep.kind} ${rep.at}, next stop ${rep.next}`, asOf: result.asOf,
+      board: next?.name || at.name,
       href: `predictions.html?station=${encodeURIComponent(next?.code || at.code)}`,
     };
     const g = s("a", { href: info.href, class: "plate-train",
@@ -197,6 +206,14 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
       g.addEventListener("focus", () => opts.onTrain?.(info, g));
       g.addEventListener("pointerleave", () => opts.onTrain?.(null, null));
       g.addEventListener("blur", () => opts.onTrain?.(null, null));
+      g.addEventListener("pointerdown", (ev) => { pointer = /** @type {PointerEvent} */ (ev).pointerType; });
+      g.addEventListener("click", (ev) => {
+        const mouse = /** @type {MouseEvent} */ (ev);
+        if (mouse.detail === 0 || pointer === "mouse" || pinned === g) return;
+        ev.preventDefault();
+        pinned = g;
+        opts.onTrain?.(info, g, true);
+      });
     }
     trains.append(g);
     trainEls.push({ g, x: x0, y: y0, angle });
@@ -257,6 +274,10 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
 
   return {
     result, W, H, svg,
+    /** Swap in a more detailed coast (site/coast.json, OpenStreetMap), in the same metres. */
+    setCoast: drawCoast,
+    /** Forget a pinned card, so the next tap on that train pins it again. */
+    unpin: () => { pinned = null; },
     /** Each drawn train's place and heading, in plate kilometres, for the 3D layer. */
     trains: () => trainEls.map((t) => ({ x: t.x, y: t.y, angle: t.angle })),
     /** The window currently shown, in plate kilometres. */

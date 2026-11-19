@@ -57,12 +57,17 @@ function minsOf(t) {
 const stage = need("stage");
 const card = need("card");
 
-/** @param {import("./plate.js").TrainInfo|null} info @param {Element|null} el */
-function showCard(info, el) {
+/** A card pinned open by a tap stays until another tap elsewhere closes it. */
+let pinnedCard = false;
+
+/** @param {import("./plate.js").TrainInfo|null} info @param {Element|null} el @param {boolean} [pin] */
+function showCard(info, el, pin = false) {
   if (!info || !el) {
-    card.hidden = true;
+    if (!pinnedCard) card.hidden = true;
     return;
   }
+  pinnedCard = pin;
+  card.classList.toggle("pinned", pin);
   const lines = [`${info.train} · ${info.route}`, `${info.report}`, `As reported ${info.asOf}`];
   if (info.target) {
     lines.push(`${info.target.name}: ${info.target.lo} to ${info.target.hi}` +
@@ -75,6 +80,12 @@ function showCard(info, el) {
     if (i === 3) p.className = "card-range";
     return p;
   }));
+  // The way on to the board, for a card pinned by a tap; hover never needs it.
+  const go = document.createElement("a");
+  go.className = "card-link";
+  go.href = info.href;
+  go.textContent = `Open the board for ${info.target ? info.target.name : info.board}`;
+  card.append(go);
   const box = el.getBoundingClientRect();
   const host = stage.getBoundingClientRect();
   card.hidden = false;
@@ -163,11 +174,38 @@ function explore(on) {
   const doc = /** @type {Document & {startViewTransition?: (cb: () => void) => unknown}} */ (document);
   if (doc.startViewTransition) doc.startViewTransition(flip);
   else flip();
+  if (on) loadCoast();
   if (on) stage.focus({ preventScroll: true });
   else need("explore").focus({ preventScroll: true });
 }
 
+/**
+ * The accurate coast, fetched the first time the map is unfolded: 350 KB that the overview,
+ * drawn at a scale where Natural Earth's outline is already exact enough, never needs.
+ */
+let coastLoaded = false;
+function loadCoast() {
+  if (coastLoaded || !plate) return;
+  coastLoaded = true;
+  json("coast.json")
+    .then((c) => {
+      plate?.setCoast(c.rings);
+      need("credit").textContent = need("credit").textContent
+        .replace("Track © OpenStreetMap contributors (ODbL). Coast: Natural Earth.",
+                 "Track and coast © OpenStreetMap contributors (ODbL).");
+    })
+    .catch(() => { coastLoaded = false; });
+}
+
 need("explore").addEventListener("click", () => explore(true));
+// A tap anywhere but a train or the pinned card closes the card.
+document.addEventListener("pointerdown", (ev) => {
+  const t = /** @type {Element} */ (ev.target);
+  if (!pinnedCard || t.closest(".plate-train") || t.closest("#card")) return;
+  pinnedCard = false;
+  card.hidden = true;
+  plate?.unpin();
+});
 need("zin").addEventListener("click", () => zoomCentre(1.6));
 need("zout").addEventListener("click", () => zoomCentre(1 / 1.6));
 need("zreset").addEventListener("click", () => plate && setView({ x: 0, y: 0, w: plate.W, h: plate.H }));

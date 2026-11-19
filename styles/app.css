@@ -318,7 +318,7 @@
   .plate { display: block; width: 100%; height: auto; overflow: visible; }
   .plate-land path {
     fill: var(--raised);
-    stroke: var(--track); stroke-width: calc(.7 * var(--u, .5));
+    stroke: var(--track); stroke-width: calc(1.1 * var(--u, .5));
   }
   .plate-lines path {
     stroke: var(--fg); stroke-width: calc(1.9 * var(--u, .5)); stroke-linecap: round; fill: none; stroke-linejoin: round;
@@ -726,5 +726,25 @@
   .chart text.lbl { font-size: 12px; }
   @media (max-width: 30rem) {
     .figures { grid-template-columns: 1fr; gap: 1rem; }
+  }
+}
+
+/* A card pinned by a tap takes taps itself, for its link to the board. */
+@layer components {
+  .train-card .card-link { display: none; }
+  .train-card.pinned { pointer-events: auto; }
+  .train-card.pinned .card-link {
+    display: inline-block; margin-top: .45rem; font-weight: 600; color: var(--accent);
+    text-decoration: underline; text-underline-offset: .2em;
+  }
+}
+
+/* In the explorer the sea takes a faint tint of the accent under its hatching, so the land,
+   drawn in the paper colour, reads as land at every zoom. */
+@layer components {
+  .hero.exploring .plate-sheet {
+    background:
+      repeating-linear-gradient(0deg, color-mix(in srgb, var(--accent) 9%, transparent) 0 1px, transparent 1px 7px),
+      color-mix(in srgb, var(--accent) 6%, var(--raised));
   }
 }

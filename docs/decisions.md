@@ -223,6 +223,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D87](#d87--the-landing-page-reads-a-five-minute-snapshot-and-trains-sit-where-they-last-reported) The landing page reads a five-minute snapshot, and trains sit where they last reported.
 - [D88](#d88--the-maps-trains-stand-up-in-3d-from-a-vendored-tree-shaken-threejs) The map's trains stand up in 3D, from a vendored, tree-shaken Three.js.
 - [D89](#d89--the-range-is-re-centred-nightly-on-recent-outcomes) The range is re-centred nightly on recent outcomes; the model's own coverage stays published.
+- [D90](#d90--the-explorer-draws-openstreetmaps-coast-loaded-when-the-map-unfolds) The explorer draws OpenStreetMap's coast, loaded only when the map unfolds.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4285,5 +4286,31 @@ disruption, and coverage on delays over an hour stays near zero.
 **What retraining would add, and why it is later work.** A model trained on September to
 November would learn autumn directly, but winter will move things again, and seasons need a
 year of data to learn as features. That is thesis work.
+
+**Date.** 2026-11-19
+
+## D90 — The explorer draws OpenStreetMap's coast, loaded when the map unfolds
+
+**Why this matters:** zoomed in, the map showed Howth as a triangle and Cobh's station in the
+sea. A map that claims to place trains where they report should get the land right.
+
+**Decision.** `scripts/build_coast.py` builds `site/coast.json` from OpenStreetMap's
+`natural=coastline` (ODbL, credited on the page), assembled into closed rings and simplified at
+25 m: 391 rings, 60,279 vertices, 350 KB gzipped. The overview keeps Natural Earth's coast
+(500 m), exact enough at a scale where the island is a few hundred pixels; the detailed coast
+loads the first time the map unfolds, so the home page never pays for it.
+
+**Checked.** All 166 placed stations are on land; with Natural Earth eight were offshore
+(Cobh by 2,133 m). Main island 83,534 km² against Natural Earth's 83,397 km². Simplification
+had made outlines cross across narrow inlets (58 crossings in the main ring); segments that
+crossed got their skipped vertices back until none crossed. Rings that belong to Great Britain
+inside the bounding box (Kintyre, the Pembrokeshire islets) are excluded by a rule stated in the
+script. Islands under 0.05 km² are dropped, which removes Fastnet Rock.
+
+**Not covered.** River areas above the coastline's tidal limit draw as land; they are a
+separate OSM feature this build does not fetch.
+
+**Google Maps was not an option:** its terms forbid extracting map data, and the site's
+security policy serves nothing from elsewhere.
 
 **Date.** 2026-11-19
