@@ -486,7 +486,7 @@ def board_clock(rec, kind, *fields):
     return ""
 
 
-def calling_pattern(stops, here_codes):
+def calling_pattern(stops, here_codes, keep=()):
     """Every stop on the journey, in order, for the page to draw.
 
     Built from the journey already downloaded for the prediction, so it costs no extra
@@ -496,11 +496,14 @@ def calling_pattern(stops, here_codes):
     if not stops:
         return []
     here = {c.upper() for c in here_codes if c}
+    kept = {c.upper() for c in keep if c}
     out = []
     for s in stops:
         # T is a timing point the train passes without stopping. Listing junctions like
-        # DC427 among the stations makes the route look wrong to anyone who knows it.
-        if s.get("type") == "T" and s["loc"] not in here:
+        # DC427 among the stations makes the route look wrong to anyone who knows it. The
+        # one exception is `keep`: the stop a prediction was made from, so the page's fan
+        # can start where the report actually came from (D87).
+        if s.get("type") == "T" and s["loc"] not in here and s["loc"] not in kept:
             continue
         # Same rule as board_clock, and for the same reason: the stop's own type says
         # which time applies, so a genuine 00:00 arrival survives instead of being read
@@ -516,6 +519,7 @@ def calling_pattern(stops, here_codes):
             "delay_min": round(s["delay"] / 60, 1) if s.get("delay") is not None else None,
             "expected": (s.get("expected_text") or "")[:5] or None,
             "here": s["loc"] in here,
+            "passes": s.get("type") == "T",
         })
     return out
 
@@ -632,7 +636,8 @@ def board(request: Request,
                     break
                 row = predict_row(st, entry["train"], alt, service_date=service_date,
                                   now_s=now_s, stops=stops, extra={"source": "api_board"})
-            entry["journey"] = calling_pattern(stops, [code, *st["aliases"].get(code, [])])
+            entry["journey"] = calling_pattern(stops, [code, *st["aliases"].get(code, [])],
+                                               keep=[row.get("vantage_location")])
             to_log.append(row)
             entry["prediction"] = (None if row.get("outcome") != "predicted" else
                                    {k: v for k, v in row.items() if k not in _PRIVATE})
@@ -794,6 +799,9 @@ def _self_check():
     assert [p["here"] for p in pattern] == [False, False, True], "this station is marked"
     assert pattern[1]["arrived"] == "23:42" and pattern[1]["delay_min"] == 1.0
     assert calling_pattern([], ["KDARE"]) == [], "no journey means no route"
+    kept = calling_pattern(stops, ["KDARE"], keep=["DC427"])
+    assert [p["code"] for p in kept] == ["HSTON", "DC427", "SALNS", "KDARE"], "vantage kept"
+    assert kept[1]["passes"] is True and kept[2]["passes"] is False
 
     # A failed prediction-log write must escape as a real error, not a returned 503. A 503
     # is a *successful* Lambda invocation, so `Errors` stays at zero and ApiErrorsAlarm

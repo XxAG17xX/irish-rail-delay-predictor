@@ -274,17 +274,19 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None, seen=None):
         stats["trains_sampled"] += 1
         if not stops:
             continue
-        if seen is not None:
-            seen["journeys"][code] = calling_pattern(stops, [])
         # Per train, because two trains in one sample can be filed under different dates.
         now_s = service_now(now, service_date)
+        vantages = []
         for target in choose_targets(stops, now_s, rng, max_per_train):
             row = predict_row(st, code, target["loc"], service_date=service_date,
                               now_s=now_s, stops=stops, extra=extra)
             rows.append(row)
+            vantages.append(row.get("vantage_location"))
             stats[row["outcome"]] += 1
             if row["outcome"] == "declined":
                 stats[f"reason_{row['reason']}"] += 1
+        if seen is not None:
+            seen["journeys"][code] = calling_pattern(stops, [], keep=vantages)
     return rows, stats
 
 
