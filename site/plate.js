@@ -224,7 +224,10 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
     const k = ratio();
     svg.style.setProperty("--u", String(1 / k));
     for (const c of dotEls) c.setAttribute("r", (PX.dot / k).toFixed(4));
-    const sc = PX.train / 13 / k;
+    // Trains scale with the plate until it is wide enough for their full size: on a phone a
+    // 24 px train per report would bury Dublin, where most of the network's trains are.
+    const plateW = svg.clientWidth || svg.getBoundingClientRect().width || 600;
+    const sc = Math.min(PX.train, Math.max(12, plateW / 30)) / 13 / k;
     for (const t of trainEls) {
       t.g.setAttribute("transform",
         `translate(${t.x.toFixed(3)} ${t.y.toFixed(3)}) rotate(${t.angle.toFixed(1)}) scale(${sc.toFixed(5)})`);
