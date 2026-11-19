@@ -194,3 +194,27 @@
   [data-service="night"] .logo-day { display: none; }
   [data-service="night"] .logo-night { display: block; }
 }
+
+/* ── the time-distance fan (site/fan.js) ─────────────────────────────────── */
+@layer components {
+  .fan { display: block; max-width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
+  .fan text { font-size: 12px; fill: var(--fg-3); font-variant-numeric: tabular-nums; }
+  .fan-grid line { stroke: var(--line); stroke-width: 1; }
+  .fan-grid line.minor { stroke-dasharray: 1 3; }
+  .fan-grid text.here { fill: var(--fg); font-weight: 600; }
+  .fan-plan { fill: none; stroke: var(--track); stroke-width: 1.25; stroke-dasharray: 4 3; }
+  .fan-path { fill: none; stroke: var(--fg); stroke-width: 2.25; stroke-linejoin: round; stroke-dasharray: 1; }
+  .fan-band { fill: var(--band-out); fill-opacity: .85; }
+  .fan-edge { stroke: var(--accent); stroke-width: 1.25; }
+  .fan-median { stroke: var(--band-in); stroke-width: 2.25; }
+  .fan-span { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+  .fan-report { fill: var(--ground); stroke: var(--fg); stroke-width: 2; }
+  .fan-apex { fill: var(--accent); }
+  .fan text.range { fill: var(--accent); font-size: 14px; font-weight: 700; }
+  /* A halo in the ground colour keeps figures legible where they sit on the fan or a line. */
+  .fan text.range, .fan text.operator, .fan-grid text { paint-order: stroke; stroke: var(--ground); stroke-width: 4px; stroke-linejoin: round; }
+  .fan-operator { stroke: var(--fg); stroke-width: 2; }
+  .fan text.operator { fill: var(--fg-2); }
+  .fan-now { stroke: var(--fg-3); stroke-width: 1; stroke-dasharray: 2 2; }
+  .fan text.fan-now-label { fill: var(--fg-2); font-weight: 600; }
+}
