@@ -219,6 +219,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D83](#d83--the-shared-track-explanation-for-the-coverage-drop-was-never-measured) The shared-track explanation for the coverage drop was never measured. Withdrawn: `intercity_other` fired too, and a permanent property of the track cannot explain a change over time.
 - [D84](#d84--error-alarms-wait-fifteen-minutes-before-they-page) Error alarms wait fifteen minutes before they page. One upstream outage sent two emails for something that needed no action.
 - [D85](#d85--the-site-gets-a-real-hostname-railcastag17dev) The site gets a real hostname, railcast.ag17.dev. GitHub Pages was rejected for RailCast: it cannot forward /api or receive the nightly scoreboard.
+- [D86](#d86--the-scope-lock-lifts-for-a-redesign-of-the-public-site) The scope lock lifts for a redesign of the public site, map view included on condition it shows only what the feed knows.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4122,3 +4123,33 @@ is identical, as CLAUDE.md requires before any deploy touching it. Five resource
 `SamResourceId` metadata the previous SAM deploy had stamped on them, which changes nothing.
 
 **Date.** 2026-10-06
+
+## D86 — The scope lock lifts for a redesign of the public site
+
+**Why this matters:** the site is the first thing a reviewer sees, and it read as a generic
+dark template rather than as this project.
+
+**Decision.** The portfolio scope lock (CLAUDE.md) is lifted for one bounded piece of work: a
+full redesign of the public site, including a network map view. The model, the scoring, the
+reporting rules and the data pipeline stay locked; the redesign changes how the record is shown,
+never what it says.
+
+**Evidence that prompted it.** Impeccable's detector found 65 issues across the site, 19 of
+them coloured glows on a dark ground, the tell it associates with generated interfaces. The
+landing page's scroll story leaves most screens empty, the night board is a single sentence,
+and the one picture that belongs to this project (a train on a line with its range shaded ahead)
+sits small inside a box.
+
+**The map condition.** CLAUDE.md listed "map view" as out of scope. It is now allowed only if
+it is accurate: a train appears where the feed last placed it, labelled with the time of that
+report, and is never animated along the track between reports. Whether the feed's positions are
+precise enough for a geographic map, or only for a schematic between stations, is to be
+verified before any map is built.
+
+**Direction chosen by the author:** the time-distance diagram (a train's delay drawn as a line
+across time and distance, with RailCast's range fanning ahead of it) as the signature chart
+wherever a prediction appears; a network panel in the manner of a signal box mimic diagram as
+the home page; a split-flap board on the board page; and a new logo. `PRODUCT.md` records the
+product truth: reviewers first, quiet authorship, bilingual station names from logainm.ie.
+
+**Date.** 2026-11-19

@@ -24,6 +24,11 @@ started in mid-September 2026. It is not thesis work. The MAI thesis on stochast
 prediction is separate. Work that does not serve "working deployed service" is out of scope:
 flag it as thesis-later and move on. Scope creep is the main way this project fails.
 
+**Amended 2026-11-19 (D86).** The lock is lifted for one bounded piece of work: a full redesign
+of the public site. It covers the look, the interactions and a network map view; it does not
+reopen the model, the scoring or the data pipeline, which stay locked. `PRODUCT.md` holds the
+product truth the redesign must keep.
+
 Success criterion: beat Irish Rail's own `ExpectedArrival` on well-covered lines, and be
 explicit about the lines where the data cannot support a claim. **An honest loss is a better
 result than an unverifiable win.**
@@ -190,9 +195,12 @@ loss. FastAPI. AWS, serverless by default.
 
 ### Web layer
 
-Three pages plus a landing page: predictions, accuracy, how it works. **Out of scope:** map
-view, route planning, user accounts, saved stations, notifications, mobile app, dark mode
-toggle. Each costs a week and adds nothing an interviewer will ask about.
+Three pages plus a landing page: predictions, accuracy, how it works. **Out of scope:** route
+planning, user accounts, saved stations, notifications, mobile app, dark mode toggle. Each
+costs a week and adds nothing an interviewer will ask about. **A network map view is allowed
+since D86, on one condition:** it shows only what the feed actually knows. A train is drawn
+where the feed places it, with the time of that report, and never animated along track
+between reports as if it were tracked live.
 
 - **The site has its own bucket.** Never a public prefix on the data bucket, which holds every
   prediction, score and raw capture. All four public-access blocks stay on both buckets, and
