@@ -220,7 +220,9 @@ between reports as if it were tracked live.
 - Built with Tailwind v4 compiled ahead of time, TypeScript in `checkJs` mode as a check rather
   than a compiler, and no framework. **This amends D41**, which originally said no build step
   and no npm; the amendment and its reasoning are in D66. The compiled `site/app.css` is
-  committed and CI refuses a copy that differs from its source.
+  committed and CI refuses a copy that differs from its source. `site/vendor/three.js` is
+  generated the same way, by `npm run vendor:three` from `scripts/vendor/three-entry.js`
+  (D88): never edit it by hand.
 - **Tailwind scans `site/` and nothing else**, because `styles/app.css` imports it with
   `source(none)`. Without that, Tailwind v4 also scans the whole repository, prose included:
   ordinary words in a doc ("lowercase", "outline") were compiled into the stylesheet served to
