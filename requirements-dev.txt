@@ -27,3 +27,8 @@ sympy==1.14.0
 
 # Draws site/og.png, the link preview card. Laptop only: the card is committed.
 pillow==12.3.0
+
+# Subsets fonts for site/fonts/ and outlines the logo's wordmark (design/logo/README.md);
+# brotli is what lets fontTools write woff2.
+fonttools==4.66.1
+brotli==1.2.1

@@ -51,20 +51,34 @@ def palette() -> dict[str, str]:
 # checked at the 3:1 bar; anything that carries words is checked at 4.5:1.
 PAIRS = [
     # foreground, background, minimum, where it is used
-    ("ink", "void", AA_NORMAL, "body text"),
-    ("ink", "panel", AA_NORMAL, "body text on a panel"),
-    ("ink-2", "void", AA_NORMAL, "secondary prose"),
-    ("ink-2", "panel", AA_NORMAL, "secondary prose on a panel"),
-    ("ink-3", "void", AA_NORMAL, "labels, footnotes, table headers"),
-    ("ink-3", "panel", AA_NORMAL, "labels on a panel"),
-    ("clear", "void", AA_NORMAL, "the range, links, live figures"),
-    ("clear", "panel", AA_NORMAL, "the range on a panel"),
-    ("caution", "void", AA_NORMAL, "below-promise figures"),
-    ("caution", "panel", AA_NORMAL, "below-promise on a panel"),
-    ("danger", "void", AA_NORMAL, "severe-delay callouts"),
-    ("danger", "panel", AA_NORMAL, "severe-delay on a panel"),
-    ("rail", "void", AA_LARGE, "drawn track, non-text"),
-    ("rule", "panel", 1.0, "hairline borders, decorative only"),
+    # Day service, on the chalk ground and on raised paper.
+    ("ink", "chalk", AA_NORMAL, "body text"),
+    ("ink", "paper", AA_NORMAL, "body text on paper"),
+    ("ink-2", "chalk", AA_NORMAL, "secondary prose"),
+    ("ink-3", "chalk", AA_NORMAL, "labels, footnotes, table headers"),
+    ("ink-3", "paper", AA_NORMAL, "labels on paper"),
+    ("ultra", "chalk", AA_NORMAL, "links, the range's printed figures"),
+    ("ultra", "paper", AA_NORMAL, "links on paper"),
+    ("ultra", "pale", AA_NORMAL, "a figure printed inside the fan's outer band"),
+    ("ink", "pale", AA_NORMAL, "selected text"),
+    ("amber-ink", "chalk", AA_NORMAL, "the real arrival, in words"),
+    ("ink", "amber", AA_LARGE, "ink edge around the amber arrival marker"),
+    ("rule-strong", "chalk", AA_LARGE, "drawn track and map lines, non-text"),
+    ("rule-strong", "paper", AA_LARGE, "drawn track on paper"),
+    ("mid", "chalk", AA_LARGE, "the fan's middle band, non-text"),
+    ("rule", "chalk", 1.0, "hairline borders, decorative only"),
+    # Night service, when no trains are running.
+    ("night-ink", "night", AA_NORMAL, "body text at night"),
+    ("night-ink", "night-2", AA_NORMAL, "body text on a raised night surface"),
+    ("night-ink-2", "night", AA_NORMAL, "secondary prose at night"),
+    ("night-ink-3", "night", AA_NORMAL, "labels at night"),
+    ("night-ink-3", "night-2", AA_NORMAL, "labels on a raised night surface"),
+    ("pale", "night", AA_NORMAL, "links and the range at night"),
+    ("pale", "night-2", AA_NORMAL, "links on a raised night surface"),
+    ("amber", "night", AA_NORMAL, "the real arrival at night"),
+    ("night-rule-strong", "night", AA_LARGE, "drawn track at night, non-text"),
+    ("night-rule-strong", "night-2", AA_LARGE, "drawn track on a raised night surface"),
+    ("mid", "night", AA_LARGE, "the fan's middle band at night"),
 ]
 
 
@@ -77,14 +91,14 @@ def main() -> int:
         return 2
 
     worst, failures = None, 0
-    print(f"{'foreground':<9} {'background':<10} {'ratio':>6}  {'need':>5}       where")
+    print(f"{'foreground':<17} {'background':<8} {'ratio':>6}  {'need':>5}       where")
     for fg, bg, need, where in PAIRS:
         r = ratio(colours[fg], colours[bg])
         ok = r >= need
         failures += not ok
         if worst is None or r < worst[0]:
             worst = (r, fg, bg)
-        print(f"{fg:<9} {bg:<10} {r:6.2f}  {need:5.1f}  {'ok ' if ok else 'FAIL'}  {where}")
+        print(f"{fg:<17} {bg:<8} {r:6.2f}  {need:5.1f}  {'ok ' if ok else 'FAIL'}  {where}")
 
     print(f"\nthinnest margin: {worst[1]} on {worst[2]} at {worst[0]:.2f}:1")
     if failures:
