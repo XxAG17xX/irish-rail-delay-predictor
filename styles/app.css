@@ -471,7 +471,7 @@
     background: var(--raised); border: 1px solid var(--line);
   }
   .map-credit {
-    position: absolute; left: 1.5rem; bottom: 1.5rem; z-index: 2; font-size: .72rem; color: var(--fg-3);
+    position: absolute; left: 1.5rem; bottom: 1.5rem; z-index: 2; font-size: .78rem; color: var(--fg-3);
   }
   .hero.exploring ~ * { visibility: hidden; }
   @media (max-width: 52rem) {
@@ -544,13 +544,13 @@
   .board-row:last-child { border-bottom: 0; }
   .br-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .6rem; min-width: 0; }
   .br-train { font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
-  .br-kind { border: 1px solid var(--line); border-radius: .3rem; padding: 0 .35rem; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); }
+  .br-kind { border: 1px solid var(--line); border-radius: .3rem; padding: 0 .35rem; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
   .br-kind.dart { border-color: var(--color-mid); color: var(--color-pale); }
   .br-dest { font-size: 1.05rem; font-weight: 600; font-stretch: 85%; }
   .br-calls { font-size: .85rem; color: var(--fg-3); }
   .br-times { display: flex; gap: 1.25rem; justify-content: flex-end; }
   .br-cell { display: grid; justify-items: end; gap: .2rem; }
-  .br-label { font-size: .66rem; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); }
+  .br-label { font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-3); }
   .br-val { font-variant-numeric: tabular-nums; font-size: 1rem; }
   .br-val.dim, .dim { color: var(--fg-3); }
   .br-detail { grid-column: 1 / -1; font-size: .82rem; color: var(--fg-3); }
@@ -672,7 +672,7 @@
   .tk-edge { stroke: var(--accent); stroke-width: 1.5; }
   .stop { fill: var(--raised); stroke: var(--fg-3); stroke-width: 2; }
   .stop.rep { fill: var(--fg); stroke: var(--fg); }
-  .lbl { fill: var(--fg-3); font-size: 9.5px; letter-spacing: .06em; }
+  .lbl { fill: var(--fg-3); font-size: 12.5px; letter-spacing: .03em; }
   .val { fill: var(--fg); font-size: 13px; font-weight: 600; }
   .val.hot { fill: var(--accent); }
   .val.warn { fill: var(--fg); }
