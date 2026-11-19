@@ -103,6 +103,12 @@ Resources:
                 Effect: Allow
                 Action: s3:PutObject
                 Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PredictionsPrefix}/*
+              # The range's nightly calibration (D89), one key. Not the prediction prefix:
+              # the rule that the API cannot read back what it logged (D39) is unchanged.
+              - Sid: ReadCalibration
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/scores/calibration.json
 
   # The generator's own role: the API's prediction write, plus one key on the public site.
   GeneratorRole:
@@ -128,6 +134,10 @@ Resources:
                 Effect: Allow
                 Action: s3:PutObject
                 Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PredictionsPrefix}/*
+              - Sid: ReadCalibration
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/scores/calibration.json
               - !If
                 - HasSiteBucket
                 # One object, one key, as the scorer has for accuracy.json. Not a wildcard:

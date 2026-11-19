@@ -42,7 +42,7 @@ New-Item -ItemType Directory -Force -Path $build | Out-Null
 
 # --- modules api.py transitively imports
 $modules = @(
-    "api.py", "generate.py", "features.py", "feedtime.py", "prediction_log.py",
+    "api.py", "generate.py", "calibration.py", "features.py", "feedtime.py", "prediction_log.py",
     "poll_live.py", "backfill.py", "hostlock.py", "sinks.py", "ratelimit.py"
 )
 foreach ($m in $modules) {
@@ -148,7 +148,7 @@ build, want = pathlib.Path(sys.argv[1]), sys.argv[2]
 manifest = json.loads((build / "model" / "manifest.json").read_text(encoding="utf-8"))
 assert manifest["version"] == want, (
     f"baked {manifest['version']!r} but was asked for {want!r}")
-for rel in ("api.py", "generate.py", "config/poll_stations.toml", "stations.json",
+for rel in ("api.py", "generate.py", "calibration.py", "config/poll_stations.toml", "stations.json",
             "lib/libgomp.so.1", "model/q10.txt", "model/q50.txt", "model/q90.txt"):
     assert (build / rel).exists(), f"{rel} missing from package"
 print(f"  baked artifact verified: {manifest['version']}, {len(manifest['features'])} features")

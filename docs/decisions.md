@@ -222,6 +222,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D86](#d86--the-scope-lock-lifts-for-a-redesign-of-the-public-site) The scope lock lifts for a redesign of the public site, map view included on condition it shows only what the feed knows.
 - [D87](#d87--the-landing-page-reads-a-five-minute-snapshot-and-trains-sit-where-they-last-reported) The landing page reads a five-minute snapshot, and trains sit where they last reported.
 - [D88](#d88--the-maps-trains-stand-up-in-3d-from-a-vendored-tree-shaken-threejs) The map's trains stand up in 3D, from a vendored, tree-shaken Three.js.
+- [D89](#d89--the-range-is-re-centred-nightly-on-recent-outcomes) The range is re-centred nightly on recent outcomes; the model's own coverage stays published.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4224,5 +4225,65 @@ stay underneath as the clickable, keyboard-reachable layer and as the fallback.
 windscreen and roof equipment follow the reference; the wheels are boxes and the far side is
 assumed symmetric. Doors are pale grey rather than the reference's yellow, because amber means
 the real arrival on this site.
+
+**Date.** 2026-11-19
+
+## D89 — The range is re-centred nightly on recent outcomes
+
+**Why this matters:** the site promises a range that holds four times in five, and through the
+autumn it held about two times in three. This fixes the promise without touching the model.
+
+**The trigger had fired and stayed fired.** Measured from all 959,649 scored predictions
+(25 August to 18 November): the coverage trigger (rolling 7-day coverage below 75%, or a
+group with at least 200 events below 70%) held on 80 of 82 days and was sustained for a week by
+7 September. The MAE trigger held on 1 day: RailCast's error stayed below Irish Rail's on
+matched events throughout (141s against 158s in the week to 18 November).
+
+**Diagnosis: the railway moved, the model did not.** Late misses rose from 10.3% (August) to
+15.8%, 19.6% and 23.3% (September to November) while early misses stayed at 8.7 to 10.8%. The
+median of actual minus predicted rose from -1s to +22s and the mean from +16s to +78s. Arrivals
+more than 15 minutes late went from 1.1% to 1.8%, 3.3% and 5.1% of scored rows. The model was
+trained on June to August; it had not seen an Irish autumn. Coverage was worst at long horizons
+(59.5% at an hour or more) and on the Kildare commuter line (59.0% over the last 28 days).
+
+**Decision: split-conformal recalibration, per (station group, lead band), refitted nightly.**
+`src/calibration.py`. The scorer fits two offsets per cell from the last 14 scored days, against
+the model's raw quantiles: the 10th percentile of (actual - raw q10) and the 90th percentile of
+(actual - raw q90). The API reads `scores/calibration.json` (hourly per warm container) and adds
+them to each prediction's raw q10 and q90. Cells under 200 rows use their band's offsets. A
+train already past its scheduled arrival (no band) takes the 0-5 min offsets. The median is
+never moved.
+
+**Why this does not reverse D64.** D64 chose to publish rather than patch, for three reasons:
+the finding was worth more than the fix, recalibrating would hide the shift, and a deadline. Its
+own exit clause said that if coverage stayed low past the deadline, "recalibration becomes the
+right call with time to do it properly", fitted on one window and validated on a later one
+through the gate. Coverage stayed low for ten weeks. The hiding objection is met by logging both
+ranges: every prediction now records `raw_q10_sec`, `raw_q90_sec` and the `calibration`
+version, every scored row records `raw_interval_hit`, and the accuracy page reports the model's
+own coverage beside the served one.
+
+**Leakage.** Offsets come only from outcomes scored before the prediction is made. The API
+reads one calibration file, not the prediction log, so D39's write-but-not-read rule for
+predictions is unchanged. Offsets are fitted against raw quantiles, so a correction never
+stacks on a previous one.
+
+**Champion/challenger gate (CLAUDE.md), identical held-out rows.** Champion: raw model.
+Challenger: raw plus calibration. Test: 250,356 scored predictions, 29 October to 18 November,
+each week calibrated only from the 14 days before it. MAE 130.2s against 130.2s (median
+unchanged). Coverage 68.1% to 80.8%, paired bootstrap 95% interval on the difference
+[+12.55, +12.83] points. Every group improved with an interval excluding zero: Kildare commuter
+59.4% to 80.2%, Cork corridor 64.8% to 81.0%, Dublin hubs 69.2% to 80.8%, DART 71.2% to
+81.1%, Maynooth commuter 71.3% to 78.3%, other intercity 66.3% to 77.5%, weak-coverage lines
+60.3% to 79.4% (n = 943, reported only). No veto. Week by week from 1 October the backtest gave
+78.8, 80.2, 78.4, 73.9, 81.5, 81.4 and 79.4%.
+
+**The cost, stated.** The typical range widens from 234s to 335s. A sudden change outruns a
+14-day window: the week from 22 October reached 73.9%. Calibration corrects drift, not
+disruption, and coverage on delays over an hour stays near zero.
+
+**What retraining would add, and why it is later work.** A model trained on September to
+November would learn autumn directly, but winter will move things again, and seasons need a
+year of data to learn as features. That is thesis work.
 
 **Date.** 2026-11-19

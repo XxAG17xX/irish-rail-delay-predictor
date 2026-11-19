@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Force -Path $build | Out-Null
 
 # score -> poll_live -> {sinks, hostlock, backfill}; score -> feedtime
 $modules = @("score.py", "poll_live.py", "sinks.py", "backfill.py", "hostlock.py",
-             "feedtime.py")
+             "feedtime.py", "calibration.py")
 foreach ($m in $modules) {
     $src = Join-Path $root "src\$m"
     if (-not (Test-Path $src)) { throw "missing module: $src" }

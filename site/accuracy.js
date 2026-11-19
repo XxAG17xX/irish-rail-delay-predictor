@@ -185,7 +185,12 @@ function render(a) {
               text: pct(r.interval_coverage_pct) }),
     el("span", {
       text: ` of the time, against the ${r.interval_coverage_nominal_pct}% it claims, across ` +
-        `${int(r.accuracy.n)} scored predictions.`,
+        `${int(r.accuracy.n)} scored predictions.` +
+        // D89: once ranges are calibrated, the model's own range is reported beside the
+        // served one, so calibration never hides how far the railway has drifted.
+        (r.model_interval_coverage_pct != null && r.model_interval_coverage_pct !== r.interval_coverage_pct
+          ? ` The model's own range, before nightly calibration, held ${pct(r.model_interval_coverage_pct)}.`
+          : ""),
     })
   );
 

@@ -61,6 +61,7 @@ def _staged(packaged: str, checkout: str) -> Path:
     p = HERE / packaged
     return p if p.exists() else HERE / checkout
 
+import calibration  # noqa: E402
 from backfill import Pacer  # noqa: E402
 from features import CATEGORICAL, FEATURES, featurise  # noqa: E402
 from feedtime import (MAX_LEAD_SEC, MIN_VANTAGE_DELAY_SEC, board_scope,  # noqa: E402
@@ -291,6 +292,32 @@ def state():
     return _state
 
 
+# The range's calibration (D89), refetched at most hourly by a warm container. The scorer
+# rewrites it nightly, so an hour is fresh enough and costs one read per container per hour.
+CALIBRATION_TTL_SEC = 3600
+_calibration = {"at": -1e9, "cal": None}
+
+
+def current_calibration():
+    """The nightly calibration, or None. A failed read keeps the last good one; with none,
+    raw ranges are served and every row says so (calibration: null), never a guess."""
+    import time
+    if time.monotonic() - _calibration["at"] < CALIBRATION_TTL_SEC:
+        return _calibration["cal"]
+    _calibration["at"] = time.monotonic()
+    bucket = os.environ.get("POLL_BUCKET", "")
+    if not bucket:
+        return _calibration["cal"]
+    key = f"{os.environ.get('SCORES_PREFIX', 'scores')}/calibration.json"
+    try:
+        body = _s3().get_object(Bucket=bucket, Key=key)["Body"].read()
+        _calibration["cal"] = json.loads(body)
+    except Exception as e:  # noqa: BLE001 -- any failure leaves raw ranges, which are logged as such
+        print(json.dumps({"level": "WARNING", "event": "calibration_unavailable",
+                          "key": key, "detail": str(e)[:200]}))
+    return _calibration["cal"]
+
+
 def _s3():
     import boto3
     return boto3.client("s3")
@@ -429,7 +456,12 @@ def predict_row(st, train, station, service_date=None, now_s=None, stops=None, e
     dow = DAY_NAMES[service_date.weekday()]
     x = featurise(stops, vi, ti, dow, st["vocabs"]).reshape(1, -1)
     q = np.sort(np.vstack([st["boosters"][a].predict(x) for a in QUANTILES]), axis=0)
-    q10, q50, q90 = (int(round(v)) for v in q[:, 0])
+    raw10, q50, raw90 = (int(round(v)) for v in q[:, 0])
+    # D89: the served range is re-centred on recent outcomes. The median is never moved, and
+    # the model's own quantiles are logged beside the served ones, so the record keeps both.
+    lo, hi, cal_version = calibration.offsets(current_calibration(), base["station_group"],
+                                              base.get("lead_band", ""))
+    q10, q90 = calibration.apply(raw10, q50, raw90, lo, hi)
 
     sched = target["sched"]
     weak = station in WEAK or stops[vi]["loc"] in WEAK
@@ -445,6 +477,7 @@ def predict_row(st, train, station, service_date=None, now_s=None, stops=None, e
             "horizon_route_stops": target["order"] - stops[vi]["order"],
             "horizon_sched_sec": sched - stops[vi]["sched"],
             "pred_q10_sec": q10, "pred_q50_sec": q50, "pred_q90_sec": q90,
+            "raw_q10_sec": raw10, "raw_q90_sec": raw90, "calibration": cal_version,
             "confidence": ("weak coverage on this line, treat with caution" if weak
                            else "good coverage on this line")}
 

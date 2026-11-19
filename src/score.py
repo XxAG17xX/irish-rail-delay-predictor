@@ -78,6 +78,8 @@ from pathlib import Path
 
 import requests
 
+import calibration
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
@@ -284,7 +286,8 @@ def score_rows(preds, journeys, operator, missing_codes):
             "prediction_id", "train_date", "train_code", "station_code", "station_group",
             "station_name", "weak_coverage", "lead_sec", "lead_band", "predicted_at",
             "model_version", "outcome", "reason", "source", "sampling_scheme",
-            "pred_q10_sec", "pred_q50_sec", "pred_q90_sec", "scheduled_arrival")}
+            "pred_q10_sec", "pred_q50_sec", "pred_q90_sec", "scheduled_arrival",
+            "raw_q10_sec", "raw_q90_sec", "calibration")}
 
         if row.get("outcome") == "declined":
             out.append({**rec, "score_state": "declined"})
@@ -318,7 +321,12 @@ def score_rows(preds, journeys, operator, missing_codes):
             model_err_sec=q50 - actual,
             # Trap 3: matched to the operator's minute precision. This is the headline.
             model_err_rounded_sec=round(q50 / 60.0) * 60 - actual,
-            interval_hit=bool(q10 <= actual <= q90))
+            interval_hit=bool(q10 <= actual <= q90),
+            # The model's own range, before calibration (D89). Equal to the served one for
+            # predictions made without a calibration, so the two series join seamlessly.
+            raw_interval_hit=bool((row.get("raw_q10_sec") if row.get("raw_q10_sec") is not None else q10)
+                                  <= actual
+                                  <= (row.get("raw_q90_sec") if row.get("raw_q90_sec") is not None else q90)))
 
         # Trap 4 on the operator's side: their last statement in the same band, so both
         # sides are the most informed thing each said at that range.
@@ -493,9 +501,15 @@ def visitor_coverage(board, answerable, total):
     }
 
 
-def coverage(rows):
-    """Share of actuals falling inside the 80% interval. The interval's own honesty check."""
-    v = [r["interval_hit"] for r in rows if r.get("interval_hit") is not None]
+def coverage(rows, key="interval_hit"):
+    """Share of actuals falling inside the 80% interval. The interval's own honesty check.
+
+    `key="raw_interval_hit"` measures the model's own range before calibration (D89); rows
+    scored before calibration existed carry only `interval_hit`, which is the same thing."""
+    # A projected read returns a missing field as None rather than absent, so the fallback
+    # is on the value, not on the key.
+    v = [r.get(key) if r.get(key) is not None else r.get("interval_hit") for r in rows]
+    v = [x for x in v if x is not None]
     return round(100 * sum(v) / len(v), 1) if v else None
 
 
@@ -533,7 +547,11 @@ def scored_dates(client, bucket, scores_prefix):
 # on 2026-09-09 -- after the day's scores had already been written, so nothing was lost but
 # accuracy.json went stale and the Errors alarm was the only thing that said so.
 ROLLUP_FIELDS = ("score_state", "model_version", "model_err_rounded_sec",
-                 "operator_err_sec", "interval_hit", "station_group", "lead_band")
+                 "operator_err_sec", "interval_hit", "raw_interval_hit", "station_group",
+                 "lead_band")
+# What calibration.fit reads: the last WINDOW_DAYS of outcomes against the raw quantiles.
+CALIBRATION_FIELDS = ("score_state", "station_group", "lead_band", "actual_delay_sec",
+                      "pred_q10_sec", "pred_q90_sec", "raw_q10_sec", "raw_q90_sec")
 
 
 def read_day_rows(client, bucket, scores_prefix, day, fields=None):
@@ -614,6 +632,7 @@ def build_rollup(client, bucket, scores_prefix, window=ROLLUP_WINDOW_DAYS):
     for g in sorted({r.get("station_group") or "(unpolled)" for r in clean}):
         sel = [r for r in clean if (r.get("station_group") or "(unpolled)") == g]
         by_group[g] = {"accuracy": accuracy_of(sel), "interval_coverage_pct": coverage(sel),
+                       "model_interval_coverage_pct": coverage(sel, "raw_interval_hit"),
                        "head_to_head": head_to_head_of(sel)}
     by_band = {}
     for _, _, lb in LEAD_BANDS:
@@ -670,6 +689,9 @@ def build_rollup(client, bucket, scores_prefix, window=ROLLUP_WINDOW_DAYS):
         "rolling": {
             "accuracy": accuracy_of(clean),
             "interval_coverage_pct": coverage(clean),
+            # The model's own range before calibration: the measure of how far the railway
+            # has drifted from what the model learned. Kept so calibration hides nothing.
+            "model_interval_coverage_pct": coverage(clean, "raw_interval_hit"),
             "interval_coverage_nominal_pct": 80,
             "head_to_head": head_to_head_of(clean),
             "score_states": dict(states),
@@ -687,6 +709,26 @@ def build_rollup(client, bucket, scores_prefix, window=ROLLUP_WINDOW_DAYS):
             "head_to_head": cum_h2h,
         },
     }
+
+
+def write_calibration(client, bucket, scores_prefix):
+    """Fit the range's calibration on the last WINDOW_DAYS of scored days and write it where
+    the API reads it (D89). Only days that have already been scored contribute, so nothing
+    about a future prediction's outcome can reach it."""
+    days = scored_dates(client, bucket, scores_prefix)[-calibration.WINDOW_DAYS:]
+    if not days:
+        return None
+    rows = []
+    for d in days:
+        try:
+            rows += read_day_rows(client, bucket, scores_prefix, d, fields=CALIBRATION_FIELDS)
+        except Exception as e:
+            print(f"  ! calibration: no rows for {d}: {e}")
+    cal = calibration.fit(rows, (days[0], days[-1]))
+    key = f"{scores_prefix}/calibration.json"
+    client.put_object(Bucket=bucket, Key=key, Body=json.dumps(cal, indent=1).encode("utf-8"),
+                      ContentType="application/json")
+    return key
 
 
 def write_rollup(client, bucket, scores_prefix, rollup, site_bucket=None,
@@ -917,13 +959,18 @@ def lambda_handler(event, context):
         rollup_key = write_rollup(client, bucket, scores, rollup,
                                   site_bucket=os.environ.get("SITE_BUCKET") or None)
 
+    # After the rollup, so a calibration failure never costs the accuracy page its night.
+    # The API keeps serving yesterday's calibration until this one lands.
+    calibration_key = write_calibration(client, bucket, scores)
+
     if fatal:
         raise RuntimeError(
             f"no operator matches on {', '.join(fatal)} despite scoring at least "
             f"{OPERATOR_ALARM_FLOOR} rows. Scores were written; the comparison is missing. "
             f"Most likely POLLER_PREFIX ({poller}) is not where the poller now writes.")
     return {"status": "ok", "scored_dates": done, "candidates": days,
-            "skipped_not_settled": skipped, "rollup": rollup_key}
+            "skipped_not_settled": skipped, "rollup": rollup_key,
+            "calibration": calibration_key}
 
 
 def main():
@@ -1148,7 +1195,7 @@ def _self_check():
                     # something to drop and the assertion below is not vacuous
                     {"score_state": "scored", "model_version": "old", "station_group": "dart",
                      "lead_band": "5-15 min", "model_err_rounded_sec": 60,
-                     "operator_err_sec": 120, "interval_hit": True,
+                     "operator_err_sec": 120, "interval_hit": True, "raw_interval_hit": False,
                      "prediction_id": "x", "train_code": "E1", "station_code": "DART1",
                      "scheduled_arrival": "10:00:00", "actual_delay_sec": 60},
                     {"score_state": "scored", "model_version": "old", "station_group": "dart",
@@ -1196,6 +1243,10 @@ def _self_check():
     assert set(full[0]) > set(ROLLUP_FIELDS), "unprojected read should keep everything"
 
     r = build_rollup(stub, "b", "scores")
+    # Served coverage counts the calibrated hit; model coverage the raw one, falling back to
+    # the served hit for rows scored before calibration existed (D89).
+    assert r["rolling"]["interval_coverage_pct"] == 66.7, r["rolling"]["interval_coverage_pct"]
+    assert r["rolling"]["model_interval_coverage_pct"] == 33.3, r["rolling"]["model_interval_coverage_pct"]
     assert r["window_dates"] == ["2026-09-01", "2026-09-02"]
     assert r["model_versions"] == {"old": 3, "new": 1}, r["model_versions"]
     assert r["rolling"]["accuracy"]["n"] == 3, "declined rows must not enter accuracy"

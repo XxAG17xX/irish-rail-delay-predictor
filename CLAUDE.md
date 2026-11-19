@@ -63,6 +63,9 @@ googled, just write.
   uses today's model against a known outcome. That is leakage, and code that does it is a bug
   rather than an optimisation.
 - **Never feed `ExpectedArrival` into the model.** It is the baseline being compared against.
+- **The range's calibration learns only from outcomes already scored** (D89). The API reads
+  `scores/calibration.json`, never the prediction log, and every prediction logs its raw
+  quantiles beside the served ones so the model's own coverage stays measurable.
 - The nightly scorer joins yesterday's logged predictions to realised arrivals. It reads
   outcomes and never writes or recomputes predictions. This is enforced by IAM: the API may
   write the prediction prefix and not read it, the scorer may read it and not write it.

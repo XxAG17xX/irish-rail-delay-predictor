@@ -84,6 +84,7 @@ jobs:
           python src/prediction_log.py
           python src/api.py
           python src/generate.py
+          python src/calibration.py
 
       # Lighthouse checks contrast too, but the audit job runs after the deploy job, so a
       # failing colour reaches the live site and is reported afterwards. This reads the same
