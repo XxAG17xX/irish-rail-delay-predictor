@@ -29,6 +29,15 @@ where the data cannot support a claim. An honest loss is a better result than an
 
 ## Positioning
 
+- **The moment it serves.** A train is running, the board shows one time, and someone has to
+  decide whether to hurry or walk. Apps and maps already say which train and roughly when;
+  RailCast says how far to trust that time right now: the earliest the train plausibly arrives
+  and the latest. It is not a journey planner and has no better data than the operator: it
+  reads the same public feed and adds the range, checked every morning.
+- **Headline (chosen 2026-11-19):** "The board says 17:10. RailCast says 17:07 to 17:14.",
+  filled from a real running train; when none is running, from a real logged prediction
+  labelled with its date. Stated once, on the first screen. "Not a time. A range." is retired
+  as a slogan.
 - **A range, not a time.** A station board gives one number with no sign of how sure it is.
   RailCast gives the span the arrival should land inside four times in five.
 - **Checkable, not claimed.** Predictions are logged before their outcomes exist, the scorer
@@ -86,7 +95,8 @@ where the data cannot support a claim. An honest loss is a better result than an
   every limitation keeps its number beside it.
 - **Bilingual station names:** the official Irish form from logainm.ie beside the English one
   wherever a station is named. A station without a verified Irish form shows English only.
-- The current mark is a placeholder; a logo is being created.
+- The current mark is a placeholder; a logo is being created from the brand boards in
+  `design/refs/` (generated in ChatGPT as references; the mark is redrawn as exact SVG).
 
 ## Evidence on Hand
 

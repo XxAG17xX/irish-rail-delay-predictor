@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 56" role="img" aria-label="RailCast">
+  <path fill="#2B35AF" d="M38 28L79.569 4A48 48 0 0 1 79.569 52Z"/>
+  <path fill="#7C83D6" d="M38 28L83.651 13.167A48 48 0 0 1 83.651 42.833Z"/>
+  <path fill="#C9CCEF" d="M38 28L85.533 21.32A48 48 0 0 1 85.533 34.68Z"/>
+  <path stroke="#C9CCEF" stroke-width="4" d="M11.5 28H38"/>
+  <circle cx="6" cy="28" r="4" fill="none" stroke="#C9CCEF" stroke-width="3"/>
+  <circle cx="38" cy="28" r="5" fill="#C9CCEF"/>
+</svg>
