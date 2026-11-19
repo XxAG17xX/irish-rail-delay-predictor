@@ -95,6 +95,27 @@ function askedFor() {
   }
 }
 
+/**
+ * The station typed into the header's search box (`?find=`), matched by name: an exact
+ * match first, then the only name that starts with what was typed. Anything ambiguous
+ * matches nothing, so the board never guesses which station was meant.
+ * @param {{code: string, name: string}[]} stations
+ * @returns {string} a station code, or ""
+ */
+function foundIn(stations) {
+  let q = "";
+  try {
+    q = (new URL(location.href).searchParams.get("find") || "").trim().toLowerCase();
+  } catch {
+    return "";
+  }
+  if (!q) return "";
+  const exact = stations.filter((s) => s.name.toLowerCase() === q);
+  const start = stations.filter((s) => s.name.toLowerCase().startsWith(q));
+  const hit = exact.length === 1 ? exact[0] : start.length === 1 ? start[0] : undefined;
+  return hit ? hit.code : "";
+}
+
 /** @param {string} code */
 function remember(code) {
   try {
@@ -541,7 +562,7 @@ get("/stations")
     }
     select.replaceChildren(watched, rest);
     const codes = new Set(stations.map((s) => s.code));
-    const asked = askedFor();
+    const asked = askedFor() || foundIn(stations);
     const linked = codes.has(asked);
     select.value = linked ? asked : remembered();
     if (!select.value && stations[0]) select.value = stations[0].code;
@@ -553,7 +574,17 @@ get("/stations")
     // ignored rather than handed to the feed.
     if (linked) {
       remember(asked);
+      try {
+        const url = new URL(location.href);
+        url.searchParams.delete("find");
+        url.searchParams.set("station", asked);
+        history.replaceState(null, "", url);
+      } catch {
+        /* the board still loads; only the shareable address is lost */
+      }
       void showBoard(asked);
+    } else if (new URL(location.href).searchParams.get("find")) {
+      need("status").textContent = "No single station matches that name. Pick one from the list.";
     }
   })
   .catch((err) => {

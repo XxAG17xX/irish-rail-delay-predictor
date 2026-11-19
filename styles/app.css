@@ -218,3 +218,54 @@
   .fan-now { stroke: var(--fg-3); stroke-width: 1; stroke-dasharray: 2 2; }
   .fan text.fan-now-label { fill: var(--fg-2); font-weight: 600; }
 }
+
+/* ── page chrome: the capsule header and the footer ──────────────────────── */
+@layer components {
+  .capsule-bar {
+    position: fixed; inset: .75rem 0 auto; z-index: 40;
+    display: flex; justify-content: center; padding-inline: .75rem; pointer-events: none;
+  }
+  .capsule-bar .capsule {
+    pointer-events: auto;
+    display: flex; align-items: center; gap: .15rem;
+    max-width: 100%; border-radius: 999px; padding: .3rem .3rem .3rem 1rem;
+  }
+  .capsule-home { display: flex; align-items: center; margin-right: .5rem; flex-shrink: 0; }
+  .capsule-home img { height: 1.5rem; width: auto; }
+  .capsule-find {
+    display: none; align-items: center; gap: .4rem; margin-right: .35rem;
+    border-radius: 999px; padding: .4rem .85rem;
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+    transition: background-color .2s, box-shadow .2s;
+  }
+  .capsule-find:focus-within { background: var(--raised); box-shadow: 0 0 0 2px var(--accent); }
+  .capsule-find svg { width: 1rem; height: 1rem; fill: none; stroke: var(--fg-3); stroke-width: 1.6; stroke-linecap: round; }
+  .capsule-find input {
+    width: 11rem; background: none; border: 0; outline: none; color: var(--fg); font: inherit; font-size: .9rem;
+  }
+  .capsule-find input::-webkit-search-cancel-button { display: none; }
+  @media (min-width: 52rem) { .capsule-find { display: flex; } }
+  .capsule .nav-link { font-size: .9rem; white-space: nowrap; }
+  @media (max-width: 26rem) {
+    .capsule-bar .capsule { padding-left: .7rem; }
+    .capsule-home img { height: 1.25rem; }
+    .capsule .nav-link { padding: .45rem .55rem; font-size: .85rem; }
+  }
+
+  .site-foot { border-top: 1px solid var(--line); margin-top: 6rem; }
+  .site-foot-in {
+    margin-inline: auto; max-width: 72rem; padding: 2.5rem 1.5rem 3rem;
+    display: grid; gap: 1.25rem; align-items: end;
+  }
+  @media (min-width: 48rem) { .site-foot-in { grid-template-columns: auto 1fr auto; gap: 2.5rem; } }
+  .site-foot-in > img { height: 1.75rem; width: auto; }
+  .site-foot-in p { max-width: 46ch; font-size: .875rem; line-height: 1.55; color: var(--fg-3); }
+  .site-foot-in nav { display: flex; gap: .5rem; }
+  .social {
+    display: inline-flex; align-items: center; gap: .5rem; border-radius: 999px;
+    border: 1px solid var(--line); padding: .45rem .9rem; font-size: .875rem;
+    color: var(--fg-2); text-decoration: none; transition: border-color .2s, color .2s;
+  }
+  .social:hover { border-color: var(--accent); color: var(--fg); }
+  .social svg { width: 1rem; height: 1rem; fill: currentColor; }
+}
