@@ -9,7 +9,7 @@ answers with an **80% range rather than a single number**.
 > Kildare, Portarlington and Portlaoise. Asked about Thurles, the service answers: expected
 > 17:07 to 17:14, most likely 17:09, 80% confidence.
 
-[![The landing page: one journey, with the shaded section where the arrival is expected to land](docs/img/landing.png)](https://railcast.ag17.dev)
+[![The landing page: a live prediction as the headline, beside the network printed as a tilted plate with every running train where it last reported](docs/img/landing.png)](https://railcast.ag17.dev)
 
 One model for the whole network, trained on the public [Irish Rail Realtime
 API](http://api.irishrail.ie/realtime/). Every prediction is written down before the train
@@ -17,18 +17,26 @@ arrives and scored against the real arrival the following night, so the accuracy
 record rather than a claim.
 
 **Built with** Python, LightGBM, FastAPI, AWS Lambda, S3, CloudFront, EventBridge and
-CloudWatch, CloudFormation and SAM, GitHub Actions with OIDC, Tailwind CSS and TypeScript.
+CloudWatch, CloudFormation and SAM, GitHub Actions with OIDC, Tailwind CSS, TypeScript and
+Three.js.
 
 A station board: the timetable, what Irish Rail currently expects, and what RailCast expects
 with the range it should land inside. A dash is the service declining, because that train has
-not reported anywhere yet and there is nothing to predict from.
+not left or has not reported anywhere yet, and there is nothing to predict from.
 
-[![A Galway board with three times side by side for each train, and a dash where RailCast declines](docs/img/board.png)](https://railcast.ag17.dev/predictions.html?station=GALWY)
+[![A Heuston board with three times side by side for each train, and a dash where RailCast declines](docs/img/board.png)](https://railcast.ag17.dev/predictions.html?station=HSTON)
 
-Open a row and the journey behind the prediction is there. This one left Dublin 1.4 minutes
-down and had lost 52 by Athenry, which is why the range it is given runs an hour wide.
+Open a row and the journey behind the prediction is there: the delay recorded at each stop so
+far, and the range fanning out from the last report to the station asked about.
 
-[![The route behind one train, the delay at each stop growing from plus 1.4 to plus 52.2 minutes](docs/img/board-route.png)](https://railcast.ag17.dev/predictions.html?station=GALWY)
+[![The route behind one Portlaoise train, its delay at each stop and the range fanning out to Heuston](docs/img/board-route.png)](https://railcast.ag17.dev/predictions.html?station=HSTON)
+
+The map unfolds from the landing page. Every running train is drawn where the feed last placed
+it, with the time of that report, and never animated along the track between reports as if it
+were tracked live. Track comes from OpenStreetMap, and so does the coast once zoomed in;
+station names are in English and Irish.
+
+[![The network zoomed in around Dublin and the midlands, each train a three-car unit with its range fanned ahead](docs/img/map.png)](https://railcast.ag17.dev)
 
 ## Results
 
@@ -62,8 +70,6 @@ The live site shows these beside the good numbers.
 **Interval coverage was 75.0% against a nominal 80% over 3 to 9 September 2026, and the
 shortfall is not evenly spread.**
 
-[![Coverage per line on the accuracy page, amber where it sits below 70%](docs/img/coverage-by-line.png)](https://railcast.ag17.dev/accuracy.html)
-
 | Station group | Coverage |
 |---|---|
 | `commuter_maynooth` | 81.4% |
@@ -77,8 +83,23 @@ shortfall is not evenly spread.**
 A single blended figure would hide the lines in the fifties and sixties, so coverage is always
 published per group. A degradation trigger written in advance fired on 8 September, and the
 decision was to publish the degradation rather than widen the intervals until the number
-looked better ([D64](docs/decisions.md)). What changed on those lines has not been
-established.
+looked better ([D64](docs/decisions.md)).
+
+**Then the autumn arrived, and the trigger held on 80 of 82 days.** Trains ran later than in
+the June to August data the model learned from: arrivals more than 15 minutes late went from
+1.1% of scored rows in August to 5.1% in November, and every extra miss was on the late side.
+RailCast's error stayed below Irish Rail's on matched events throughout.
+
+[![Coverage per line on the accuracy page, beside the note that the ranges are now re-centred nightly](docs/img/coverage-by-line.png)](https://railcast.ag17.dev/accuracy.html)
+
+**Since 19 November 2026 each range is re-centred every night** on the last 14 days of scored
+outcomes, per station group and horizon, with the middle estimate left alone
+([D89](docs/decisions.md)). It went through the same champion/challenger gate as a retrain, on
+250,356 held-out predictions from 29 October to 18 November: coverage 68.1% to 80.8% (paired
+bootstrap 95% interval +12.6 to +12.8 points), every group improved, error unchanged at 130.2s.
+The cost is width: the typical range grew from 234s to 335s. Every prediction still logs the
+model's own range beside the served one, and the accuracy page reports both coverages, so the
+correction cannot hide the shift it corrects.
 
 **The intervals cover 0% of real delays over an hour.** Each of those trains was a few minutes
 late at the moment of asking, and nothing in how late a train is now can see a disruption that
@@ -117,12 +138,15 @@ flowchart LR
     FEED --> POLL --> DATA
     FEED --> API --> DATA
     FEED --> GEN --> DATA
+    GEN -->|live.json| SITE
     DATA --> SCORE --> DATA
     SCORE -->|accuracy.json| SITE
+    DATA -.->|calibration.json| API
 ```
 
 Four Lambda functions: a poller that captures station boards every five minutes, the API, a
-generator that samples running trains so the scoreboard has input, and a nightly scorer.
+generator that samples running trains so the scoreboard has input and publishes the snapshot
+the map draws, and a nightly scorer that also refits the range calibration.
 Three private S3 buckets, for data, the site and access logs. No database
 ([D40](docs/decisions.md)), no servers. Running cost was **$0.10 a month** when measured on 23 August 2026, before the web
 layer existed. The site deploys from GitHub
@@ -138,7 +162,8 @@ sequenceDiagram
 
     V->>A: which train, which station
     A->>A: build features from upstream delays
-    A->>L: write prediction, quantiles, model version
+    A->>A: re-centre the range from last night's calibration
+    A->>L: write prediction, raw and served quantiles, versions
     Note over L: Written before the outcome exists.<br/>A failed write fails the request.
     A-->>V: 80% interval
     N->>L: read yesterday's predictions
@@ -188,7 +213,7 @@ site/      the four pages; Tailwind compiled ahead of time, no framework
 docs/      the write-ups below
 ```
 
-- **[docs/decisions.md](docs/decisions.md).** 83 decisions: what was chosen, what was rejected
+- **[docs/decisions.md](docs/decisions.md).** 90 decisions: what was chosen, what was rejected
   and why. Opens with a guide and the ten worth a stranger's time.
 - [docs/story.md](docs/story.md). The whole project as a narrative, for someone who does not
   code and does not know trains.
@@ -219,6 +244,10 @@ time was captured reverses the comparison.
 ## Licence
 
 [MIT](LICENSE). The bundled webfonts are under the SIL Open Font Licence, included beside them
-in `site/fonts/`.
+in `site/fonts/`. The bundled Three.js is MIT.
+
+Map data: track and detailed coast © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+contributors, under the ODbL; the overview coast is Natural Earth, public domain. Irish station names from [Logainm.ie](https://www.logainm.ie/),
+under CC BY 4.0.
 
 Not affiliated with Iarnród Éireann. Data from their public realtime feed.
