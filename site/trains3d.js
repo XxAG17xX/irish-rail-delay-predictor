@@ -20,7 +20,7 @@ import {
   PlaneGeometry, Mesh, HemisphereLight, DirectionalLight, Matrix4, Vector3, PCFShadowMap,
   SRGBColorSpace,
 } from "./vendor/three.js";
-import { railcar } from "./train3d.js";
+import { consist } from "./train3d.js";
 
 /**
  * @param {HTMLElement} stage the element with the CSS perspective
@@ -54,7 +54,7 @@ export function mountTrains(stage, sheet, plate) {
   scene.add(sun, sun.target);
 
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.06 });
-  const geometry = railcar();
+  const geometry = consist(3);
   /** @type {InstancedMesh|null} */
   let fleet = null;
   const ground = new Mesh(new PlaneGeometry(1, 1), new ShadowMaterial({ opacity: 0.34 }));
@@ -127,9 +127,9 @@ export function mountTrains(stage, sheet, plate) {
       fleet.castShadow = true;
       scene.add(fleet);
     }
-    // Longer than the 2D mark it replaces: seen from above at the plate's tilt, a railcar
-  // shows mostly roof, and at the mark's own length its blue band disappears.
-    const length = plate.trainPx() * 1.5;
+    // A three-car unit, longer than the 2D mark it replaces, so each car keeps a readable
+  // size: one car at the mark's length read as a bus.
+    const length = plate.trainPx() * 1.7;
     const m = new Matrix4();
     trains.forEach((t, i) => {
       const p = at(ox + (t.x - vb.x) * k, oy + (t.y - vb.y) * k);

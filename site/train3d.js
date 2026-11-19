@@ -54,31 +54,35 @@ const PROFILE = /** @type {[number, number][]} */ ((() => {
 /** Window and door openings along the side, as [x0, x1]. */
 /** @type {[number, number][]} */
 const DOORS = [[-0.359, -0.307], [0.2, 0.254]];
-const WINDOWS = (() => {
+/** Window openings along the side; a car with no cab carries them to its far end. */
+const windowsFor = (/** @type {boolean} */ cab) => {
   /** @type {[number, number][]} */
   const out = [];
-  for (let x = -0.44; x < 0.33; x += 0.074) {
+  for (let x = -0.44; x < (cab ? 0.33 : 0.4); x += 0.074) {
     /** @type {[number, number]} */
     const w = [x, x + 0.06];
     if (!DOORS.some(([a, b]) => w[1] > a - 0.01 && w[0] < b + 0.01)) out.push(w);
   }
   return out;
-})();
+};
 
-/** Sections along the length: x, width scale, height scale. The cab rakes over its last 12%. */
-const SECTIONS = /** @type {[number, number, number][]} */ ((() => {
-  const xs = new Set([-0.475, 0.38]);
-  for (const [a, b] of [...DOORS, ...WINDOWS]) {
+/** Sections along the length: x, width scale, height scale. A cab rakes over its last 12%;
+ * a car without one ends as the rear does, square with rounded corners.
+ * @param {boolean} cab @returns {[number, number, number][]} */
+const sectionsFor = (cab) => {
+  const xs = new Set([-0.475, cab ? 0.38 : 0.475]);
+  for (const [a, b] of [...DOORS, ...windowsFor(cab)]) {
     xs.add(a);
     xs.add(b);
   }
   /** @type {[number, number, number][]} */
   const mid = [...xs].sort((p, q) => p - q).map((x) => [x, 1, 1]);
-  return [
-    [-0.5, 0.9, 0.93], [-0.492, 0.97, 0.98], ...mid,
-    [0.42, 0.98, 0.97], [0.452, 0.93, 0.86], [0.477, 0.83, 0.72], [0.493, 0.64, 0.56], [0.5, 0.42, 0.42],
-  ];
-})());
+  /** @type {[number, number, number][]} */
+  const tail = cab
+    ? [[0.42, 0.98, 0.97], [0.452, 0.93, 0.86], [0.477, 0.83, 0.72], [0.493, 0.64, 0.56], [0.5, 0.42, 0.42]]
+    : [[0.492, 0.97, 0.98], [0.5, 0.9, 0.93]];
+  return [[-0.5, 0.9, 0.93], [-0.492, 0.97, 0.98], ...mid, ...tail];
+};
 
 const inside = (/** @type {number} */ x, /** @type {[number, number][]} */ spans) => spans.some(([a, b]) => x > a && x < b);
 
@@ -87,35 +91,45 @@ const inside = (/** @type {number} */ x, /** @type {[number, number][]} */ spans
  * cross-section, so a band edge stays on one row of vertices even where the ends taper (taper
  * moves the vertices, and colouring by their moved height sawtoothed the band).
  */
-function bodyColour(/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ z, /** @type {boolean} */ cap) {
-  if (cap) {
-    // The ends: the cab's tip is windscreen over a white nose, the rear a plain white face.
-    if (x > 0) return z > 0.13 ? C.glass : C.white;
+function bodyColour(/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ z, /** @type {boolean} */ end, /** @type {boolean} */ cab, /** @type {[number, number][]} */ windows) {
+  if (end) {
+    // The ends: the cab's tip is windscreen over a white nose; every other end is a plain
+    // white face with a gangway window.
+    if (cab && x > 0) return z > 0.13 ? C.glass : C.white;
     return z > 0.16 && z < 0.235 && Math.abs(y) < 0.05 ? C.glass : C.white;
   }
   // The windscreen wraps the upper cab, as in the reference's front view; the band sweeps up
   // the cab side beneath it.
-  if ((x > 0.455 && z > 0.14) || (x > 0.43 && z > 0.17 && z < 0.255)) return C.glass;
-  if (x > 0.46 && z > 0.095 && z < 0.12 && Math.abs(y) > W * 0.35 && Math.abs(y) < W * 0.8) return C.lamp;
-  const lift = x > 0.37 ? (x - 0.37) * 0.5 : 0;
+  if (cab && ((x > 0.455 && z > 0.14) || (x > 0.43 && z > 0.17 && z < 0.255))) return C.glass;
+  if (cab && x > 0.46 && z > 0.095 && z < 0.12 && Math.abs(y) > W * 0.35 && Math.abs(y) < W * 0.8) return C.lamp;
+  const lift = cab && x > 0.37 ? (x - 0.37) * 0.5 : 0;
   const side = Math.abs(y) > W * 0.8;
   if (z > 0.252) return C.roof;
   if (side && inside(x, DOORS) && z > Z0 + 0.004 && z < 0.233) {
     return z > 0.119 && z < 0.211 ? C.glass : C.door;
   }
-  if (side && inside(x, WINDOWS) && z > ZW[0] && z < ZW[1]) return C.glass;
+  if (side && inside(x, windows) && z > ZW[0] && z < ZW[1]) return C.glass;
   if (z > ZB[0] + lift && z < ZB[1] + lift * 0.3) return C.band;
   return C.white;
 }
 
-/** @returns {BufferGeometry} one railcar, non-indexed, with a colour per triangle */
-export function railcar() {
-  /** @type {number[]} */ const pos = [];
-  /** @type {number[]} */ const col = [];
+/**
+ * One car's triangles, appended to `pos` and `col`. `place` maps each vertex into the
+ * consist: shortened, shifted along it, and for the last car turned round (a rotation, so the
+ * triangles keep their winding).
+ * @param {boolean} cab @param {number[]} pos @param {number[]} col
+ * @param {(p: number[]) => number[]} place
+ */
+function car(cab, pos, col, place) {
+  const SECTIONS = sectionsFor(cab);
+  const windows = windowsFor(cab);
 
   /** @param {number[][]} tri @param {number[]} c */
   const push = (tri, c) => {
-    for (const p of tri) pos.push(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0);
+    for (const raw of tri) {
+      const p = place(raw);
+      pos.push(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0);
+    }
     for (let i = 0; i < 3; i++) col.push(c[0] ?? 0, c[1] ?? 0, c[2] ?? 0);
   };
   /** A cap triangle, coloured from its own centroid. */
@@ -123,7 +137,7 @@ export function railcar() {
     const [a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0]] = tri;
     const cy = ((a[1] ?? 0) + (b[1] ?? 0) + (c[1] ?? 0)) / 3;
     const cz = ((a[2] ?? 0) + (b[2] ?? 0) + (c[2] ?? 0)) / 3;
-    push(tri, bodyColour(a[0] ?? 0, cy, cz, true));
+    push(tri, bodyColour(a[0] ?? 0, cy, cz, true, cab, windows));
   };
 
   // Loft the cross-section through every section; the profile shrinks toward the floor line.
@@ -140,7 +154,7 @@ export function railcar() {
       /** @type {number[]} */ const c = r1[j] || [0, 0, 0];
       /** @type {number[]} */ const d = r1[k] || [0, 0, 0];
       const [pj = [0, 0], pk = [0, 0]] = [PROFILE[j], PROFILE[k]];
-      const colour = bodyColour(xm, (pj[0] + pk[0]) / 2, (pj[1] + pk[1]) / 2, false);
+      const colour = bodyColour(xm, (pj[0] + pk[0]) / 2, (pj[1] + pk[1]) / 2, false, cab, windows);
       push([a, b, c], colour);
       push([b, d, c], colour);
     }
@@ -176,6 +190,31 @@ export function railcar() {
     box([a, b, -0.042, 0.042, Z1 - 0.004, Z1 + 0.016], C.box); // roof equipment
   }
 
+}
+
+/**
+ * A three-car unit, the way a train reads at map scale where one car reads as a bus: a cab
+ * car leading, a middle car, and the cab car turned round at the back. Each car is drawn at
+ * 0.46 of its true length so its windows and band survive the map's size, and the unit is
+ * scaled to length 1 along +x, leading cab at +x.
+ * @returns {BufferGeometry}
+ */
+export function consist(cars = 3) {
+  /** @type {number[]} */ const pos = [];
+  /** @type {number[]} */ const col = [];
+  const SHORT = 0.46;
+  const GAP = 0.025;
+  const total = cars * SHORT + (cars - 1) * GAP;
+  for (let i = 0; i < cars; i++) {
+    const centre = total / 2 - SHORT / 2 - i * (SHORT + GAP);
+    const last = i === cars - 1 && cars > 1;
+    const cab = i === 0 || last;
+    car(cab, pos, col, (p) => {
+      const x = (last ? -1 : 1) * (p[0] ?? 0) * SHORT;
+      const y = (last ? -1 : 1) * (p[1] ?? 0);
+      return [(x + centre) / total, y / total, (p[2] ?? 0) / total];
+    });
+  }
   const g = new BufferGeometry();
   g.setAttribute("position", new Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new Float32BufferAttribute(col, 3));
