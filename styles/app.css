@@ -540,7 +540,7 @@
   .board-name { font-size: 1.5rem; letter-spacing: -.02em; }
   .board-time { font-size: .85rem; color: var(--fg-3); font-variant-numeric: tabular-nums; }
 
-  .board-row { display: grid; grid-template-columns: 1fr auto; gap: .5rem 1.5rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+  .board-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .4rem 1.5rem; padding: .85rem 0; border-bottom: 1px solid var(--line); }
   .board-row:last-child { border-bottom: 0; }
   .br-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .6rem; min-width: 0; }
   .br-train { font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
@@ -548,20 +548,22 @@
   .br-kind.dart { border-color: var(--color-mid); color: var(--color-pale); }
   .br-dest { font-size: 1.05rem; font-weight: 600; font-stretch: 85%; }
   .br-calls { font-size: .85rem; color: var(--fg-3); }
-  .br-times { display: flex; gap: 1.25rem; justify-content: flex-end; }
+  /* Fixed columns, so a row with flaps and a row with a dash line up down the board. */
+  .br-times { display: grid; grid-template-columns: 4.4rem 4.4rem 7.4rem; gap: 1rem; justify-content: end; }
   .br-cell { display: grid; justify-items: end; gap: .2rem; }
   .br-label { font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-3); }
   .br-val { font-variant-numeric: tabular-nums; font-size: 1rem; }
   .br-val.dim, .dim { color: var(--fg-3); }
-  .br-detail { grid-column: 1 / -1; font-size: .82rem; color: var(--fg-3); }
+  .br-detail { grid-column: 1; font-size: .82rem; color: var(--fg-3); }
   .br-range { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
   .br-note { font-size: .78rem; color: var(--fg-3); margin-top: .5rem; }
   .br-note.warn { color: var(--fg); font-weight: 600; }
   @media (max-width: 40rem) {
     .board { padding: .25rem .9rem; }
     .board-row { grid-template-columns: 1fr; }
-    .br-times { justify-content: flex-start; }
+    .br-times { justify-content: start; grid-template-columns: 4.6rem 4.6rem auto; }
     .br-cell { justify-items: start; }
+    .br-detail, .jrny-toggle { grid-column: 1; justify-self: start; }
   }
 
   /* Split flaps: each character a card split across the middle. Only a character that
@@ -582,7 +584,7 @@
 
   /* The route, opened from a row. */
   .jrny-toggle {
-    grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: .45rem;
+    grid-column: 2; justify-self: end; display: inline-flex; align-items: center; gap: .45rem;
     border-radius: 999px; padding: .35rem .7rem .35rem .55rem; font-size: .8rem; color: var(--fg-2);
     border: 1px solid var(--line); background: transparent; cursor: pointer; transition: border-color .2s, color .2s;
   }
@@ -672,7 +674,8 @@
   .tk-edge { stroke: var(--accent); stroke-width: 1.5; }
   .stop { fill: var(--raised); stroke: var(--fg-3); stroke-width: 2; }
   .stop.rep { fill: var(--fg); stroke: var(--fg); }
-  .lbl { fill: var(--fg-3); font-size: 12.5px; letter-spacing: .03em; }
+  /* In viewBox units: these diagrams scale with the page, so 10.5 renders at about 13-14 px. */
+  .lbl { fill: var(--fg-3); font-size: 10.5px; letter-spacing: .03em; }
   .val { fill: var(--fg); font-size: 13px; font-weight: 600; }
   .val.hot { fill: var(--accent); }
   .val.warn { fill: var(--fg); }
@@ -703,5 +706,25 @@
   .hero.exploring .has-3d .tr-body, .hero.exploring .has-3d .tr-band, .hero.exploring .has-3d .tr-cab { opacity: 1; }
   @media (prefers-reduced-motion: no-preference) {
     .plate-3d { animation: plate-fade .6s both; }
+  }
+}
+
+/* Phone board, declared after the route button's own placement so it wins: one column, the
+   button under its detail line. */
+@layer components {
+  @media (max-width: 40rem) {
+    .board-row > .br-detail, .board-row > .jrny-toggle { grid-column: 1; justify-self: start; }
+  }
+}
+
+/* Record tables keep each figure on one line and scroll sideways on a phone rather than
+   wrapping "18 Nov" onto two lines; chart axis labels are a true 12 px. Home-page figures
+   take a full row each on a phone. */
+@layer components {
+  .rec th, .rec td { white-space: nowrap; }
+  .rec td:first-child { white-space: normal; min-width: 6.5rem; }
+  .chart text.lbl { font-size: 12px; }
+  @media (max-width: 30rem) {
+    .figures { grid-template-columns: 1fr; gap: 1rem; }
   }
 }

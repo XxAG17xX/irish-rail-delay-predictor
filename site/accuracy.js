@@ -68,14 +68,17 @@ function s(tag, attrs) {
  * @param {string} opts.label accessible description
  */
 function lineChart(host, opts) {
-  const W = 620, H = 200, L = 42, R = 8, T = 12, B = 26;
+  // Drawn at the container's own width, so the axis labels keep their size on a phone
+  // instead of shrinking with a fixed drawing scaled down to fit.
+  const W = Math.min(Math.max(host.clientWidth || 620, 300), 1000), H = W < 520 ? 180 : 220;
+  const L = 44, R = 8, T = 12, B = 26;
   /** @param {number} i */
   const x = (i) => L + (i * (W - L - R)) / Math.max(1, opts.labels.length - 1);
   /** @param {number} v */
   const y = (v) => T + ((opts.yMax - v) * (H - T - B)) / (opts.yMax - opts.yMin);
 
   const svg = s("svg", {
-    class: "diagram",
+    class: "diagram chart",
     viewBox: `0 0 ${W} ${H}`,
     role: "img",
     "aria-label": opts.label,
@@ -142,6 +145,8 @@ function lineChart(host, opts) {
 
 /** @param {any} a the parsed accuracy.json */
 function render(a) {
+  // Shown before anything is drawn, so the charts can measure the width they draw into.
+  need("content").hidden = false;
   const r = a.rolling;
   const versions = Object.keys(a.model_versions);
   const serving = versions[versions.length - 1] ?? "unknown";
@@ -340,7 +345,6 @@ function render(a) {
       .join(", ") +
     ". A version change is a deploy, never a retroactive recomputation.";
 
-  need("content").hidden = false;
 }
 
 fetch("accuracy.json", { cache: "no-store" })
