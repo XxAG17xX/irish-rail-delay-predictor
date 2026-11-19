@@ -197,10 +197,15 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
       g.append(s("path", { class: "plate-fan",
         d: `M0 0L${R * Math.cos(half)} ${-R * Math.sin(half)}A${R} ${R} 0 0 1 ${R * Math.cos(half)} ${R * Math.sin(half)}Z` }));
     }
-    // A small train seen from above, 13 units long: body, window band, a darker leading cab.
-    g.append(s("rect", { class: "tr-body", x: -6.5, y: -2.4, width: 13, height: 4.8, rx: 2.4 }));
-    g.append(s("rect", { class: "tr-band", x: -4.5, y: -0.9, width: 8, height: 1.8, rx: 0.9 }));
-    g.append(s("path", { class: "tr-cab", d: "M4.3 -2.4h-.2v4.8h.2a2.4 2.4 0 0 0 0 -4.8z" }));
+    // A three-car unit seen from above, 16 units long: one car alone read as a bus. Each car
+    // has its window band; the two end cars carry a darker cab, leading at +x.
+    for (let i = 0; i < 3; i++) {
+      const x0 = -8 + i * 5.7;
+      g.append(s("rect", { class: "tr-body", x: x0, y: -2.1, width: 4.6, height: 4.2, rx: 1.1 }));
+      g.append(s("rect", { class: "tr-band", x: x0 + 0.7, y: -0.7, width: 3.2, height: 1.4, rx: 0.5 }));
+    }
+    g.append(s("path", { class: "tr-cab", d: "M6.6 -2.1h.3a1.1 1.1 0 0 1 1.1 1.1v2a1.1 1.1 0 0 1 -1.1 1.1h-.3z" }));
+    g.append(s("path", { class: "tr-cab", d: "M-6.6 -2.1h-.3a1.1 1.1 0 0 0 -1.1 1.1v2a1.1 1.1 0 0 0 1.1 1.1h.3z" }));
     if (opts.onTrain) {
       g.addEventListener("pointerenter", () => opts.onTrain?.(info, g));
       g.addEventListener("focus", () => opts.onTrain?.(info, g));

@@ -203,7 +203,8 @@ export function consist(cars = 3) {
   /** @type {number[]} */ const pos = [];
   /** @type {number[]} */ const col = [];
   const SHORT = 0.46;
-  const GAP = 0.025;
+  // Wide enough to show at map size, where a true coupling gap is under a pixel.
+  const GAP = 0.1;
   const total = cars * SHORT + (cars - 1) * GAP;
   for (let i = 0; i < cars; i++) {
     const centre = total / 2 - SHORT / 2 - i * (SHORT + GAP);
