@@ -23,6 +23,28 @@ const REMEMBER = "railcast.station";
 const DEFAULT_STATION = "KDARE"; // a through station: a terminus board is nearly all departures
 
 /**
+ * Irish forms of station names, from Logainm (scripts/fetch_station_names.py). A static file,
+ * so it costs the feed nothing; a station without a verified form shows English only.
+ * @type {Promise<Record<string, {ga: string}>>}
+ */
+const IRISH = fetch("stations_ga.json")
+  .then((r) => (r.ok ? r.json() : { stations: {} }))
+  .then((d) => d.stations || {})
+  .catch(() => ({}));
+/** @type {Record<string, {ga: string}>} */
+let irish = {};
+void IRISH.then((m) => (irish = m));
+
+/** A station's name with its Irish form beside it, marked as Irish for screen readers.
+ * @param {string} code @param {string} name @param {string} [cls] */
+function named(code, name, cls = "") {
+  const ga = irish[code]?.ga;
+  const out = el("span", { class: cls, text: name });
+  if (ga && ga !== name) out.append(el("span", { class: "ga", lang: "ga", text: ga }));
+  return out;
+}
+
+/**
  * @typedef {object} Prediction
  * @property {string} predicted
  * @property {[string, string]} interval_80pct
@@ -342,7 +364,7 @@ function journeyToggle(t, stationCode, now) {
         item.style.setProperty("--i", String(i));
         item.append(
           el("span", { class: "pip" }, [el("i")]),
-          el("span", { class: "stop-name", text: s.name + (s.here ? " · you are here" : s.passes ? " · passed, last report" : "") }),
+          el("span", { class: "stop-name" }, [named(s.code, s.name), s.here ? " · you are here" : s.passes ? " · passed, last report" : ""]),
           stopTime(s)
         );
         return item;
@@ -464,6 +486,7 @@ async function showBoard(code) {
   try {
     /** @type {Board} */
     const b = await get(`/board?station=${encodeURIComponent(code)}&limit=${LIMIT}`);
+    await IRISH;
     const predicted = b.trains.filter((t) => t.prediction).length;
     const waiting = b.trains.filter((t) => t.reason === "not_yet_departed").length;
 
@@ -484,7 +507,7 @@ async function showBoard(code) {
     } else {
       const now = hhmm(b.generated_at.slice(11));
       const head = el("div", { class: "board-head" }, [
-        el("h2", { class: "board-name", text: b.station_name }),
+        el("h2", { class: "board-name" }, [named(b.station, b.station_name)]),
         el("span", { class: "board-time", text: `Read at ${now}` }),
       ]);
       board.append(el("div", { class: "board" }, [head, ...b.trains.map((t) => row(t, b.station, now))]));

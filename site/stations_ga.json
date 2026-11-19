@@ -1,0 +1,1378 @@
+{
+ "generated_at": "2026-11-19T14:24:31+00:00",
+ "source": "Logainm.ie, the Placenames Database of Ireland (CC BY 4.0)",
+ "rule": "Irish form of the place the station is named after: exact English name, town first, within 6 km; otherwise English only",
+ "stations": {
+  "ADAMF": {
+   "en": "Adamstown",
+   "ga": "Baile Adaim",
+   "logainm": 1165413,
+   "url": "https://www.logainm.ie/1165413.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.79
+  },
+  "ADMTN": {
+   "en": "Adamstown",
+   "ga": "Baile Adaim",
+   "logainm": 1165413,
+   "url": "https://www.logainm.ie/1165413.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.79
+  },
+  "ARHAN": {
+   "en": "Ardrahan",
+   "ga": "Ard Raithin",
+   "logainm": 1411728,
+   "url": "https://www.logainm.ie/1411728.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.52
+  },
+  "ARKLW": {
+   "en": "Arklow",
+   "ga": "An tInbhear Mór",
+   "logainm": 1416540,
+   "url": "https://www.logainm.ie/1416540.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.83
+  },
+  "ASHTN": {
+   "en": "Ashtown",
+   "ga": "Baile an Ásaigh",
+   "logainm": 1165415,
+   "url": "https://www.logainm.ie/1165415.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.44
+  },
+  "ATHRY": {
+   "en": "Athenry",
+   "ga": "Baile Átha an Rí",
+   "logainm": 19599,
+   "url": "https://www.logainm.ie/19599.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.09
+  },
+  "ATLNE": {
+   "en": "Athlone",
+   "ga": "Baile Átha Luain",
+   "logainm": 50734,
+   "url": "https://www.logainm.ie/50734.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.84
+  },
+  "ATHY": {
+   "en": "Athy",
+   "ga": "Baile Átha Í",
+   "logainm": 1416257,
+   "url": "https://www.logainm.ie/1416257.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.31
+  },
+  "ATMON": {
+   "en": "Attymon",
+   "ga": "Áth Tíomáin",
+   "logainm": 130906,
+   "url": "https://www.logainm.ie/130906.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.95
+  },
+  "BBRGN": {
+   "en": "Balbriggan",
+   "ga": "Baile Brigín",
+   "logainm": 16735,
+   "url": "https://www.logainm.ie/16735.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.56
+  },
+  "BALNA": {
+   "en": "Ballina",
+   "ga": "Béal an Átha",
+   "logainm": 1412303,
+   "url": "https://www.logainm.ie/1412303.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.27
+  },
+  "BSLOE": {
+   "en": "Ballinasloe",
+   "ga": "Béal Átha na Sluaighe",
+   "logainm": 130910,
+   "url": "https://www.logainm.ie/130910.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.49
+  },
+  "BBRHY": {
+   "en": "Ballybrophy",
+   "ga": "Baile Uí Bhróithe",
+   "logainm": 1413853,
+   "url": "https://www.logainm.ie/1413853.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.17
+  },
+  "BCLAN": {
+   "en": "Ballycullane",
+   "ga": "Baile Uí Choileáin",
+   "logainm": 1416682,
+   "url": "https://www.logainm.ie/1416682.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.44
+  },
+  "BYHNS": {
+   "en": "Ballyhaunis",
+   "ga": "Béal Átha hAmhnais",
+   "logainm": 36023,
+   "url": "https://www.logainm.ie/36023.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.06
+  },
+  "BMOTE": {
+   "en": "Ballymote",
+   "ga": "Baile an Mhóta",
+   "logainm": 1416770,
+   "url": "https://www.logainm.ie/1416770.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.44
+  },
+  "BTEER": {
+   "en": "Banteer",
+   "ga": "Bántír",
+   "logainm": 1416560,
+   "url": "https://www.logainm.ie/1416560.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.41
+  },
+  "BYSDE": {
+   "en": "Bayside",
+   "ga": "Cois Bá",
+   "logainm": 127010,
+   "url": "https://www.logainm.ie/127010.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 1.03
+  },
+  "BFSTC": {
+   "en": "Belfast",
+   "ga": "Béal Feirste",
+   "logainm": 118005,
+   "url": "https://www.logainm.ie/118005.aspx",
+   "category": [
+    "CTH"
+   ],
+   "km": 0.92
+  },
+  "BHILL": {
+   "en": "Birdhill",
+   "ga": "Cnocán an Éin Fhinn",
+   "logainm": 1414503,
+   "url": "https://www.logainm.ie/1414503.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 1.07
+  },
+  "BROCK": {
+   "en": "Blackrock",
+   "ga": "An Charraig Dhubh",
+   "logainm": 17495,
+   "url": "https://www.logainm.ie/17495.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.59
+  },
+  "BTSTN": {
+   "en": "Booterstown",
+   "ga": "Baile an Bhóthair",
+   "logainm": 17491,
+   "url": "https://www.logainm.ie/17491.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 1.53
+  },
+  "BOYLE": {
+   "en": "Boyle",
+   "ga": "Mainistir na Búille",
+   "logainm": 1411638,
+   "url": "https://www.logainm.ie/1411638.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.4
+  },
+  "BRAY": {
+   "en": "Bray",
+   "ga": "Bré",
+   "logainm": 16662,
+   "url": "https://www.logainm.ie/16662.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.11
+  },
+  "BRGTN": {
+   "en": "Bridgetown",
+   "ga": "Baile an Droichid",
+   "logainm": 53802,
+   "url": "https://www.logainm.ie/53802.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.17
+  },
+  "CAHIR": {
+   "en": "Cahir",
+   "ga": "An Chathair",
+   "logainm": 1165655,
+   "url": "https://www.logainm.ie/1165655.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.48
+  },
+  "CPILE": {
+   "en": "Campile",
+   "ga": "Ceann Poill",
+   "logainm": 53344,
+   "url": "https://www.logainm.ie/53344.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.48
+  },
+  "CRLOW": {
+   "en": "Carlow",
+   "ga": "Ceatharlach",
+   "logainm": 1411922,
+   "url": "https://www.logainm.ie/1411922.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.09
+  },
+  "CKOSH": {
+   "en": "Carrick on Shannon",
+   "ga": "Cora Droma Rúisc",
+   "logainm": 1416694,
+   "url": "https://www.logainm.ie/1416694.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.41
+  },
+  "CKOSR": {
+   "en": "Carrick on Suir",
+   "ga": "Carraig na Siúire",
+   "logainm": 67177,
+   "url": "https://www.logainm.ie/67177.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.39
+  },
+  "CGTWL": {
+   "en": "Carrigtwohill",
+   "ga": "Carraig Thuathail",
+   "logainm": 1416572,
+   "url": "https://www.logainm.ie/1416572.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.54
+  },
+  "CLBAR": {
+   "en": "Castlebar",
+   "ga": "Caisleán an Bharraigh",
+   "logainm": 1167113,
+   "url": "https://www.logainm.ie/1167113.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.85
+  },
+  "CCONL": {
+   "en": "Castleconnell",
+   "ga": "Caisleán Uí Chonaill",
+   "logainm": 31374,
+   "url": "https://www.logainm.ie/31374.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.15
+  },
+  "CNOCK": {
+   "en": "Castleknock",
+   "ga": "Caisleán Cnucha",
+   "logainm": 1411657,
+   "url": "https://www.logainm.ie/1411657.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 1.24
+  },
+  "CSREA": {
+   "en": "Castlerea",
+   "ga": "An Caisleán Riabhach",
+   "logainm": 43498,
+   "url": "https://www.logainm.ie/43498.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.88
+  },
+  "CVILL": {
+   "en": "Charleville",
+   "ga": "An Ráth",
+   "logainm": 12021,
+   "url": "https://www.logainm.ie/12021.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 2.24
+  },
+  "CLARA": {
+   "en": "Clara",
+   "ga": "Clóirtheach",
+   "logainm": 1165802,
+   "url": "https://www.logainm.ie/1165802.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.61
+  },
+  "CLMRS": {
+   "en": "Claremorris",
+   "ga": "Clár Chlainne Mhuiris",
+   "logainm": 36124,
+   "url": "https://www.logainm.ie/36124.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.3
+  },
+  "CLDKN": {
+   "en": "Clondalkin",
+   "ga": "Cluain Dolcáin",
+   "logainm": 1411594,
+   "url": "https://www.logainm.ie/1411594.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.06
+  },
+  "CLONF": {
+   "en": "Clondalkin",
+   "ga": "Cluain Dolcáin",
+   "logainm": 1411594,
+   "url": "https://www.logainm.ie/1411594.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.06
+  },
+  "CLONS": {
+   "en": "Clondalkin",
+   "ga": "Cluain Dolcáin",
+   "logainm": 1411594,
+   "url": "https://www.logainm.ie/1411594.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.06
+  },
+  "CLMEL": {
+   "en": "Clonmel",
+   "ga": "Cluain Meala",
+   "logainm": 67189,
+   "url": "https://www.logainm.ie/67189.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.32
+  },
+  "CLSLA": {
+   "en": "Clonsilla",
+   "ga": "Cluain Saileach",
+   "logainm": 1412696,
+   "url": "https://www.logainm.ie/1412696.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.85
+  },
+  "CJRDN": {
+   "en": "Cloughjordan",
+   "ga": "Cloch Shiurdáin",
+   "logainm": 45882,
+   "url": "https://www.logainm.ie/45882.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.3
+  },
+  "COBH": {
+   "en": "Cobh",
+   "ga": "An Cóbh",
+   "logainm": 1437735,
+   "url": "https://www.logainm.ie/1437735.aspx",
+   "category": [
+    "CBA"
+   ],
+   "km": 11.95
+  },
+  "COLNY": {
+   "en": "Collooney",
+   "ga": "Cúil Mhuine",
+   "logainm": 45226,
+   "url": "https://www.logainm.ie/45226.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.53
+  },
+  "CMINE": {
+   "en": "Coolmine",
+   "ga": "Cúil Mhín",
+   "logainm": 1165977,
+   "url": "https://www.logainm.ie/1165977.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 1.78
+  },
+  "CORK": {
+   "en": "Cork",
+   "ga": "Corcaigh",
+   "logainm": 1385574,
+   "url": "https://www.logainm.ie/1385574.aspx",
+   "category": [
+    "CTH"
+   ],
+   "km": 1.36
+  },
+  "CRGHW": {
+   "en": "Craughwell",
+   "ga": "Creachmhaoil",
+   "logainm": 19774,
+   "url": "https://www.logainm.ie/19774.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.69
+  },
+  "CURAH": {
+   "en": "Curragh",
+   "ga": "An Currach",
+   "logainm": 25654,
+   "url": "https://www.logainm.ie/25654.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 1.0
+  },
+  "DLKEY": {
+   "en": "Dalkey",
+   "ga": "Deilginis",
+   "logainm": 17503,
+   "url": "https://www.logainm.ie/17503.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.87
+  },
+  "DBATE": {
+   "en": "Donabate",
+   "ga": "Domhnach Bat",
+   "logainm": 16796,
+   "url": "https://www.logainm.ie/16796.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.63
+  },
+  "DGHDA": {
+   "en": "Drogheda",
+   "ga": "Droichead Átha",
+   "logainm": 167,
+   "url": "https://www.logainm.ie/167.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.03
+  },
+  "DRMOD": {
+   "en": "Dromod",
+   "ga": "Dromad",
+   "logainm": 1416697,
+   "url": "https://www.logainm.ie/1416697.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.37
+  },
+  "DCDRA": {
+   "en": "Drumcondra",
+   "ga": "Droim Conrach",
+   "logainm": 57142,
+   "url": "https://www.logainm.ie/57142.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.22
+  },
+  "DLERY": {
+   "en": "Dun Laoghaire",
+   "ga": "Dún Laoghaire",
+   "logainm": 1166922,
+   "url": "https://www.logainm.ie/1166922.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.23
+  },
+  "DBYNE": {
+   "en": "Dunboyne",
+   "ga": "Dún Búinne",
+   "logainm": 1416698,
+   "url": "https://www.logainm.ie/1416698.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.65
+  },
+  "DDALK": {
+   "en": "Dundalk",
+   "ga": "Dún Dealgan",
+   "logainm": 1411629,
+   "url": "https://www.logainm.ie/1411629.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.66
+  },
+  "ETOWN": {
+   "en": "Edgeworthstown",
+   "ga": "Meathas Troim",
+   "logainm": 32971,
+   "url": "https://www.logainm.ie/32971.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.32
+  },
+  "ENFLD": {
+   "en": "Enfield",
+   "ga": "An Bóthar Buí",
+   "logainm": 1165553,
+   "url": "https://www.logainm.ie/1165553.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.44
+  },
+  "ENNIS": {
+   "en": "Ennis",
+   "ga": "Inis",
+   "logainm": 6104,
+   "url": "https://www.logainm.ie/6104.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.03
+  },
+  "ECRTY": {
+   "en": "Enniscorthy",
+   "ga": "Inis Córthaidh",
+   "logainm": 52445,
+   "url": "https://www.logainm.ie/52445.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.44
+  },
+  "FFORE": {
+   "en": "Farranfore",
+   "ga": "An Fearann Fuar",
+   "logainm": 1412432,
+   "url": "https://www.logainm.ie/1412432.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.55
+  },
+  "FOTA": {
+   "en": "Fota",
+   "ga": "Fóite",
+   "logainm": 9371,
+   "url": "https://www.logainm.ie/9371.aspx",
+   "category": [
+    "BF",
+    "OIL"
+   ],
+   "km": 1.17
+  },
+  "FXFRD": {
+   "en": "Foxford",
+   "ga": "Béal Easa",
+   "logainm": 1412683,
+   "url": "https://www.logainm.ie/1412683.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.71
+  },
+  "GALWY": {
+   "en": "Galway",
+   "ga": "Gaillimh",
+   "logainm": 1384607,
+   "url": "https://www.logainm.ie/1384607.aspx",
+   "category": [
+    "CTH"
+   ],
+   "km": 1.03
+  },
+  "GLGRY": {
+   "en": "Glenageary",
+   "ga": "Gleann na gCaorach",
+   "logainm": 17511,
+   "url": "https://www.logainm.ie/17511.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.35
+  },
+  "GHANE": {
+   "en": "Glounthaune",
+   "ga": "An Gleanntán",
+   "logainm": 9293,
+   "url": "https://www.logainm.ie/9293.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.66
+  },
+  "GOREY": {
+   "en": "Gorey",
+   "ga": "Guaire",
+   "logainm": 53072,
+   "url": "https://www.logainm.ie/53072.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.63
+  },
+  "GSTON": {
+   "en": "Gormanston",
+   "ga": "Baile Mhic Gormáin",
+   "logainm": 1416708,
+   "url": "https://www.logainm.ie/1416708.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.05
+  },
+  "GORT": {
+   "en": "Gort",
+   "ga": "An Gort",
+   "logainm": 19341,
+   "url": "https://www.logainm.ie/19341.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.3
+  },
+  "GSTNS": {
+   "en": "Greystones",
+   "ga": "Na Clocha Liatha",
+   "logainm": 128825,
+   "url": "https://www.logainm.ie/128825.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.03
+  },
+  "HTOWN": {
+   "en": "Harmonstown",
+   "ga": "Baile Hearmann",
+   "logainm": 17549,
+   "url": "https://www.logainm.ie/17549.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.35
+  },
+  "HAZEF": {
+   "en": "Hazelhatch",
+   "ga": "Collchoill",
+   "logainm": 17163,
+   "url": "https://www.logainm.ie/17163.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.49
+  },
+  "HAZES": {
+   "en": "Hazelhatch",
+   "ga": "Collchoill",
+   "logainm": 17163,
+   "url": "https://www.logainm.ie/17163.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.49
+  },
+  "HZLCH": {
+   "en": "Hazelhatch",
+   "ga": "Collchoill",
+   "logainm": 17163,
+   "url": "https://www.logainm.ie/17163.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.49
+  },
+  "HOWTH": {
+   "en": "Howth",
+   "ga": "Binn Éadair",
+   "logainm": 17540,
+   "url": "https://www.logainm.ie/17540.aspx",
+   "category": [
+    "SRB"
+   ],
+   "km": 0.41
+  },
+  "KBRCK": {
+   "en": "Kilbarrack",
+   "ga": "Cill Bharróg",
+   "logainm": 1411661,
+   "url": "https://www.logainm.ie/1411661.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 1.67
+  },
+  "KCOCK": {
+   "en": "Kilcock",
+   "ga": "Cill Choca",
+   "logainm": 1416487,
+   "url": "https://www.logainm.ie/1416487.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.62
+  },
+  "KCOOL": {
+   "en": "Kilcoole",
+   "ga": "Cill Chomhghaill",
+   "logainm": 1416548,
+   "url": "https://www.logainm.ie/1416548.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.24
+  },
+  "KDARE": {
+   "en": "Kildare",
+   "ga": "Cill Dara",
+   "logainm": 1416492,
+   "url": "https://www.logainm.ie/1416492.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.26
+  },
+  "KKNNY": {
+   "en": "Kilkenny",
+   "ga": "Cill Chainnigh",
+   "logainm": 1399926,
+   "url": "https://www.logainm.ie/1399926.aspx",
+   "category": [
+    "CTH"
+   ],
+   "km": 0.3
+  },
+  "KLRNY": {
+   "en": "Killarney",
+   "ga": "Cill Airne",
+   "logainm": 1412691,
+   "url": "https://www.logainm.ie/1412691.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.67
+  },
+  "KLSTR": {
+   "en": "Killester",
+   "ga": "Cill Easra",
+   "logainm": 1371583,
+   "url": "https://www.logainm.ie/1371583.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.25
+  },
+  "KILNY": {
+   "en": "Killiney",
+   "ga": "Cill Iníon Léinín",
+   "logainm": 1412139,
+   "url": "https://www.logainm.ie/1412139.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.48
+  },
+  "KISHF": {
+   "en": "Kishoge",
+   "ga": "An Chiseog",
+   "logainm": 17121,
+   "url": "https://www.logainm.ie/17121.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.13
+  },
+  "KISHO": {
+   "en": "Kishoge",
+   "ga": "An Chiseog",
+   "logainm": 17121,
+   "url": "https://www.logainm.ie/17121.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.13
+  },
+  "KISHS": {
+   "en": "Kishoge",
+   "ga": "An Chiseog",
+   "logainm": 17121,
+   "url": "https://www.logainm.ie/17121.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 0.13
+  },
+  "LTOWN": {
+   "en": "Laytown",
+   "ga": "An Inse",
+   "logainm": 133207,
+   "url": "https://www.logainm.ie/133207.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 3.75
+  },
+  "LMRCK": {
+   "en": "Limerick",
+   "ga": "Luimneach",
+   "logainm": 1167042,
+   "url": "https://www.logainm.ie/1167042.aspx",
+   "category": [
+    "CTH"
+   ],
+   "km": 0.78
+  },
+  "LMRKJ": {
+   "en": "Limerick Junction",
+   "ga": "Gabhal Luimnigh",
+   "logainm": 67223,
+   "url": "https://www.logainm.ie/67223.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.46
+  },
+  "LBURN": {
+   "en": "Lisburn",
+   "ga": "Lios na gCearrbhach",
+   "logainm": 135807,
+   "url": "https://www.logainm.ie/135807.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.94
+  },
+  "LSLND": {
+   "en": "LittleIsland",
+   "ga": "An tOileán Beag",
+   "logainm": 651,
+   "url": "https://www.logainm.ie/651.aspx",
+   "category": [
+    "PAR"
+   ],
+   "km": 1.3
+  },
+  "LFORD": {
+   "en": "Longford",
+   "ga": "An Longfort",
+   "logainm": 33297,
+   "url": "https://www.logainm.ie/33297.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.02
+  },
+  "LURGN": {
+   "en": "Lurgan",
+   "ga": "An Lorgain",
+   "logainm": 1166423,
+   "url": "https://www.logainm.ie/1166423.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.92
+  },
+  "MHIDE": {
+   "en": "Malahide",
+   "ga": "Mullach Íde",
+   "logainm": 17019,
+   "url": "https://www.logainm.ie/17019.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.81
+  },
+  "MLLOW": {
+   "en": "Mallow",
+   "ga": "Mala",
+   "logainm": 1414050,
+   "url": "https://www.logainm.ie/1414050.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.24
+  },
+  "MYNTH": {
+   "en": "Maynooth",
+   "ga": "Maigh Nuad",
+   "logainm": 1416489,
+   "url": "https://www.logainm.ie/1416489.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.18
+  },
+  "MDLTN": {
+   "en": "Midleton",
+   "ga": "Mainistir na Corann",
+   "logainm": 8044,
+   "url": "https://www.logainm.ie/8044.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.64
+  },
+  "MLSRT": {
+   "en": "Millstreet",
+   "ga": "Sráid an Mhuilinn",
+   "logainm": 12597,
+   "url": "https://www.logainm.ie/12597.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 2.19
+  },
+  "MONVN": {
+   "en": "Monasterevin",
+   "ga": "Mainistir Eimhín",
+   "logainm": 1416497,
+   "url": "https://www.logainm.ie/1416497.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.62
+  },
+  "MLGAR": {
+   "en": "Mullingar",
+   "ga": "An Muileann gCearr",
+   "logainm": 1413966,
+   "url": "https://www.logainm.ie/1413966.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.2
+  },
+  "NNAGH": {
+   "en": "Nenagh",
+   "ga": "An tAonach",
+   "logainm": 1165378,
+   "url": "https://www.logainm.ie/1165378.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.48
+  },
+  "NBRGE": {
+   "en": "Newbridge",
+   "ga": "Droichead Nua",
+   "logainm": 24840,
+   "url": "https://www.logainm.ie/24840.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.94
+  },
+  "NEWRY": {
+   "en": "Newry",
+   "ga": "An tIúr",
+   "logainm": 1166280,
+   "url": "https://www.logainm.ie/1166280.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.6
+  },
+  "ORNMR": {
+   "en": "Oranmore",
+   "ga": "Órán Mór",
+   "logainm": 1413949,
+   "url": "https://www.logainm.ie/1413949.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.51
+  },
+  "PELTN": {
+   "en": "Pelletstown",
+   "ga": "Baile Pheiléid",
+   "logainm": 17270,
+   "url": "https://www.logainm.ie/17270.aspx",
+   "category": [
+    "BF"
+   ],
+   "km": 1.26
+  },
+  "PDOWN": {
+   "en": "Portadown",
+   "ga": "Port an Dúnáin",
+   "logainm": 136068,
+   "url": "https://www.logainm.ie/136068.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.65
+  },
+  "PTRTN": {
+   "en": "Portarlington",
+   "ga": "Cúil an tSúdaire",
+   "logainm": 28604,
+   "url": "https://www.logainm.ie/28604.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.75
+  },
+  "PTLSE": {
+   "en": "Portlaoise",
+   "ga": "Port Laoise",
+   "logainm": 1437767,
+   "url": "https://www.logainm.ie/1437767.aspx",
+   "category": [
+    "CBA"
+   ],
+   "km": 6.8
+  },
+  "PMNCK": {
+   "en": "Portmarnock",
+   "ga": "Port Mearnóg",
+   "logainm": 17028,
+   "url": "https://www.logainm.ie/17028.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.89
+  },
+  "RAHNY": {
+   "en": "Raheny",
+   "ga": "Ráth Eanaigh",
+   "logainm": 1411664,
+   "url": "https://www.logainm.ie/1411664.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.46
+  },
+  "RDRUM": {
+   "en": "Rathdrum",
+   "ga": "Ráth Droma",
+   "logainm": 1416549,
+   "url": "https://www.logainm.ie/1416549.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.88
+  },
+  "RMORE": {
+   "en": "Rathmore",
+   "ga": "An Ráth Mhór",
+   "logainm": 23756,
+   "url": "https://www.logainm.ie/23756.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.23
+  },
+  "RSCMN": {
+   "en": "Roscommon",
+   "ga": "Ros Comáin",
+   "logainm": 44339,
+   "url": "https://www.logainm.ie/44339.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.88
+  },
+  "RCREA": {
+   "en": "Roscrea",
+   "ga": "Ros Cré",
+   "logainm": 46874,
+   "url": "https://www.logainm.ie/46874.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.56
+  },
+  "RBROK": {
+   "en": "Rushbrooke",
+   "ga": "Rushbrooke",
+   "logainm": 1165059,
+   "url": "https://www.logainm.ie/1165059.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.29
+  },
+  "SALNS": {
+   "en": "Sallins",
+   "ga": "Na Solláin",
+   "logainm": 25683,
+   "url": "https://www.logainm.ie/25683.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.24
+  },
+  "SCOVE": {
+   "en": "Sandycove",
+   "ga": "Cuas an Ghainimh",
+   "logainm": 1165967,
+   "url": "https://www.logainm.ie/1165967.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.12
+  },
+  "SMONT": {
+   "en": "Sandymount",
+   "ga": "Dumhach Thrá",
+   "logainm": 1412159,
+   "url": "https://www.logainm.ie/1412159.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.61
+  },
+  "SKILL": {
+   "en": "Shankill",
+   "ga": "Seanchill",
+   "logainm": 1412161,
+   "url": "https://www.logainm.ie/1412161.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 2.16
+  },
+  "SXMBR": {
+   "en": "Sixmilebridge",
+   "ga": "Droichead Abhann Ó gCearnaigh",
+   "logainm": 1416537,
+   "url": "https://www.logainm.ie/1416537.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.98
+  },
+  "SKRES": {
+   "en": "Skerries",
+   "ga": "Na Sceirí",
+   "logainm": 127107,
+   "url": "https://www.logainm.ie/127107.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.33
+  },
+  "SLIGO": {
+   "en": "Sligo",
+   "ga": "Sligeach",
+   "logainm": 1390502,
+   "url": "https://www.logainm.ie/1390502.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.24
+  },
+  "SUTTN": {
+   "en": "Sutton",
+   "ga": "Cill Fhionntain",
+   "logainm": 1371588,
+   "url": "https://www.logainm.ie/1371588.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.21
+  },
+  "TPMOR": {
+   "en": "Templemore",
+   "ga": "An Teampall Mór",
+   "logainm": 1166810,
+   "url": "https://www.logainm.ie/1166810.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.27
+  },
+  "THTWN": {
+   "en": "Thomastown",
+   "ga": "Baile Mhic Andáin",
+   "logainm": 27244,
+   "url": "https://www.logainm.ie/27244.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.34
+  },
+  "THRLS": {
+   "en": "Thurles",
+   "ga": "Durlas",
+   "logainm": 2222,
+   "url": "https://www.logainm.ie/2222.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.7
+  },
+  "TIPRY": {
+   "en": "Tipperary",
+   "ga": "Tiobraid Árann",
+   "logainm": 1411640,
+   "url": "https://www.logainm.ie/1411640.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.69
+  },
+  "TRLEE": {
+   "en": "Tralee",
+   "ga": "Trá Lí",
+   "logainm": 24803,
+   "url": "https://www.logainm.ie/24803.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.31
+  },
+  "TMORE": {
+   "en": "Tullamore",
+   "ga": "Tulach Mhór",
+   "logainm": 1416810,
+   "url": "https://www.logainm.ie/1416810.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 0.45
+  },
+  "WFORD": {
+   "en": "Waterford",
+   "ga": "Port Láirge",
+   "logainm": 1383828,
+   "url": "https://www.logainm.ie/1383828.aspx",
+   "category": [
+    "CTH"
+   ],
+   "km": 2.07
+  },
+  "WBDGE": {
+   "en": "Wellingtonbridge",
+   "ga": "Droichead Eoin",
+   "logainm": 53382,
+   "url": "https://www.logainm.ie/53382.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.38
+  },
+  "WPORT": {
+   "en": "Westport",
+   "ga": "Cathair na Mart",
+   "logainm": 132920,
+   "url": "https://www.logainm.ie/132920.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.96
+  },
+  "WXFRD": {
+   "en": "Wexford",
+   "ga": "Loch Garman",
+   "logainm": 52128,
+   "url": "https://www.logainm.ie/52128.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.0
+  },
+  "WLOW": {
+   "en": "Wicklow",
+   "ga": "Cill Mhantáin",
+   "logainm": 55959,
+   "url": "https://www.logainm.ie/55959.aspx",
+   "category": [
+    "B"
+   ],
+   "km": 1.44
+  },
+  "WLAWN": {
+   "en": "Woodlawn",
+   "ga": "Móta",
+   "logainm": 1413747,
+   "url": "https://www.logainm.ie/1413747.aspx",
+   "category": [
+    "ID"
+   ],
+   "km": 0.85
+  }
+ }
+}

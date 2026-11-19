@@ -202,14 +202,16 @@ stage.addEventListener("click", (ev) => {
 }, true);
 addEventListener("resize", () => plate && plate.view(vb, exploring));
 
-Promise.all([json("network.json"), json("live.json").catch(() => null), json("tracks.json").catch(() => null)])
-  .then(([net, live, tracks]) => {
+Promise.all([json("network.json"), json("live.json").catch(() => null), json("tracks.json").catch(() => null),
+  json("stations_ga.json").catch(() => null)])
+  .then(([net, live, tracks, names]) => {
     const age = live ? (Date.now() - Date.parse(live.generated_at)) / 60000 : Infinity;
     const fresh = live && !live.quiet_hours && age < STALE_MIN;
     const shown = fresh ? live : null;
-    plate = drawPlate(need("plate"), net, shown, tracks, { onTrain: showCard });
+    plate = drawPlate(need("plate"), net, shown, tracks, { onTrain: showCard, irish: names?.stations });
     setView({ x: 0, y: 0, w: plate.W, h: plate.H });
-    if (tracks) need("credit").textContent = "Track \u00a9 OpenStreetMap contributors (ODbL). Coast: Natural Earth. Stations: Irish Rail.";
+    need("credit").textContent = (tracks ? "Track \u00a9 OpenStreetMap contributors (ODbL). " : "") +
+      "Coast: Natural Earth. Stations: Irish Rail." + (names ? " Irish names: Logainm.ie (CC BY 4.0)." : "");
     const drawn = plate.result;
     if (!fresh || drawn.running === 0) {
       document.documentElement.dataset.service = "night";

@@ -683,3 +683,11 @@
   .toc a b { margin-right: .4rem; color: var(--fg); }
   .read section > p, .read section > ul, main.max-w-5xl > p, main.max-w-5xl section > p { max-width: 70ch; }
 }
+
+/* Irish forms of station names, beside the English and a step quieter. */
+@layer components {
+  .ga { margin-left: .45em; font-weight: 400; color: var(--fg-3); }
+  .board-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .2rem; font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; }
+  .board-name .ga { font-size: 1.05rem; letter-spacing: 0; }
+  .plate-labels tspan.ga { font-weight: 400; fill: var(--fg-3); }
+}

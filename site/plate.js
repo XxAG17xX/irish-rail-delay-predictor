@@ -68,9 +68,10 @@ export function lastReport(message) {
  * @param {Network} net
  * @param {Live|null} live
  * @param {Tracks|null} tracks
- * @param {{onTrain?: (info: TrainInfo|null, el: Element|null) => void}} [opts]
+ * @param {{onTrain?: (info: TrainInfo|null, el: Element|null) => void, irish?: Record<string, {ga: string}>}} [opts]
  */
 export function drawPlate(host, net, live, tracks, opts = {}) {
+  const irish = opts.irish || {};
   const extra = tracks?.stations || {};
   // tracks.json places the codes the feed leaves without a position and corrects the few
   // it puts far from the station (Belfast by 1.9 km). lat/lon stay the feed's, so a train
@@ -235,16 +236,19 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
       const [x, y] = P(st);
       if (x < vb.x || x > vb.x + vb.w || y < vb.y || y > vb.y + vb.h) continue;
       const name = all ? st.name : SHORT[st.name] || st.name;
+      const ga = all && irish[st.code]?.ga !== st.name ? irish[st.code]?.ga || "" : "";
       const sx = (x - vb.x) * k + PX.dot + 4;
       const sy = (y - vb.y) * k - PX.label * 0.6;
-      const ex = sx + name.length * PX.label * 0.56 + 6;
+      const ex = sx + (name.length + (ga ? ga.length + 2 : 0)) * PX.label * 0.56 + 6;
       const ey = sy + PX.label * 1.25;
       if (taken.some(([x0 = 0, y0 = 0, x1 = 0, y1 = 0]) => sx < x1 && ex > x0 && sy < y1 && ey > y0)) continue;
       taken.push([sx, sy, ex, ey]);
-      labels.append(s("text", {
+      const label = s("text", {
         x: (x + (PX.dot + 4) / k).toFixed(3), y: (y + (PX.label * 0.36) / k).toFixed(3),
         "font-size": (PX.label / k).toFixed(4), "stroke-width": (3.5 / k).toFixed(4),
-      }, name));
+      }, name);
+      if (ga) label.append(s("tspan", { class: "ga", "xml:lang": "ga", dx: (PX.label * 0.4 / k).toFixed(4) }, ga));
+      labels.append(label);
     }
   }
 

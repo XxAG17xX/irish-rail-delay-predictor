@@ -95,6 +95,11 @@ where the data cannot support a claim. An honest loss is a better result than an
   every limitation keeps its number beside it.
 - **Bilingual station names:** the official Irish form from logainm.ie beside the English one
   wherever a station is named. A station without a verified Irish form shows English only.
+  Logainm has no railway-station entries, so the form is that of the place the station is named
+  after: exact English name (ignoring accents and hyphens), city or town first, within 6 km
+  (15 km for a municipal district). 130 of 158 names qualify (2026-11-19); the rest, such as
+  Dublin Connolly or Limerick Junction, show English only. `scripts/fetch_station_names.py`;
+  credited to Logainm.ie (CC BY 4.0).
 - The current mark is a placeholder; a logo is being created from the brand boards in
   `design/refs/` (generated in ChatGPT as references; the mark is redrawn as exact SVG).
 
