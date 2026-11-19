@@ -220,6 +220,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D84](#d84--error-alarms-wait-fifteen-minutes-before-they-page) Error alarms wait fifteen minutes before they page. One upstream outage sent two emails for something that needed no action.
 - [D85](#d85--the-site-gets-a-real-hostname-railcastag17dev) The site gets a real hostname, railcast.ag17.dev. GitHub Pages was rejected for RailCast: it cannot forward /api or receive the nightly scoreboard.
 - [D86](#d86--the-scope-lock-lifts-for-a-redesign-of-the-public-site) The scope lock lifts for a redesign of the public site, map view included on condition it shows only what the feed knows.
+- [D87](#d87--the-landing-page-reads-a-five-minute-snapshot-and-trains-sit-where-they-last-reported) The landing page reads a five-minute snapshot, and trains sit where they last reported.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4151,5 +4152,49 @@ across time and distance, with RailCast's range fanning ahead of it) as the sign
 wherever a prediction appears; a network panel in the manner of a signal box mimic diagram as
 the home page; a split-flap board on the board page; and a new logo. `PRODUCT.md` records the
 product truth: reviewers first, quiet authorship, bilingual station names from logainm.ie.
+
+**Date.** 2026-11-19
+
+## D87 — The landing page reads a five-minute snapshot, and trains sit where they last reported
+
+**Why this matters:** the new home page shows live trains and a live headline, and neither may
+cost Irish Rail a request per visitor or claim more about a train's position than the feed knows.
+
+**Decision.** The prediction generator, which already runs every five minutes, also writes
+`live.json` to the site bucket: the fleet's reported positions from the `getCurrentTrainsXML`
+response it already fetches, and, for the trains it sampled, their calling pattern and the
+predictions it has just logged. The landing page reads that file and nothing else. Opening the
+page costs the feed nothing, the same rule the board page already follows. During quiet hours
+the generator writes a snapshot marked as quiet, without fetching, so the page knows to switch
+to its night colourway rather than show stale trains.
+
+**What was tested before choosing the map's rule.** 24 daytime fleet captures from July
+(`data/raw/current/`, one in five of the 120 taken between 07:00 and 17:00 UTC), 1,558
+positions of running trains, each matched to the nearest station in `site/network.json` and to
+the location named in the train's own `PublicMessage`:
+
+| Position | Count | Share |
+|---|---|---|
+| Exactly on the location the message names ("Departed Thurles", "Arrived Mallow") | 1,294 | 83.1% |
+| Coordinates 0,0 (the last report was a timing point without coordinates) | 117 | 7.5% |
+| On a station whose name differs from the message's (aliases such as Heuston, unverified) | 104 | 6.7% |
+| On a point that is not a station | 22 | 1.4% |
+| On the next stop | 21 | 1.3% |
+
+So the feed's coordinates are the last reported location, not a measured position. 89.7% of
+all running-train positions sit within 50 m of a station. The map therefore draws each train at
+its last reported location, pointed toward its next stop and labelled with the report, and
+never moves it until the next report. A train reported at 0,0 is listed rather than drawn.
+
+**Security boundary.** The API and the generator have shared one IAM role, on the grounds that
+splitting it would produce two identical policies. They now differ: the generator alone gets
+`s3:PutObject` on exactly one key, `live.json`, in the site bucket. Granting it to the shared
+role would let the public API write onto the public site. The deploy workflow excludes
+`live.json` from its `--delete` sync, as it already does `accuracy.json`.
+
+**What the snapshot does not change.** Every prediction in it was logged before the file was
+written, by the same code path as before; the snapshot republishes rows, it never creates them.
+The operator's `ExpectedArrival` is added to the calling pattern for display beside the range,
+and nothing that feeds the model reads it.
 
 **Date.** 2026-11-19

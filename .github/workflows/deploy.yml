@@ -167,12 +167,13 @@ jobs:
           echo "distribution=$DIST" >> "$GITHUB_OUTPUT"
           echo "Publishing to $BUCKET, invalidating $DIST"
 
-      # accuracy.json is excluded on purpose: the nightly scorer owns that object, and a
-      # deploy that overwrote it would put a stale scoreboard back on the site.
+      # accuracy.json and live.json are excluded on purpose: the nightly scorer owns the
+      # first and the generator rewrites the second every five minutes (D87). With --delete
+      # and no exclude, every deploy would delete the home page's live trains.
       - name: Publish
         run: |
           aws s3 sync site/ "s3://${{ steps.stack.outputs.bucket }}/" \
-            --delete --exclude "accuracy.json" \
+            --delete --exclude "accuracy.json" --exclude "live.json" \
             --cache-control "public,max-age=300"
 
       - name: Invalidate the cache

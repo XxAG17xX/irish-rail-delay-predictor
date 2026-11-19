@@ -147,6 +147,9 @@ def journey(session, pacer, train_code, when):
             # from timing points it merely passes (docs/data-dictionary.md).
             "sched_dep_text": text(rec, "ScheduledDeparture"),
             "type": text(rec, "LocationType").upper(),
+            # The operator's live estimate, shown beside RailCast's range in live.json (D87).
+            # It is the baseline being compared against, so no feature ever reads it.
+            "expected_text": text(rec, "ExpectedArrival"),
         })
     stops.sort(key=lambda s: s["order"])
     for field, dest in (("sched_raw", "sched"), ("arr_raw", "arr")):
@@ -511,6 +514,7 @@ def calling_pattern(stops, here_codes):
             "scheduled": sched[:5],
             "arrived": hhmmss(int(s["arr"]))[:5] if s.get("arr") is not None else None,
             "delay_min": round(s["delay"] / 60, 1) if s.get("delay") is not None else None,
+            "expected": (s.get("expected_text") or "")[:5] or None,
             "here": s["loc"] in here,
         })
     return out

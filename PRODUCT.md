@@ -80,9 +80,9 @@ where the data cannot support a claim. An honest loss is a better result than an
   generated and the model version.
 - **Terms in use:** range (prediction interval), coverage, matched events, sealed test week,
   echo, vantage stop, scheduled samples.
-- **Undecided:** whether live train positions are precise enough to place trains on a
-  geographic map, or only between their last and next stations. To verify against the feed in
-  daytime before any map work.
+- **Train positions are last reported locations, not measured ones** (D87): 83% sit exactly on
+  the place the train's own message names. The map draws each train there, pointed toward its
+  next stop, labelled with the report, and never moves it between reports.
 
 ## Brand Commitments
 
@@ -103,7 +103,7 @@ where the data cannot support a claim. An honest loss is a better result than an
 - The live accuracy record, regenerated nightly (`accuracy.json`).
 - The sealed test week result (`docs/test-week-2026-09-10.txt`) and the offline head-to-head
   (D46).
-- The decision log, `docs/decisions.md` (85 entries), and the label-quality analysis.
+- The decision log, `docs/decisions.md`, and the label-quality analysis.
 - Real journeys and boards, including captured screenshots (`docs/img/`).
 
 **Absent, and never to be fabricated:** user testimonials, usage or visitor numbers (the scored

@@ -65,23 +65,34 @@ Configuration by environment variable
     GEN_SAMPLE          trains per cycle, default 40
     GEN_MAX_PER_TRAIN   target stops per train, default 5 (one per lead band)
     GEN_NO_QUIET        "1" to run through quiet hours
+    SITE_BUCKET         public site bucket; when set, each cycle also writes live.json there
+
+The live snapshot (D87)
+-----------------------
+The landing page shows live trains without asking Irish Rail anything per visitor: each
+cycle republishes what it already holds as `live.json` on the site bucket. The fleet's
+reported locations come from the getCurrentTrainsXML response fetched above, and the
+predictions are rows this cycle has already logged. The snapshot never creates a
+prediction, so writing it after the log is the only order that keeps D39 intact.
 """
 
 import json
 import os
 import random
+import re
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime
 
-from api import predict_row, running_journey, service_now, state
+from api import calling_pattern, predict_row, running_journey, service_now, state
 from feedtime import LEAD_BANDS, MAX_LEAD_SEC, lead_band
 from poll_live import DUBLIN, TIME_BUDGET_FLOOR_MS, Failure, fetch, in_quiet_hours
 
 NS = "{http://api.irishrail.ie/realtime/}"
 NAMESPACE = "RailDelay"
 SCHEME = "uniform_random_in_service"
+SNAPSHOT_KEY = "live.json"
 
 
 def running_trains(body: bytes) -> list[str]:
@@ -162,8 +173,73 @@ def emit_metrics(values: dict) -> None:
     }))
 
 
-def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
-    """One sweep. Returns (rows, stats). Writes nothing — the caller owns the log."""
+def fleet_positions(body: bytes) -> list[dict]:
+    """Every train in the fleet response with the location of its last report (D87).
+
+    The feed's coordinates are the place a train last reported, not a measured position:
+    in 1,558 daytime samples 83% sat exactly on the location its own message names. A
+    report from a timing point without coordinates arrives as 0,0, kept here as null so
+    the page lists the train instead of drawing it in the Atlantic.
+    """
+    root = ET.fromstring(body)
+    out = []
+    for train in root.findall(NS + "objTrainPositions"):
+        def text(tag):
+            el = train.find(NS + tag)
+            return (el.text or "").strip() if el is not None else ""
+        code = text("TrainCode").upper()
+        if not code:
+            continue
+        try:
+            lat, lon = float(text("TrainLatitude")), float(text("TrainLongitude"))
+        except ValueError:
+            lat = lon = 0.0
+        placed = not (lat == 0 and lon == 0)
+        # The message's line breaks arrive as a literal backslash-n, sometimes doubled.
+        lines = [x.strip() for x in re.split(r"\\+n|\n", text("PublicMessage")) if x.strip()]
+        out.append({"train": code, "status": text("TrainStatus").upper(),
+                    "direction": text("Direction"),
+                    "lat": lat if placed else None, "lon": lon if placed else None,
+                    "message": lines[1:] if lines and lines[0].upper() == code else lines})
+    return out
+
+
+def snapshot(now, model_version, fleet, journeys, rows, quiet=False) -> dict:
+    """live.json: the fleet's last reports, and the predictions this cycle logged.
+
+    Only predicted rows travel, with the fields the page draws. Declines stay in the log,
+    where the coverage figures are computed from them.
+    """
+    keep = ("train", "station_code", "predicted", "interval_80pct", "vantage_location",
+            "current_delay_min", "station_group", "weak_coverage", "predicted_at")
+    predicted = [{k: r.get(k) for k in keep} for r in rows if r.get("outcome") == "predicted"]
+    trains = {p["train"] for p in predicted}
+    return {"generated_at": now.isoformat(timespec="seconds"),
+            "model_version": model_version,
+            "quiet_hours": quiet,
+            "fleet": fleet,
+            "journeys": {code: pattern for code, pattern in journeys.items() if code in trains},
+            "predictions": predicted}
+
+
+def publish_snapshot(bucket: str, doc: dict) -> None:
+    """Write live.json to the public site bucket. The role may write this one key only."""
+    import boto3
+    boto3.client("s3").put_object(
+        Bucket=bucket, Key=SNAPSHOT_KEY,
+        Body=json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
+        ContentType="application/json",
+        # A new snapshot every five minutes; a minute of caching keeps CloudFront from
+        # serving one more than a cycle old.
+        CacheControl="public,max-age=60")
+
+
+def run_cycle(st, rng, sample_size, max_per_train, time_left=None, seen=None):
+    """One sweep. Returns (rows, stats). Writes nothing — the caller owns the log.
+
+    `seen`, when given, collects what the snapshot republishes: the fleet's positions and
+    each sampled train's calling pattern. Neither costs a request beyond the cycle's own.
+    """
     stats = Counter()
     session, pacer = st["session"], st["pacer"]
     now = datetime.now(DUBLIN)
@@ -171,6 +247,9 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
     body = fetch(session, "getCurrentTrainsXML", {}, pacer, "objtrainpositions")
     fleet = running_trains(body)
     stats["fleet"] = len(fleet)
+    if seen is not None:
+        seen["fleet"] = fleet_positions(body)
+        seen["journeys"] = {}
     sample = rng.sample(fleet, min(sample_size, len(fleet)))
 
     # Provenance on every row. The accuracy page has to be able to say how its population
@@ -195,6 +274,8 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
         stats["trains_sampled"] += 1
         if not stops:
             continue
+        if seen is not None:
+            seen["journeys"][code] = calling_pattern(stops, [])
         # Per train, because two trains in one sample can be filed under different dates.
         now_s = service_now(now, service_date)
         for target in choose_targets(stops, now_s, rng, max_per_train):
@@ -208,8 +289,13 @@ def run_cycle(st, rng, sample_size, max_per_train, time_left=None):
 
 
 def lambda_handler(event, context):
+    site = os.environ.get("SITE_BUCKET")
     if os.environ.get("GEN_NO_QUIET") != "1" and in_quiet_hours(datetime.now()):
         emit_metrics({"PredictionsLogged": 0})
+        # No fetch: the page only needs to know the network is in its quiet hours, so it
+        # can switch to its night colourway rather than show the last daytime trains.
+        if site:
+            publish_snapshot(site, snapshot(datetime.now(DUBLIN), None, [], {}, [], quiet=True))
         return {"status": "quiet_hours"}
 
     started = time.monotonic()
@@ -217,11 +303,13 @@ def lambda_handler(event, context):
     if st["log"] is None:
         raise RuntimeError("POLL_BUCKET is unset, so nothing generated could be logged.")
 
+    seen = {}
     rows, stats = run_cycle(
         st, random.Random(),
         int(os.environ.get("GEN_SAMPLE", "40")),
         int(os.environ.get("GEN_MAX_PER_TRAIN", str(len(LEAD_BANDS)))),
-        time_left=context.get_remaining_time_in_millis if context else None)
+        time_left=context.get_remaining_time_in_millis if context else None,
+        seen=seen)
 
     # One object for the whole cycle, not one per prediction: at ~22k predictions a day
     # that is 660k PUTs a month against ~190 for the batched form. The D39 corroboration
@@ -233,6 +321,13 @@ def lambda_handler(event, context):
     # is being served to anyone, so the loss is uniform across the cycle rather than a
     # subset selected by whatever was in flight when S3 faltered.
     keys = st["log"].write(rows) if rows else []
+
+    # After the log, never before: a snapshot only ever republishes logged rows. A failure
+    # here raises after the predictions are safe, so the Errors alarm reports a stale home
+    # page without costing the scoreboard a cycle.
+    if site:
+        publish_snapshot(site, snapshot(datetime.now(DUBLIN), st["manifest"]["version"],
+                                        seen.get("fleet", []), seen.get("journeys", {}), rows))
 
     duration = time.monotonic() - started
     emit_metrics({"PredictionsLogged": len(rows), "Declined": stats["declined"],
@@ -283,6 +378,37 @@ def _self_check():
     # a stop seventeen hours ahead is not a target, whatever band it would land in
     far = stops + [{"loc": "GGGG", "arr": None, "sched": now_s + 17 * 3600}]
     assert "GGGG" not in {p["loc"] for p in choose_targets(far, now_s, random.Random(2), 9)}
+    # The snapshot's fleet: a 0,0 report is kept but unplaced, the message is split on the
+    # literal (and sometimes doubled) backslash-n, and the train-code line is dropped.
+    fleet_xml = ('<?xml version="1.0"?><ArrayOfObjTrainPositions '
+                 'xmlns="http://api.irishrail.ie/realtime/">'
+                 '<objTrainPositions><TrainCode>A220 </TrainCode><TrainStatus>R</TrainStatus>'
+                 '<TrainLatitude>52.6765</TrainLatitude><TrainLongitude>-7.82</TrainLongitude>'
+                 '<Direction>To Cork</Direction><PublicMessage>A220\\\\n16:00 - Dublin '
+                 'Heuston to Cork (2 mins late)\\nDeparted Thurles next stop Limerick Junction'
+                 '</PublicMessage></objTrainPositions>'
+                 '<objTrainPositions><TrainCode>A800</TrainCode><TrainStatus>R</TrainStatus>'
+                 '<TrainLatitude>0</TrainLatitude><TrainLongitude>0</TrainLongitude>'
+                 '<PublicMessage>A800\\nDeparted Athlone Midland Yard next stop Roscommon'
+                 '</PublicMessage></objTrainPositions></ArrayOfObjTrainPositions>').encode()
+    pos = fleet_positions(fleet_xml)
+    assert pos[0]["train"] == "A220" and pos[0]["lat"] == 52.6765, pos[0]
+    assert pos[0]["message"] == ["16:00 - Dublin Heuston to Cork (2 mins late)",
+                                 "Departed Thurles next stop Limerick Junction"], pos[0]["message"]
+    assert pos[1]["lat"] is None and pos[1]["lon"] is None, "0,0 is unplaced, not drawn"
+    assert pos[1]["message"] == ["Departed Athlone Midland Yard next stop Roscommon"]
+
+    # Only predicted rows travel, and only their trains' journeys.
+    rows = [{"outcome": "predicted", "train": "A220", "station_code": "CORK",
+             "predicted": "18:31:00", "interval_80pct": ["18:27:00", "18:36:00"]},
+            {"outcome": "declined", "train": "A800", "station_code": "RSCMN",
+             "reason": "no_upstream_report"}]
+    doc = snapshot(datetime(2026, 11, 19, 17, 35, tzinfo=DUBLIN), "v1", pos,
+                   {"A220": [{"code": "CORK"}], "A800": [{"code": "RSCMN"}]}, rows)
+    assert [p["train"] for p in doc["predictions"]] == ["A220"], "declines stay in the log"
+    assert set(doc["journeys"]) == {"A220"}, "journeys only for trains with a prediction"
+    assert "reason" not in doc["predictions"][0] and doc["quiet_hours"] is False
+    json.dumps(doc)
     print("generate.py self-check passed")
 
 

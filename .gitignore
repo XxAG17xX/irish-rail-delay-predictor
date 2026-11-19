@@ -37,6 +37,8 @@ data/live/*
 
 # Pulled from S3 for local preview; the scorer publishes the real one to the site bucket
 site/accuracy.json
+# Written by the generator every five minutes (D87); a local copy is for preview only.
+site/live.json
 
 # AI assistant tooling: installed skills, their lockfile, and local preview config. None of
 # it is part of the project, so none of it belongs in the public repo.

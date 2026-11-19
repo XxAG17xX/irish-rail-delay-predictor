@@ -47,6 +47,15 @@ Parameters:
     Type: Number
     Default: 40
     Description: Trains sampled per cycle. Request cost is 1 + this, every five minutes.
+  SiteBucket:
+    Type: String
+    Default: ""
+    Description: >-
+      Public site bucket the generator writes live.json to (D87). Empty leaves the
+      snapshot off: the generator then neither has the permission nor tries the write.
+
+Conditions:
+  HasSiteBucket: !Not [!Equals [!Ref SiteBucket, ""]]
 
 Resources:
 
@@ -78,16 +87,13 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # Shared by both functions in this stack. They are the same package making
-              # the same write to the same prefix, so splitting the role would produce two
-              # identical policies and the illusion of a boundary. The boundary that
-              # matters is this stack against the poller's, which remains separate.
+              # The public API's role. The generator had shared it while the two made the
+              # same write; since D87 the generator also writes onto the public site, and
+              # that grant must not reach the one function a stranger can invoke.
               - Sid: WriteOwnLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource:
-                  - !Sub ${ApiLogGroup.Arn}:*
-                  - !Sub ${GeneratorLogGroup.Arn}:*
+                Resource: !Sub ${ApiLogGroup.Arn}:*
               # PutObject on the prediction prefix and nothing else. No GetObject, so the
               # API cannot read back what it wrote; no DeleteObject, so it cannot unwrite
               # it. The scorer gets the mirror image of this (read predictions, write
@@ -97,6 +103,40 @@ Resources:
                 Effect: Allow
                 Action: s3:PutObject
                 Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PredictionsPrefix}/*
+
+  # The generator's own role: the API's prediction write, plus one key on the public site.
+  GeneratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: generator-minimal
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${GeneratorLogGroup.Arn}:*
+              # Same as the API's: write predictions, never read or delete them (D39).
+              - Sid: WritePredictionsOnly
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BucketName}/${PredictionsPrefix}/*
+              - !If
+                - HasSiteBucket
+                # One object, one key, as the scorer has for accuracy.json. Not a wildcard:
+                # nothing else on the public site may be written from here.
+                - Sid: PublishLiveJson
+                  Effect: Allow
+                  Action: s3:PutObject
+                  Resource: !Sub arn:${AWS::Partition}:s3:::${SiteBucket}/live.json
+                - !Ref AWS::NoValue
 
   ApiFunction:
     Type: AWS::Serverless::Function
@@ -167,7 +207,7 @@ Resources:
       # after a 429 without the cycle being killed mid-write, and stays under the
       # 5-minute schedule so an invocation cannot meet its own successor.
       Timeout: 240
-      Role: !GetAtt ApiRole.Arn
+      Role: !GetAtt GeneratorRole.Arn
       Environment:
         Variables:
           SERVING_MODEL_VERSION: !Ref ServingModelVersion
@@ -176,6 +216,7 @@ Resources:
           MODEL_DIR: /var/task/model
           GEN_SAMPLE: !Ref GeneratorSample
           POLL_STAGE: generator
+          SITE_BUCKET: !Ref SiteBucket
       EventInvokeConfig:
         # Asynchronous invocation retries twice by default, which would re-sample and
         # re-query Irish Rail after a failure. The schedule is the retry: five minutes.
