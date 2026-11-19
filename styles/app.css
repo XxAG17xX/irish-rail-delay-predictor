@@ -606,3 +606,80 @@
   .jrny .when { font-variant-numeric: tabular-nums; color: var(--fg-2); }
   .jrny .late, .jrny .early { font-size: .78rem; color: var(--fg-3); }
 }
+
+/* ── components shared by the reading pages (accuracy, how it works, 404) ── */
+@layer components {
+  main.max-w-5xl { max-width: 72rem; }
+  main.max-w-5xl a:not(.btn):not(.toc a) { color: var(--accent); }
+
+  .panel { background: var(--raised); border: 1px solid var(--line); border-radius: 1rem; }
+
+  /* Status marks. Shape carries the meaning as well as tone, so none depends on colour alone:
+     a ring is neutral, a filled accent dot holds, a half-tone dot falls short, ink is a miss. */
+  .lamp { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; vertical-align: middle; flex-shrink: 0; }
+  .lamp-out { border: 2px solid var(--fg-3); }
+  .lamp-clear { background: var(--accent); }
+  .lamp-caution { background: var(--band-mid); box-shadow: inset 0 0 0 2px var(--accent); }
+  .lamp-danger { background: var(--fg); }
+  .qa summary .lamp, .qa summary .chev { display: none; }
+
+  .text-clear { color: var(--accent); }
+  .text-caution { color: var(--fg); text-decoration: underline dotted var(--accent) 2px; text-underline-offset: .25em; }
+  .bg-clear { background-color: var(--accent); }
+  .bg-caution { background-color: var(--band-mid); }
+  .fill-clear { fill: var(--accent); }
+  .fill-caution { fill: var(--band-mid); }
+  .stroke-caution { stroke: var(--band-mid); }
+  .fill-rail { fill: var(--track); }
+  .fill-panel { fill: var(--raised); }
+  .btn-ghost { border: 1px solid var(--line); color: var(--fg); }
+  .btn-ghost:hover { border-color: var(--accent); }
+  .btn:not(.btn-primary):not(.btn-quiet):not(.btn-ghost) { background: var(--fg); color: var(--ground); }
+
+  .toc { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .toc a {
+    border: 1px solid var(--line); border-radius: 999px; padding: .4rem .85rem;
+    font-size: .85rem; color: var(--fg-2); text-decoration: none; transition: border-color .2s, color .2s;
+  }
+  .toc a:hover { border-color: var(--accent); color: var(--fg); }
+
+  /* The record tables: ruled, figures in tabular numerals, a hold or a shortfall marked by
+     weight and underline as well as tone. */
+  .rec { width: 100%; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; }
+  .rec th {
+    text-align: right; font-weight: 600; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--fg-3); padding: .6rem .75rem; border-bottom: 1.5px solid var(--fg);
+  }
+  .rec td { text-align: right; padding: .6rem .75rem; border-bottom: 1px solid var(--line); }
+  .rec th:first-child, .rec td:first-child { text-align: left; padding-left: 0; }
+  .rec tbody tr:last-child td { border-bottom: 0; }
+  .rec .over { color: var(--accent); font-weight: 700; }
+  .rec .under { font-weight: 700; text-decoration: underline dotted var(--accent) 2px; text-underline-offset: .25em; }
+
+  /* Coverage bars: the bar is the share inside the range, the tick is the 80% promise. */
+  .sec { position: relative; height: 10px; min-width: 5rem; }
+  .sec::before { content: ""; position: absolute; inset: 4px 0; background: var(--line); border-radius: 2px; }
+  .sec i { position: absolute; left: 0; top: 2px; height: 6px; border-radius: 3px; background: var(--accent); }
+  .sec i.warn { background: var(--band-mid); }
+  .sec u { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--fg); }
+
+  /* Inline diagrams drawn in the pages' own SVG. */
+  .diagram { display: block; width: 100%; height: auto; overflow: visible; }
+  .tk-bed { stroke: var(--track); stroke-width: 2; }
+  .tk-done { stroke: var(--fg); stroke-width: 2.5; }
+  .tk-band { stroke: var(--band-out); stroke-width: 14; }
+  .tk-band.warn { stroke: var(--band-mid); }
+  .tk-edge { stroke: var(--accent); stroke-width: 1.5; }
+  .stop { fill: var(--raised); stroke: var(--fg-3); stroke-width: 2; }
+  .stop.rep { fill: var(--fg); stroke: var(--fg); }
+  .lbl { fill: var(--fg-3); font-size: 9.5px; letter-spacing: .06em; }
+  .val { fill: var(--fg); font-size: 13px; font-weight: 600; }
+  .val.hot { fill: var(--accent); }
+  .val.warn { fill: var(--fg); }
+  .loco { fill: var(--fg); }
+  .loco-glow { display: none; }
+}
+@layer components {
+  .toc a b { margin-right: .4rem; color: var(--fg); }
+  .read section > p, .read section > ul, main.max-w-5xl > p, main.max-w-5xl section > p { max-width: 70ch; }
+}
