@@ -221,6 +221,7 @@ Grouped by area. Each entry appears once, under the question it settles.
 - [D85](#d85--the-site-gets-a-real-hostname-railcastag17dev) The site gets a real hostname, railcast.ag17.dev. GitHub Pages was rejected for RailCast: it cannot forward /api or receive the nightly scoreboard.
 - [D86](#d86--the-scope-lock-lifts-for-a-redesign-of-the-public-site) The scope lock lifts for a redesign of the public site, map view included on condition it shows only what the feed knows.
 - [D87](#d87--the-landing-page-reads-a-five-minute-snapshot-and-trains-sit-where-they-last-reported) The landing page reads a five-minute snapshot, and trains sit where they last reported.
+- [D88](#d88--the-maps-trains-stand-up-in-3d-from-a-vendored-tree-shaken-threejs) The map's trains stand up in 3D, from a vendored, tree-shaken Three.js.
 
 **The optimisation component, which nothing in the deployed service depends on**
 
@@ -4196,5 +4197,32 @@ role would let the public API write onto the public site. The deploy workflow ex
 written, by the same code path as before; the snapshot republishes rows, it never creates them.
 The operator's `ExpectedArrival` is added to the calling pattern for display beside the range,
 and nothing that feeds the model reads it.
+
+**Date.** 2026-11-19
+
+## D88 — The map's trains stand up in 3D, from a vendored, tree-shaken Three.js
+
+**Why this matters:** the home page's trains are drawn as small 3D railcars on the tilted map,
+which needs a 3D library, and the site's security policy allows no script from anywhere else.
+
+**Decision.** Three.js 0.187.0 (MIT) is bundled by esbuild into `site/vendor/three.js` with only
+the classes `scripts/vendor/three-entry.js` names: 528 KB minified, 135 KB gzipped, against
+2.1 MB for the package's unminified modules (0.187 ships no minified build). The bundle is
+committed, like `site/app.css`, so the deploy stays a file copy; `npm run vendor:three`
+rebuilds it. Types come from `@types/three` through `site/vendor/three.d.ts`, so the checkJs
+check never reads minified code.
+
+**How it is kept honest and cheap.** The railcar (`site/train3d.js`) is built in code from the
+turnaround reference: one geometry with a colour per triangle, one material, one instanced mesh
+for the whole fleet. A WebGL layer reproduces the stage's CSS perspective and the sheet's
+transform, so each railcar lands on the pixels of its last reported station and points toward
+its next stop. It renders once per layout; nothing moves between reports. It loads after the
+page is idle, only on screens at least 52rem wide with live trains to draw, and the 2D trains
+stay underneath as the clickable, keyboard-reachable layer and as the fallback.
+
+**What the model is not.** An approximation at 20 to 40 pixels: proportions, livery, doors,
+windscreen and roof equipment follow the reference; the wheels are boxes and the far side is
+assumed symmetric. Doors are pale grey rather than the reference's yellow, because amber means
+the real arrival on this site.
 
 **Date.** 2026-11-19

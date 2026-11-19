@@ -257,6 +257,12 @@ export function drawPlate(host, net, live, tracks, opts = {}) {
 
   return {
     result, W, H, svg,
+    /** Each drawn train's place and heading, in plate kilometres, for the 3D layer. */
+    trains: () => trainEls.map((t) => ({ x: t.x, y: t.y, angle: t.angle })),
+    /** The window currently shown, in plate kilometres. */
+    window: () => ({ ...vb }),
+    /** The 2D train's length in CSS pixels at the current plate width. */
+    trainPx: () => Math.min(PX.train, Math.max(12, (svg.clientWidth || 600) / 30)),
     /** Set the window onto the map, in plate kilometres, and redraw what depends on scale.
      * @param {{x: number, y: number, w: number, h: number}} next @param {boolean} [all] */
     view(next, all = false) {

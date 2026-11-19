@@ -85,6 +85,31 @@ function showCard(info, el) {
 
 /** @type {ReturnType<typeof drawPlate>|null} */
 let plate = null;
+/** The 3D trains, once loaded. @type {{render: () => void, dispose: () => void}|null} */
+let trains3d = null;
+
+/**
+ * Stand the trains up in 3D, after the page is idle and only where it pays: a wide screen
+ * (on a phone the trains are 12 px and the 135 KB of Three.js buys nothing) and live trains to
+ * draw. Any failure leaves the 2D trains, which are always there underneath.
+ */
+function standTrainsUp() {
+  if (!plate || !matchMedia("(min-width: 52rem)").matches || !plate.trains().length) return;
+  const go = () => {
+    import("./trains3d.js")
+      .then(({ mountTrains }) => {
+        if (!plate) return;
+        trains3d = mountTrains(stage, need("plate"), plate);
+        if (!trains3d) return;
+        trains3d.render();
+        stage.classList.add("has-3d");
+      })
+      .catch(() => {});
+  };
+  const idle = /** @type {Window & {requestIdleCallback?: (cb: () => void, o?: {timeout: number}) => void}} */ (window);
+  if (idle.requestIdleCallback) idle.requestIdleCallback(go, { timeout: 2500 });
+  else setTimeout(go, 1200);
+}
 let exploring = false;
 let vb = { x: 0, y: 0, w: 1, h: 1 };
 const hero = need("hero");
@@ -133,6 +158,7 @@ function explore(on) {
     need("help").hidden = !on;
     card.hidden = true;
     if (plate) setView({ x: 0, y: 0, w: plate.W, h: plate.H });
+    if (!on) requestAnimationFrame(() => trains3d?.render());
   };
   const doc = /** @type {Document & {startViewTransition?: (cb: () => void) => unknown}} */ (document);
   if (doc.startViewTransition) doc.startViewTransition(flip);
@@ -211,7 +237,11 @@ stage.addEventListener("click", (ev) => {
     ev.stopPropagation();
   }
 }, true);
-addEventListener("resize", () => plate && plate.view(vb, exploring));
+addEventListener("resize", () => {
+  if (!plate) return;
+  plate.view(vb, exploring);
+  if (!exploring) trains3d?.render();
+});
 
 Promise.all([json("network.json"), json("live.json").catch(() => null), json("tracks.json").catch(() => null),
   json("stations_ga.json").catch(() => null)])
@@ -232,6 +262,7 @@ Promise.all([json("network.json"), json("live.json").catch(() => null), json("tr
       return;
     }
     headline(shown);
+    standTrainsUp();
     need("stamp").textContent =
       `${drawn.drawn} of ${drawn.running} running trains drawn where they last reported, as of ${drawn.asOf}.` +
       (drawn.unplaced ? ` ${drawn.unplaced} last reported from a point without coordinates.` : "");

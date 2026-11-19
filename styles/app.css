@@ -691,3 +691,17 @@
   .board-name .ga { font-size: 1.05rem; letter-spacing: 0; }
   .plate-labels tspan.ga { font-weight: 400; fill: var(--fg-3); }
 }
+
+/* The 3D trains: drawn over the sheet, never in the way of a click. The 2D train bodies give
+   way to them; their links, focus rings and fans stay. */
+@layer components {
+  .plate-3d { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+  .has-3d .tr-body, .has-3d .tr-band, .has-3d .tr-cab { opacity: 0; }
+  .has-3d .plate-train:focus-visible .tr-body { opacity: 1; fill: none; }
+  /* !important because Three.js sets display:block inline on its canvas. */
+  .hero.exploring .plate-3d { display: none !important; }
+  .hero.exploring .has-3d .tr-body, .hero.exploring .has-3d .tr-band, .hero.exploring .has-3d .tr-cab { opacity: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .plate-3d { animation: plate-fade .6s both; }
+  }
+}

@@ -8,11 +8,15 @@
     "css:watch": "tailwindcss -i styles/app.css -o site/app.css --watch",
     "typecheck": "tsc --noEmit",
     "build": "npm run css && npm run typecheck",
-    "dev": "python scripts/dev_site.py"
+    "dev": "python scripts/dev_site.py",
+    "vendor:three": "esbuild scripts/vendor/three-entry.js --bundle --minify --format=esm --legal-comments=eof --outfile=site/vendor/three.js"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
+    "@types/three": "0.187.0",
+    "esbuild": "0.28.2",
     "tailwindcss": "^4.3.3",
+    "three": "0.187.0",
     "typescript": "^7.0.2"
   }
 }
