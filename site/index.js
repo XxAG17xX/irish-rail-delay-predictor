@@ -16,31 +16,42 @@ async function json(url) {
 }
 
 /**
- * The live headline: the soonest prediction in the snapshot whose station also has Irish
- * Rail's estimate, so the two can be set side by side. Without one, the page keeps the
- * logged example it was served with.
+ * The live headline: a prediction whose station also has Irish Rail's estimate, so the two
+ * can be set side by side, for a train 10 to 45 minutes out, the moment someone is deciding
+ * whether to hurry. One about twenty minutes ahead is preferred, and a range that rounds to a
+ * single minute is skipped, because "14:24 to 14:24" says nothing. Without one, the page
+ * keeps the logged example it was served with.
  * @param {import("./plate.js").Live} live
  */
 function headline(live) {
   const asked = hhmmOf(live.generated_at);
+  const now = minsOf(asked);
   const options = live.predictions
     .map((p) => {
       const pattern = live.journeys[p.train] || [];
       const target = pattern.find((x) => x.code === p.station_code);
-      return { p, target, dest: pattern[pattern.length - 1]?.name || "" };
+      const [lo = "", hi = ""] = p.interval_80pct;
+      let ahead = minsOf(lo.slice(0, 5)) - now;
+      if (ahead < -720) ahead += 1440;
+      return { p, target, lo: lo.slice(0, 5), hi: hi.slice(0, 5), ahead, dest: pattern[pattern.length - 1]?.name || "" };
     })
-    .filter((o) => o.target && o.target.expected)
-    .sort((a, b) => (a.p.interval_80pct[0] < b.p.interval_80pct[0] ? -1 : 1));
+    .filter((o) => o.target?.expected && o.ahead >= 10 && o.ahead <= 45 && o.lo !== o.hi)
+    .sort((a, b) => Math.abs(a.ahead - 20) - Math.abs(b.ahead - 20));
   const pick = options[0];
   if (!pick || !pick.target) return;
-  const [lo = "", hi = ""] = pick.p.interval_80pct;
   need("h-op").textContent = pick.target.expected || "";
-  need("h-lo").textContent = lo.slice(0, 5);
-  need("h-hi").textContent = hi.slice(0, 5);
+  need("h-lo").textContent = pick.lo;
+  need("h-hi").textContent = pick.hi;
   need("h-v1").textContent = "says";
   need("h-v2").textContent = "says";
   need("h-sub").textContent =
     `${pick.p.train} to ${pick.dest}, arriving ${pick.target.name}. Live, as of ${asked}.`;
+}
+
+/** "HH:MM" to minutes. @param {string} t */
+function minsOf(t) {
+  const [h = 0, m = 0] = t.split(":").map(Number);
+  return h * 60 + m;
 }
 
 const stage = need("stage");
