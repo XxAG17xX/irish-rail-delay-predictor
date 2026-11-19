@@ -92,19 +92,17 @@ export function flap(host, time, turn = [3, 4]) {
  * @param {{label: string, action: () => void}} [opts.action]
  */
 export function notice(host, opts) {
-  const lamp = el("span", { class: `lamp lamp-${opts.level} mt-1.5 shrink-0` });
+  const mark = el("span", { class: `notice-mark ${opts.level}`, "aria-hidden": "true" });
   const heading = el("p", { class: "font-semibold", text: opts.title });
-  const body = el("p", { class: "mt-1.5 max-w-xl text-sm leading-relaxed text-ink-2", text: opts.body });
+  const body = el("p", { class: "mt-1.5 max-w-xl text-sm leading-relaxed text-fg-2", text: opts.body });
   const column = el("div", {}, [heading, body]);
-  const panel = el("div", { class: "panel px-5 py-4", role: "status", "aria-live": "polite" }, [
-    el("div", { class: "flex items-start gap-3" }, [lamp, column]),
-  ]);
+  const panel = el("div", { class: "notice", role: "status", "aria-live": "polite" }, [mark, column]);
   host.replaceChildren(panel);
 
   let timer = 0;
   if (opts.countdown != null) {
     let left = opts.countdown;
-    const line = el("p", { class: "mt-2 text-sm text-caution" });
+    const line = el("p", { class: "mt-2 text-sm font-semibold text-accent" });
     column.append(line);
     const tick = () => {
       line.textContent =
@@ -119,7 +117,7 @@ export function notice(host, opts) {
   }
 
   if (opts.action) {
-    const button = el("button", { class: "btn btn-ghost mt-3", type: "button", text: opts.action.label });
+    const button = el("button", { class: "btn btn-quiet mt-3", type: "button", text: opts.action.label });
     button.addEventListener("click", () => {
       clearInterval(timer);
       opts.action?.action();

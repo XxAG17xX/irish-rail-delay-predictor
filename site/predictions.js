@@ -5,6 +5,7 @@
  */
 
 import { el, flap, hhmm, need, notice, reducedMotion } from "./site.js";
+import { drawFan } from "./fan.js";
 
 /** Thrown by `get` so the caller can tell a refusal from an outage. */
 class ApiError extends Error {
@@ -60,6 +61,7 @@ const DEFAULT_STATION = "KDARE"; // a through station: a terminus board is nearl
  * @property {string|null} arrived
  * @property {number|null} delay_min
  * @property {boolean} here
+ * @property {boolean} [passes] a timing point the train passes, kept because it last reported there
  */
 
 /**
@@ -156,10 +158,10 @@ async function get(path) {
  * @param {Node|string} value
  * @param {string} [tone]
  */
-function timeCell(label, value, tone = "text-ink-2") {
-  return el("div", { class: "text-right" }, [
-    el("span", { class: "block text-[0.66rem] uppercase tracking-wider text-ink-3", text: label }),
-    el("div", { class: `mt-0.5 ${tone}` }, [typeof value === "string" ? el("span", { text: value }) : value]),
+function timeCell(label, value, tone = "") {
+  return el("div", { class: "br-cell" }, [
+    el("span", { class: "br-label", text: label }),
+    typeof value === "string" ? el("span", { class: `br-val ${tone}`, text: value }) : value,
   ]);
 }
 
@@ -217,72 +219,45 @@ function noPredictionReason(t) {
 /**
  * @param {Entry} t
  * @param {string} stationCode the board's station, so the route can mark where you are
+ * @param {string} now the board's read time, "HH:MM", where the fan draws its now line
  */
-function row(t, stationCode) {
-  const times = el("div", { class: "flex items-start justify-end gap-4 sm:gap-6" });
-
-  times.append(timeCell("Timetable", hhmm(t.scheduled) || "–", "text-ink-3 text-[0.95rem]"));
-  times.append(
-    timeCell("Irish Rail", hhmm(t.operator_eta) || "–", "text-ink-2 text-[0.95rem]")
-  );
-
+function row(t, stationCode, now) {
+  const times = el("div", { class: "br-times" });
+  times.append(timeCell("Timetable", hhmm(t.scheduled) || "–", "dim"));
+  times.append(timeCell("Irish Rail", hhmm(t.operator_eta) || "–"));
   if (t.prediction) {
     const face = el("span", { class: "flap" });
     flap(face, hhmm(t.prediction.predicted));
-    times.append(timeCell("RailCast", face, ""));
+    times.append(timeCell("RailCast", face));
   } else {
-    times.append(timeCell("RailCast", "–", "text-ink-3 text-[0.95rem]"));
+    times.append(timeCell("RailCast", "–", "dim"));
   }
 
   // Destination first, because that is what a passenger reads a board by, then what this
   // station is to the service, then where it came from.
-  const heading = el("div", { class: "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1" }, [
-    el("span", { class: "font-bold tracking-wide", text: t.train }),
-  ]);
-  if (t.kind) {
-    heading.append(
-      el("span", {
-        class:
-          "rounded-sm border px-1.5 py-px text-[0.68rem] uppercase tracking-wider " +
-          (t.kind === "DART" ? "border-clear/40 text-clear" : "border-rule text-ink-3"),
-        text: t.kind === "DART" ? "DART" : "Train",
-      })
-    );
-  }
-  heading.append(
-    el("span", { class: "text-[0.94rem] text-ink", text: `to ${t.destination || "–"}` })
-  );
-  heading.append(
-    el("span", {
-      class: "text-[0.88rem] text-ink-3",
-      text: [t.calls_as, t.origin ? `from ${t.origin}` : ""].filter(Boolean).join(" · "),
-    })
-  );
+  const heading = el("div", { class: "br-head" }, [el("span", { class: "br-train", text: t.train })]);
+  if (t.kind) heading.append(el("span", { class: "br-kind" + (t.kind === "DART" ? " dart" : ""), text: t.kind === "DART" ? "DART" : "Train" }));
+  heading.append(el("span", { class: "br-dest", text: t.destination || "–" }));
+  heading.append(el("span", {
+    class: "br-calls",
+    text: [t.calls_as, t.origin ? `from ${t.origin}` : ""].filter(Boolean).join(" · "),
+  }));
 
-  const detail = el("p", { class: "mt-2 text-xs text-ink-3" });
+  const detail = el("p", { class: "br-detail" });
   if (t.prediction) {
     const [lo, hi] = t.prediction.interval_80pct;
-    const where = t.prediction.vantage_name || t.prediction.vantage_location;
+    const where = t.prediction.vantage_name || `timing point ${t.prediction.vantage_location}`;
     const seen =
       t.prediction.current_delay_min != null ? `${lateness(t.prediction.current_delay_min)} at ${where}` : "";
     detail.append(
-      el("span", { class: "text-clear", text: `Expected between ${hhmm(lo)} and ${hhmm(hi)}` }),
+      el("span", { class: "br-range", text: `${hhmm(lo)} to ${hhmm(hi)}` }),
       el("span", { text: seen ? ` · last reported ${seen}` : "" })
     );
   } else {
     detail.append(el("span", { text: noPredictionReason(t) }));
   }
 
-  const parts = [
-    el("div", { class: "flex flex-wrap items-start justify-between gap-x-4 gap-y-2" }, [
-      heading,
-      times,
-    ]),
-    detail,
-  ];
-  parts.push(...journeyToggle(t, stationCode));
-
-  return el("div", { class: "border-b border-rule py-3.5 last:border-b-0" }, parts);
+  return el("div", { class: "board-row" }, [heading, times, detail, ...journeyToggle(t, stationCode, now)]);
 }
 
 /**
@@ -302,7 +277,7 @@ function stopTime(s) {
       );
     }
   } else {
-    cell.append(el("span", { class: "text-ink-3", text: s.scheduled || "–" }));
+    cell.append(el("span", { class: "dim", text: s.scheduled || "–" }));
   }
   return cell;
 }
@@ -312,8 +287,9 @@ function stopTime(s) {
  * than a clickable div so it works from the keyboard and announces its state.
  * @param {Entry} t
  * @param {string} stationCode
+ * @param {string} now
  */
-function journeyToggle(t, stationCode) {
+function journeyToggle(t, stationCode, now) {
   let stops = t.journey ?? [];
   let loaded = stops.length > 0;
   const id = `journey-${t.train}`;
@@ -343,19 +319,30 @@ function journeyToggle(t, stationCode) {
   button.append(chevron, label);
 
   const list = el("ol", { class: "jrny" });
-  const footnote = el("p", { class: "text-xs text-ink-3" });
-  const inner = el("div", {}, [list, footnote]);
+  const footnote = el("p", { class: "br-note" });
+  // The fan, for a train with a prediction: drawn each time the route opens, so it unfolds
+  // in front of the visitor rather than while hidden.
+  const fanHost = el("div", { class: "fan-host" });
+  const inner = el("div", {}, [fanHost, list, footnote]);
+  const fan = () => {
+    if (!t.prediction || !stops.length) return;
+    const drawn = drawFan(fanHost, { ...t, journey: stops, prediction: t.prediction }, { now });
+    if (drawn === "earlier") {
+      fanHost.append(el("p", { class: "br-note", text:
+        "The last report came from a timing point the route does not list, so the fan starts from the last listed stop that reported." }));
+    }
+  };
 
   function draw() {
     list.replaceChildren(
       ...stops.map((s, i) => {
         const item = el("li", {
-          class: [s.arrived ? "done" : "", s.here ? "here" : ""].filter(Boolean).join(" "),
+          class: [s.arrived ? "done" : "", s.here ? "here" : "", s.passes ? "passes" : ""].filter(Boolean).join(" "),
         });
         item.style.setProperty("--i", String(i));
         item.append(
           el("span", { class: "pip" }, [el("i")]),
-          el("span", { class: "stop-name", text: s.name + (s.here ? " · you are here" : "") }),
+          el("span", { class: "stop-name", text: s.name + (s.here ? " · you are here" : s.passes ? " · passed, last report" : "") }),
           stopTime(s)
         );
         return item;
@@ -371,9 +358,9 @@ function journeyToggle(t, stationCode) {
    * @param {string} text
    * @param {string} [tone]
    */
-  function placeholder(text, tone = "text-ink-3") {
+  function placeholder(text, tone = "") {
     list.replaceChildren();
-    footnote.className = `text-sm ${tone}`;
+    footnote.className = `br-note ${tone}`;
     footnote.textContent = text;
   }
 
@@ -394,6 +381,7 @@ function journeyToggle(t, stationCode) {
     label.textContent = open ? closedLabel() : "Hide route";
 
     if (open || loaded) {
+      if (!open) fan();
       slide(wrap, !open);
       return;
     }
@@ -411,8 +399,9 @@ function journeyToggle(t, stationCode) {
       stops = data.journey ?? [];
       loaded = true;
       if (stops.length) {
-        footnote.className = "text-xs text-ink-3";
+        footnote.className = "br-note";
         draw();
+        fan();
       } else {
         placeholder("Irish Rail has no route for this service today.");
       }
@@ -420,7 +409,7 @@ function journeyToggle(t, stationCode) {
       const wait = err instanceof ApiError && err.status === 429 ? ` Try again in ${err.retryAfter}s.` : "";
       placeholder(
         `Could not load the route: ${err instanceof Error ? err.message : String(err)}.${wait}`,
-        "text-caution"
+        "warn"
       );
     } finally {
       button.disabled = false;
@@ -491,12 +480,14 @@ async function showBoard(code) {
     );
 
     if (b.trains.length === 0) {
-      board.append(
-        el("p", { class: "text-ink-3", text: "Nothing due here in the next ninety minutes." })
-      );
+      board.append(el("p", { class: "text-fg-3", text: "Nothing due here in the next ninety minutes." }));
     } else {
-      const panel = el("div", { class: "panel px-4" }, b.trains.map((t) => row(t, b.station)));
-      board.append(panel);
+      const now = hhmm(b.generated_at.slice(11));
+      const head = el("div", { class: "board-head" }, [
+        el("h2", { class: "board-name", text: b.station_name }),
+        el("span", { class: "board-time", text: `Read at ${now}` }),
+      ]);
+      board.append(el("div", { class: "board" }, [head, ...b.trains.map((t) => row(t, b.station, now))]));
     }
     need("explainer").hidden = false;
   } catch (err) {

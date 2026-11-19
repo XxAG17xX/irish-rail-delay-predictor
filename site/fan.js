@@ -61,16 +61,23 @@ export function clock(m) {
  * @param {{now: string, km?: (code: string) => number|undefined, animate?: boolean}} opts
  *   `now` is the board's generation time. `km` places stops by distance along the line
  *   when station positions are known; without it stops are evenly spaced.
- * @returns {boolean} false when there is nothing honest to draw
+ * @returns {"exact"|"earlier"|false} "earlier" when the last report came from a timing
+ *   point the route does not list, so the fan starts from the last listed stop that reported;
+ *   false when there is nothing honest to draw
  */
 export function drawFan(host, entry, opts) {
   const p = entry.prediction;
   const stops = entry.journey || [];
-  const vi = stops.findIndex((x) => x.code === p.vantage_location);
   const ti = stops.findIndex((x) => x.here);
+  let vi = stops.findIndex((x) => x.code === p.vantage_location);
+  const exact = vi >= 0;
+  if (!exact) {
+    // Timing points are left out of the route, so a report from one has no row to start from.
+    for (let i = ti - 1; i >= 0; i--) if (stops[i]?.arrived) { vi = i; break; }
+  }
   const vantage = stops[vi];
   const target = stops[ti];
-  if (!vantage || !target || ti <= vi || !vantage.arrived) return false;
+  if (vi < 0 || !vantage || !target || ti <= vi || !vantage.arrived) return false;
 
   const first = Math.max(0, vi - 1);
   const shown = stops.slice(first, ti + 1);
@@ -98,7 +105,9 @@ export function drawFan(host, entry, opts) {
   const W = Math.max(320, host.clientWidth || 640);
   const narrow = W < 520;
   // On a phone the station names sit above their rows, so the plot keeps the full width.
-  const left = narrow ? 10 : 148;
+  // Elsewhere the gutter fits the longest name shown, at about 6.6 px a character.
+  const longest = Math.max(...shown.map((x) => x.name.length));
+  const left = narrow ? 10 : Math.min(Math.max(longest * 6.6 + 20, 96), 220);
   const right = 18;
   const top = narrow ? 74 : 56;
   const rowGap = narrow ? 44 : 46;
@@ -216,5 +225,5 @@ export function drawFan(host, entry, opts) {
       { duration: 700, delay: 450, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" });
     figures.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 950, fill: "backwards" });
   }
-  return true;
+  return exact ? "exact" : "earlier";
 }
