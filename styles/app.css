@@ -99,6 +99,7 @@
     --band-in: var(--color-ultra);
     --glass: rgb(248 249 246 / .62);
     --glass-edge: rgb(255 255 255 / .9);
+    --arrival: var(--color-amber-ink);
     color-scheme: light;
   }
 
@@ -118,6 +119,7 @@
     --band-in: var(--color-pale);
     --glass: rgb(24 33 74 / .6);
     --glass-edge: rgb(201 204 239 / .22);
+    --arrival: var(--color-amber);
     color-scheme: dark;
   }
 
@@ -268,4 +270,166 @@
   }
   .social:hover { border-color: var(--accent); color: var(--fg); }
   .social svg { width: 1rem; height: 1rem; fill: currentColor; }
+}
+
+/* ── shared controls ─────────────────────────────────────────────────────── */
+@layer components {
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    min-height: 2.75rem; border-radius: 999px; padding: .65rem 1.25rem;
+    font-weight: 600; font-size: .95rem; text-decoration: none;
+    transition: background-color .2s, color .2s, border-color .2s, transform .2s var(--ease-out);
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--fg); color: var(--ground); }
+  .btn-primary:hover { background: var(--accent); color: var(--color-chalk); }
+  [data-service="night"] .btn-primary:hover { color: var(--color-night); }
+  .btn-quiet { border: 1px solid var(--line); color: var(--fg); }
+  .btn-quiet:hover { border-color: var(--accent); }
+
+  .band { border-top: 1px solid var(--line); padding-block: clamp(4rem, 9vw, 7rem); }
+  .band-in { margin-inline: auto; max-width: 72rem; padding-inline: 1.5rem; }
+}
+
+/* ── the landing page's first screen ─────────────────────────────────────── */
+@layer components {
+  .hero { position: relative; min-height: 100svh; overflow: hidden; isolation: isolate; }
+
+  /* The printed plate, tilted back in 3D. A CSS transform rather than WebGL: the plate is
+     flat paper, so perspective alone says it, and the SVG stays sharp and clickable. */
+  .plate-stage { position: absolute; inset: 0; perspective: 1700px; z-index: -1; }
+  .plate-sheet {
+    position: absolute; top: 50%; right: 3vw; width: min(50rem, 52vw, 68svh);
+    padding: 2.4% 2.8%;
+    /* The sea is printed as fine hatching, the way an engraved map shades water. */
+    background:
+      repeating-linear-gradient(0deg, color-mix(in srgb, var(--accent) 7%, transparent) 0 1px, transparent 1px 7px),
+      var(--raised);
+    border: 1px solid var(--line);
+    box-shadow: 0 40px 80px -40px rgb(17 21 23 / .35), 0 2px 6px rgb(17 21 23 / .06);
+    transform: translateY(-50%) rotateX(34deg) rotateZ(-10deg);
+    transform-origin: 50% 50%;
+  }
+  [data-service="night"] .plate-sheet { box-shadow: 0 40px 90px -30px rgb(0 0 0 / .6); }
+  .plate-empty { padding: 3rem; color: var(--fg-3); }
+
+  .plate { display: block; width: 100%; height: auto; overflow: visible; }
+  .plate-land path {
+    fill: var(--raised);
+    stroke: var(--track); stroke-width: .35;
+  }
+  .plate-lines line {
+    stroke: var(--fg); stroke-width: 1.1; stroke-linecap: round;
+    stroke-dasharray: 1;
+  }
+  .plate-stations circle { fill: var(--raised); stroke: var(--fg); stroke-width: .6; }
+  .plate-labels text {
+    font-size: 8.4px; font-weight: 600; fill: var(--fg-2);
+    paint-order: stroke; stroke: var(--raised); stroke-width: 2.2px; stroke-linejoin: round;
+  }
+  .plate-fan { fill: var(--band-out); fill-opacity: .9; stroke: var(--accent); stroke-width: .45; transform-box: fill-box; transform-origin: 0% 50%; }
+  .tr-body { fill: var(--raised); stroke: var(--fg); stroke-width: .6; }
+  .tr-band { fill: var(--accent); }
+  .tr-cab { fill: var(--fg); }
+  .plate-train { cursor: pointer; outline: none; }
+  .plate-train:hover .tr-body, .plate-train:focus-visible .tr-body { stroke: var(--accent); stroke-width: 1.4; }
+
+  .train-card {
+    position: absolute; z-index: 5; transform: translate(-50%, -100%);
+    max-width: 19rem; padding: .7rem .9rem; border-radius: .8rem;
+    background: var(--raised); border: 1px solid var(--line);
+    box-shadow: 0 12px 30px -12px rgb(17 21 23 / .3);
+    font-size: .82rem; line-height: 1.45; color: var(--fg-2); pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .train-card .card-title { color: var(--fg); font-weight: 600; }
+  .train-card .card-range { color: var(--accent); font-weight: 600; margin-top: .2rem; }
+
+  .hero-copy {
+    position: relative; z-index: 2;
+    min-height: 100svh; max-width: 72rem; margin-inline: auto;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 7rem 1.5rem 5.5rem;
+    pointer-events: none;
+  }
+  .hero-copy > * { pointer-events: auto; max-width: min(34rem, 42vw); }
+  .hero-line { font-size: clamp(2.4rem, 4.4vw, 4.4rem); letter-spacing: -.035em; line-height: 1.02; }
+  .hero-line > span { display: block; }
+  .hero-line .t-op, .hero-line .t-range { font-variant-numeric: tabular-nums; }
+  .hero-line .t-range { color: var(--accent); }
+  /* The copy sits over the plate's margin; a soft ground-coloured glow keeps it legible
+     where a line or a label passes underneath. */
+  .hero-line, .hero-sub, .hero-lede { text-shadow: 0 0 18px var(--ground), 0 0 4px var(--ground); }
+  .hero-sub { margin-top: 1.1rem; font-size: 1rem; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+  .t-arr { color: var(--arrival); font-weight: 600; }
+  .hero-lede { margin-top: 1rem; font-size: 1.1rem; line-height: 1.55; color: var(--fg); max-width: 32rem; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
+  .plate-stamp {
+    position: absolute; right: 1.5rem; bottom: 1.5rem; z-index: 2; max-width: 30rem;
+    font-size: .8rem; text-align: right; color: var(--fg-3); font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 52rem) {
+    .hero { min-height: auto; }
+    .plate-stage { position: relative; height: 92vw; min-height: 21rem; max-height: 34rem; }
+    .plate-sheet { top: 54%; right: 50%; width: 92vw; transform: translate(50%, -50%) rotateX(30deg) rotateZ(-8deg); }
+    .hero-copy { min-height: auto; padding: 0 1.25rem 2.5rem; }
+    .hero-copy > * { max-width: none; }
+    .plate-stamp { position: static; text-align: left; padding: 0 1.25rem 2rem; }
+  }
+
+  /* Lines draw, then trains appear, then fans unfold. Nothing moves after that. */
+  @media (prefers-reduced-motion: no-preference) {
+    .plate-lines line { animation: plate-draw 1.6s cubic-bezier(.5, 0, .2, 1) both; }
+    .plate-stations, .plate-labels { animation: plate-fade .6s .9s both; }
+    .plate-train { animation: plate-fade .5s 1.3s both; }
+    .plate-fan { animation: plate-unfold .8s 1.6s var(--ease-out) both; }
+    .hero-copy > * { animation: plate-rise .9s var(--ease-out) both; }
+    .hero-copy > :nth-child(2) { animation-delay: .08s; }
+    .hero-copy > :nth-child(3) { animation-delay: .16s; }
+    .hero-copy > :nth-child(4) { animation-delay: .24s; }
+  }
+  @keyframes plate-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes plate-fade { from { opacity: 0; } }
+  @keyframes plate-unfold { from { transform: scale(0); } }
+  @keyframes plate-rise { from { opacity: 0; transform: translateY(14px); } }
+}
+
+/* ── horizon control, losses, the route ──────────────────────────────────── */
+@layer components {
+  .slider { width: 100%; accent-color: var(--accent); height: 1.75rem; cursor: grab; }
+  .slider:active { cursor: grabbing; }
+
+  .readout { border: 1px solid var(--line); border-radius: 1.25rem; padding: 1.5rem; background: var(--raised); }
+  .bars { display: grid; gap: .8rem; }
+  .bar { display: grid; grid-template-columns: 5.5rem 1fr 4.5rem; align-items: center; gap: .75rem; font-size: .9rem; }
+  .bar-name { color: var(--fg-2); }
+  .bar i { display: block; height: .75rem; border-radius: 999px; background: var(--accent); transition: width .5s var(--ease-out); }
+  .bar.op i { background: var(--track); }
+  .bar b { text-align: right; font-variant-numeric: tabular-nums; }
+  .figures { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem 1.5rem; margin-top: 1.75rem; }
+  .figures dt { font-size: .8rem; color: var(--fg-3); }
+  .figures dd { margin-top: .2rem; font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .figures dd small { font-size: .8rem; font-weight: 400; color: var(--fg-3); }
+  .figures .short { text-decoration: underline dotted var(--accent) 2px; text-underline-offset: .25em; }
+
+  .loss { border-top: 2px solid var(--fg); padding-top: 1.1rem; }
+  .loss-n { font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .loss-t { margin-top: .6rem; color: var(--fg-2); line-height: 1.55; }
+
+  .route { position: relative; display: grid; gap: 2.25rem; padding-left: 2rem; list-style: none; }
+  .route::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2.5px; background: var(--fg); }
+  .route li { position: relative; }
+  .route li::before {
+    content: ""; position: absolute; left: -2rem; top: .25rem; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--ground); border: 2.5px solid var(--fg);
+  }
+  .route li:last-child::before { background: var(--accent); border-color: var(--accent); }
+  .route h3 { font-size: 1.2rem; }
+  .route p { margin-top: .5rem; color: var(--fg-2); line-height: 1.55; max-width: 36ch; }
+  @media (min-width: 48rem) {
+    .route { grid-template-columns: repeat(3, 1fr); padding-left: 0; padding-top: 2.25rem; gap: 2.5rem; }
+    .route::before { left: 7px; right: 0; top: 6px; bottom: auto; width: auto; height: 2.5px; }
+    .route li::before { left: 0; top: -2.25rem; }
+  }
 }

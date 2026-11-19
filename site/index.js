@@ -1,100 +1,106 @@
 // @ts-check
-/** Landing page: the hero run, the scroll-driven method walkthrough, and the lead control. */
+/** Landing page: the network plate, the live headline, and the horizon control. */
+import { need } from "./site.js";
+import { drawPlate, hhmmOf } from "./plate.js";
 
-import { need, reducedMotion, watchSteps } from "./site.js";
+/* ── the plate and the headline ───────────────────────────────────────────── */
 
-/* ── the hero train runs once, to the position of its own prediction ────── */
+/** A snapshot older than this is not shown as live: four missed cycles. */
+const STALE_MIN = 20;
 
-const train = need("train");
-const HERO_Q50_X = 715;
-if (reducedMotion) {
-  train.setAttribute("transform", `translate(${HERO_Q50_X},0)`);
-} else {
-  train.animate(
-    [{ transform: "translate(300px,0)" }, { transform: `translate(${HERO_Q50_X}px,0)` }],
-    { duration: 2600, delay: 700, easing: "cubic-bezier(.33,1,.68,1)", fill: "both" }
-  );
+/** @param {string} url */
+async function json(url) {
+  const res = await fetch(url, { cache: "no-cache" });
+  if (!res.ok) throw new Error(`${url} ${res.status}`);
+  return res.json();
 }
-
-/* ── the walkthrough diagram ────────────────────────────────────────────── */
-
-const sd = {
-  done: need("sd-done"),
-  band: need("sd-band"),
-  eL: need("sd-eL"),
-  eR: need("sd-eR"),
-  cap: need("sd-cap"),
-  train: need("sd-train"),
-  stops: /** @type {SVGCircleElement[]} */ ([...document.querySelectorAll("#sd-stops circle")]),
-};
 
 /**
- * @typedef {object} Frame
- * @property {number} done   how far along the journey has been travelled
- * @property {number} reported how many stops have reported
- * @property {[number, number]|null} band the 80% range, or null when there is none yet
- * @property {number|null} train where the train sits, or null when it has not departed
- * @property {string} cap
+ * The live headline: the soonest prediction in the snapshot whose station also has Irish
+ * Rail's estimate, so the two can be set side by side. Without one, the page keeps the
+ * logged example it was served with.
+ * @param {import("./plate.js").Live} live
  */
-
-const X = [30, 110, 190, 290, 430];
-
-/** @type {Frame[]} */
-const FRAMES = [
-  { done: X[0] ?? 30, reported: 0, band: null, train: null, cap: "nothing reported yet" },
-  { done: X[2] ?? 190, reported: 3, band: null, train: X[2] ?? 190, cap: "3 stops reported" },
-  { done: X[2] ?? 190, reported: 3, band: [396, 424], train: X[2] ?? 190, cap: "80% range" },
-  { done: X[1] ?? 110, reported: 2, band: [352, 430], train: X[1] ?? 110, cap: "asked earlier, wider range" },
-  { done: X[2] ?? 190, reported: 3, band: [396, 424], train: X[2] ?? 190, cap: "landed inside" },
-];
-
-/** @param {number} i */
-function paint(i) {
-  const f = FRAMES[i];
-  if (!f) return;
-
-  sd.done.setAttribute("x2", String(f.done));
-  sd.stops.forEach((c, n) => c.classList.toggle("rep", n < f.reported));
-  sd.cap.textContent = f.cap;
-  sd.cap.classList.toggle("hot", i === 4);
-
-  if (f.band) {
-    const [lo, hi] = f.band;
-    sd.band.setAttribute("x1", String(lo));
-    sd.band.setAttribute("x2", String(hi));
-    sd.eL.setAttribute("x1", String(lo));
-    sd.eL.setAttribute("x2", String(lo));
-    sd.eR.setAttribute("x1", String(hi));
-    sd.eR.setAttribute("x2", String(hi));
-    sd.eL.setAttribute("opacity", "0.55");
-    sd.eR.setAttribute("opacity", "0.55");
-    sd.band.style.opacity = "0.16";
-  } else {
-    sd.band.style.opacity = "0";
-    sd.eL.setAttribute("opacity", "0");
-    sd.eR.setAttribute("opacity", "0");
-  }
-
-  if (f.train == null) {
-    sd.train.setAttribute("opacity", "0");
-  } else {
-    sd.train.setAttribute("opacity", "1");
-    sd.train.setAttribute("transform", `translate(${f.train},0)`);
-  }
+function headline(live) {
+  const asked = hhmmOf(live.generated_at);
+  const options = live.predictions
+    .map((p) => {
+      const pattern = live.journeys[p.train] || [];
+      const target = pattern.find((x) => x.code === p.station_code);
+      return { p, target, dest: pattern[pattern.length - 1]?.name || "" };
+    })
+    .filter((o) => o.target && o.target.expected)
+    .sort((a, b) => (a.p.interval_80pct[0] < b.p.interval_80pct[0] ? -1 : 1));
+  const pick = options[0];
+  if (!pick || !pick.target) return;
+  const [lo = "", hi = ""] = pick.p.interval_80pct;
+  need("h-op").textContent = pick.target.expected || "";
+  need("h-lo").textContent = lo.slice(0, 5);
+  need("h-hi").textContent = hi.slice(0, 5);
+  need("h-v1").textContent = "says";
+  need("h-v2").textContent = "says";
+  need("h-sub").textContent =
+    `${pick.p.train} to ${pick.dest}, arriving ${pick.target.name}. Live, as of ${asked}.`;
 }
 
-paint(0);
-watchSteps(document.querySelectorAll(".step"), (i) => paint(i));
+const stage = need("stage");
+const card = need("card");
 
-/* ── the lead control ───────────────────────────────────────────────────── */
+/** @param {import("./plate.js").TrainInfo|null} info @param {Element|null} el */
+function showCard(info, el) {
+  if (!info || !el) {
+    card.hidden = true;
+    return;
+  }
+  const lines = [`${info.train} · ${info.route}`, `${info.report}`, `As reported ${info.asOf}`];
+  if (info.target) {
+    lines.push(`${info.target.name}: ${info.target.lo} to ${info.target.hi}` +
+      (info.target.operator ? ` · Irish Rail ${info.target.operator}` : ""));
+  }
+  card.replaceChildren(...lines.map((t, i) => {
+    const p = document.createElement("p");
+    p.textContent = t;
+    if (i === 0) p.className = "card-title";
+    if (i === 3) p.className = "card-range";
+    return p;
+  }));
+  const box = el.getBoundingClientRect();
+  const host = stage.getBoundingClientRect();
+  card.hidden = false;
+  const x = Math.min(box.left - host.left + box.width / 2, host.width - card.offsetWidth / 2 - 12);
+  card.style.left = Math.max(card.offsetWidth / 2 + 12, x) + "px";
+  card.style.top = box.top - host.top - 12 + "px";
+}
+
+Promise.all([json("network.json"), json("live.json").catch(() => null)])
+  .then(([net, live]) => {
+    const age = live ? (Date.now() - Date.parse(live.generated_at)) / 60000 : Infinity;
+    const fresh = live && !live.quiet_hours && age < STALE_MIN;
+    const shown = fresh ? live : null;
+    const drawn = drawPlate(need("plate"), net, shown, { onTrain: showCard });
+    if (!fresh || drawn.running === 0) {
+      document.documentElement.dataset.service = "night";
+      need("stamp").textContent = live?.quiet_hours
+        ? "No trains running overnight. Trains appear here as they report in the morning."
+        : "No live positions right now. Trains appear here as they report.";
+      return;
+    }
+    headline(shown);
+    need("stamp").textContent =
+      `${drawn.drawn} of ${drawn.running} running trains drawn where they last reported, as of ${drawn.asOf}.` +
+      (drawn.unplaced ? ` ${drawn.unplaced} last reported from a point without coordinates.` : "");
+  })
+  .catch(() => {
+    need("stamp").textContent = "The network map could not be loaded.";
+  });
+
+/* ── the horizon control ──────────────────────────────────────────────────── */
 
 /**
  * Measured over the seven days to 2026-09-08, one row per lead band, from that day's
- * accuracy.json (rolling.by_lead_band); inlined so the landing page needs no fetch.
- * `mae`, `op` and `better` are the matched set: RailCast and the operator on the same events.
- * `cov` and `n` cover every scored prediction in the band. The first version put the
- * all-scored error beside the matched operator error, so the hour-plus band read 194.9s
- * against 193.0s while claiming +23.5%.
+ * accuracy.json (rolling.by_lead_band); inlined so the page needs no fetch. `mae`, `op` and
+ * `better` are the matched set: RailCast and the operator on the same events. `cov` and `n`
+ * cover every scored prediction in the band.
  * @type {{name: string, mae: number, op: number, better: number, matched: number, cov: number, n: number}[]}
  */
 const BANDS = [
@@ -104,40 +110,23 @@ const BANDS = [
   { name: "30 to 60 minutes", mae: 117.9, op: 148.7, better: 20.7, matched: 3219, cov: 73.4, n: 12856 },
   { name: "an hour or more", mae: 147.7, op: 193.0, better: 23.5, matched: 1133, cov: 65.7, n: 4340 },
 ];
-
+const MAX_ERR = 200;
 const lead = /** @type {HTMLInputElement} */ (need("lead"));
-const band = need("band");
-const edgeL = need("edgeL");
-const edgeR = need("edgeR");
 
 function showBand() {
   const b = BANDS[Number(lead.value)];
   if (!b) return;
-
   need("leadOut").textContent = b.name;
-  need("rMae").textContent = b.mae.toFixed(1) + "s";
-  need("rOp").textContent = b.op.toFixed(1) + "s";
-  need("rBet").textContent = "+" + b.better.toFixed(1) + "%";
+  for (const id of ["rMae", "rMae2"]) need(id).textContent = b.mae.toFixed(1) + "s";
+  for (const id of ["rOp", "rOp2"]) need(id).textContent = b.op.toFixed(1) + "s";
+  need("rBet").textContent = b.better.toFixed(1) + "%";
   need("rCov").textContent = b.cov.toFixed(1) + "%";
   need("rN").textContent = b.n.toLocaleString("en-IE");
   need("rMatched").textContent = b.matched.toLocaleString("en-IE");
-
-  const low = b.cov < 70;
-  need("rCov").classList.toggle("text-caution", low);
-
-  // The range on the hero diagram is scaled from the measured error for that band, so
-  // dragging the control shows the widening rather than asserting it.
-  const half = 9 + b.mae * 0.42;
-  const centre = HERO_Q50_X;
-  for (const el of [band, edgeL, edgeR]) el.classList.toggle("warn", low);
-  band.setAttribute("x1", String(centre - half));
-  band.setAttribute("x2", String(centre + half));
-  edgeL.setAttribute("x1", String(centre - half));
-  edgeL.setAttribute("x2", String(centre - half));
-  edgeR.setAttribute("x1", String(centre + half));
-  edgeR.setAttribute("x2", String(centre + half));
-  need("rangeT").textContent = "the range widens with the horizon";
+  need("barMe").style.width = (b.mae / MAX_ERR) * 100 + "%";
+  need("barOp").style.width = (b.op / MAX_ERR) * 100 + "%";
+  need("rCov").classList.toggle("short", b.cov < 70);
+  lead.setAttribute("aria-valuetext", b.name);
 }
-
 lead.addEventListener("input", showBand);
 showBand();
