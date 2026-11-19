@@ -44,12 +44,19 @@
   <!-- The first screen: the network as a printed plate, every running train where it last
        reported. The headline is a real logged prediction until live.json replaces it with a
        train running now (D87). -->
-  <section class="hero" aria-labelledby="headline">
-    <div class="plate-stage" id="stage">
+  <section class="hero" id="hero" aria-labelledby="headline">
+    <div class="plate-stage" id="stage" tabindex="-1">
       <div class="plate-sheet" id="plate">
         <noscript><p class="plate-empty">The live network needs JavaScript.</p></noscript>
       </div>
       <div class="train-card" id="card" hidden></div>
+      <div class="map-tools" id="tools" hidden>
+        <button type="button" id="zin" aria-label="Zoom in"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button type="button" id="zout" aria-label="Zoom out"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+        <button type="button" id="zreset" aria-label="Show the whole island"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
+        <button type="button" id="zclose" aria-label="Close the map"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
+      </div>
+      <p class="map-help" id="help" hidden>Scroll or pinch to zoom, drag to move. Arrow keys and + or − work too; Esc closes.</p>
     </div>
 
     <div class="hero-copy">
@@ -64,11 +71,12 @@
         the next morning.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="predictions.html">Open a station's board</a>
-        <a class="btn btn-quiet" href="accuracy.html">See the record</a>
+        <button type="button" class="btn btn-quiet" id="explore">Explore the map</button>
       </div>
     </div>
 
     <p class="plate-stamp" id="stamp">Positions as last reported by each train.</p>
+    <p class="map-credit" id="credit">Coast: Natural Earth. Stations: Irish Rail.</p>
   </section>
 
   <!-- Horizon: real figures from scored predictions, dated. -->

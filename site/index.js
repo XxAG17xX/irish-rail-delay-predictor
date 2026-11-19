@@ -72,12 +72,145 @@ function showCard(info, el) {
   card.style.top = box.top - host.top - 12 + "px";
 }
 
-Promise.all([json("network.json"), json("live.json").catch(() => null)])
-  .then(([net, live]) => {
+/** @type {ReturnType<typeof drawPlate>|null} */
+let plate = null;
+let exploring = false;
+let vb = { x: 0, y: 0, w: 1, h: 1 };
+const hero = need("hero");
+
+/** Keep the window on the island and between the whole map and 1/40 of it. @param {typeof vb} next */
+function setView(next) {
+  if (!plate) return;
+  const { W, H } = plate;
+  const w = Math.min(Math.max(next.w, W / 40), W);
+  const h = (w * H) / W;
+  const cx = Math.min(Math.max(next.x + next.w / 2, 0), W);
+  const cy = Math.min(Math.max(next.y + (next.w * H) / W / 2, 0), H);
+  vb = { x: cx - w / 2, y: cy - h / 2, w, h };
+  plate.view(vb, exploring);
+}
+
+/** A point on screen in plate kilometres. @param {number} sx @param {number} sy */
+function toMap(sx, sy) {
+  const r = (plate?.svg || stage).getBoundingClientRect();
+  const k = Math.min(r.width / vb.w, r.height / vb.h);
+  return {
+    x: vb.x + (sx - r.left - (r.width - vb.w * k) / 2) / k,
+    y: vb.y + (sy - r.top - (r.height - vb.h * k) / 2) / k,
+    k,
+  };
+}
+
+/** Zoom by `f` keeping the screen point (sx, sy) still. @param {number} f @param {number} sx @param {number} sy */
+function zoomAt(f, sx, sy) {
+  const m = toMap(sx, sy);
+  setView({ x: m.x - (m.x - vb.x) / f, y: m.y - (m.y - vb.y) / f, w: vb.w / f, h: vb.h / f });
+}
+function zoomCentre(/** @type {number} */ f) {
+  const r = stage.getBoundingClientRect();
+  zoomAt(f, r.left + r.width / 2, r.top + r.height / 2);
+}
+
+/** Unfold the plate flat and hand it to the visitor, or fold it back. @param {boolean} on */
+function explore(on) {
+  if (!plate || on === exploring) return;
+  const flip = () => {
+    exploring = on;
+    hero.classList.toggle("exploring", on);
+    document.documentElement.classList.toggle("map-open", on);
+    need("tools").hidden = !on;
+    need("help").hidden = !on;
+    card.hidden = true;
+    if (plate) setView({ x: 0, y: 0, w: plate.W, h: plate.H });
+  };
+  const doc = /** @type {Document & {startViewTransition?: (cb: () => void) => unknown}} */ (document);
+  if (doc.startViewTransition) doc.startViewTransition(flip);
+  else flip();
+  if (on) stage.focus({ preventScroll: true });
+  else need("explore").focus({ preventScroll: true });
+}
+
+need("explore").addEventListener("click", () => explore(true));
+need("zin").addEventListener("click", () => zoomCentre(1.6));
+need("zout").addEventListener("click", () => zoomCentre(1 / 1.6));
+need("zreset").addEventListener("click", () => plate && setView({ x: 0, y: 0, w: plate.W, h: plate.H }));
+need("zclose").addEventListener("click", () => explore(false));
+
+stage.addEventListener("click", (ev) => {
+  if (!exploring && !(/** @type {Element} */ (ev.target)).closest(".plate-train")) explore(true);
+});
+stage.addEventListener("wheel", (ev) => {
+  if (!exploring) return;
+  ev.preventDefault();
+  zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX, ev.clientY);
+}, { passive: false });
+stage.addEventListener("keydown", (ev) => {
+  if (!exploring) return;
+  const step = 80 / toMap(0, 0).k;
+  const keys = /** @type {Record<string, () => void>} */ ({
+    Escape: () => explore(false),
+    "+": () => zoomCentre(1.6), "=": () => zoomCentre(1.6), "-": () => zoomCentre(1 / 1.6),
+    "0": () => plate && setView({ x: 0, y: 0, w: plate.W, h: plate.H }),
+    ArrowLeft: () => setView({ ...vb, x: vb.x - step }), ArrowRight: () => setView({ ...vb, x: vb.x + step }),
+    ArrowUp: () => setView({ ...vb, y: vb.y - step }), ArrowDown: () => setView({ ...vb, y: vb.y + step }),
+  });
+  const act = keys[ev.key];
+  if (act) {
+    ev.preventDefault();
+    act();
+  }
+});
+
+// Drag to pan with one pointer, pinch to zoom with two. A drag that moved is not a click,
+// so releasing over a train does not open its board.
+/** @type {Map<number, {x: number, y: number}>} */
+const pointers = new Map();
+let moved = 0;
+stage.addEventListener("pointerdown", (ev) => {
+  if (!exploring || (/** @type {Element} */ (ev.target)).closest(".map-tools")) return;
+  pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  stage.setPointerCapture(ev.pointerId);
+  moved = 0;
+});
+stage.addEventListener("pointermove", (ev) => {
+  const was = pointers.get(ev.pointerId);
+  if (!was) return;
+  const now = { x: ev.clientX, y: ev.clientY };
+  if (pointers.size === 1) {
+    const k = toMap(0, 0).k;
+    moved += Math.abs(now.x - was.x) + Math.abs(now.y - was.y);
+    setView({ ...vb, x: vb.x - (now.x - was.x) / k, y: vb.y - (now.y - was.y) / k });
+  } else if (pointers.size === 2) {
+    const other = [...pointers.entries()].find(([id]) => id !== ev.pointerId)?.[1];
+    if (other) {
+      const before = Math.hypot(was.x - other.x, was.y - other.y);
+      const after = Math.hypot(now.x - other.x, now.y - other.y);
+      moved += 10;
+      if (before > 0) zoomAt(after / before, (now.x + other.x) / 2, (now.y + other.y) / 2);
+    }
+  }
+  pointers.set(ev.pointerId, now);
+});
+for (const type of ["pointerup", "pointercancel"]) {
+  stage.addEventListener(type, (ev) => pointers.delete(/** @type {PointerEvent} */ (ev).pointerId));
+}
+stage.addEventListener("click", (ev) => {
+  if (exploring && moved > 6) {
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+}, true);
+addEventListener("resize", () => plate && plate.view(vb, exploring));
+
+Promise.all([json("network.json"), json("live.json").catch(() => null), json("tracks.json").catch(() => null)])
+  .then(([net, live, tracks]) => {
     const age = live ? (Date.now() - Date.parse(live.generated_at)) / 60000 : Infinity;
     const fresh = live && !live.quiet_hours && age < STALE_MIN;
     const shown = fresh ? live : null;
-    const drawn = drawPlate(need("plate"), net, shown, { onTrain: showCard });
+    plate = drawPlate(need("plate"), net, shown, tracks, { onTrain: showCard });
+    setView({ x: 0, y: 0, w: plate.W, h: plate.H });
+    if (tracks) need("credit").textContent = "Track \u00a9 OpenStreetMap contributors (ODbL). Coast: Natural Earth. Stations: Irish Rail.";
+    const drawn = plate.result;
     if (!fresh || drawn.running === 0) {
       document.documentElement.dataset.service = "night";
       need("stamp").textContent = live?.quiet_hours
