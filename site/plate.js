@@ -72,8 +72,11 @@ export function lastReport(message) {
  */
 export function drawPlate(host, net, live, tracks, opts = {}) {
   const extra = tracks?.stations || {};
+  // tracks.json places the codes the feed leaves without a position and corrects the few
+  // it puts far from the station (Belfast by 1.9 km). lat/lon stay the feed's, so a train
+  // reported at the feed's coordinates still finds its station.
   const stations = net.stations.map((st) =>
-    st.x == null && extra[st.code] ? { ...st, x: extra[st.code]?.x ?? null, y: extra[st.code]?.y ?? null } : st);
+    extra[st.code] ? { ...st, x: extra[st.code]?.x ?? null, y: extra[st.code]?.y ?? null } : st);
   const placed = stations.filter((st) => st.x != null && st.y != null);
   const byCode = new Map(placed.map((st) => [st.code, st]));
   const drawn = net.links.filter((l) => l.services >= 2 && byCode.has(l.a) && byCode.has(l.b));

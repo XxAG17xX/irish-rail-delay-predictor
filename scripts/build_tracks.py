@@ -68,6 +68,7 @@ RATIO_MAX = 1.6         # path length over straight line
 NEAR_M = 300            # a third station this close to the path means another branch...
 ON_TRACK_M = 50         # ...if the path also runs within this of that station's own track
 SIMPLIFY_M = 10         # Douglas-Peucker tolerance; half a pixel at 1 px = 20 m
+CORRECT_M = 300         # feed position this far from OSM's node for its code: use OSM's
 
 
 # ------------------------------------------------------------------------ fetch
@@ -282,8 +283,33 @@ def main() -> int:
     gaps = sorted((math.dist(xy[c], itm(tagged[c][0]["lat"], tagged[c][0]["lon"])), c)
                   for c in xy if c in tagged)
     print(f"\nfeed position vs OSM node with the same code: {len(gaps)} of {len(xy)} codes, "
-          f"median {gaps[len(gaps) // 2][0]:.0f} m, over 300 m: "
-          f"{[(c, round(d)) for d, c in gaps if d > 300]}")
+          f"median {gaps[len(gaps) // 2][0]:.0f} m, over {CORRECT_M} m: "
+          f"{[(c, round(d)) for d, c in gaps if d > CORRECT_M]}")
+
+    # Where the two disagree by more than CORRECT_M, the map uses OSM's node. A code at the
+    # same feed position is the same station under another code (ADAMF, Adamstown's fast
+    # lines, beside ADMTN) and moves with it, or the two would be drawn 1 km apart.
+    feed = dict(xy)
+    corrected = {}
+    for d, c in gaps:
+        if d <= CORRECT_M or len(tagged[c]) != 1:
+            continue
+        e = tagged[c][0]
+        x, y = itm(e["lat"], e["lon"])
+        for code in [c] + sorted(o for o, p in feed.items() if p == feed[c] and o != c):
+            corrected[code] = {
+                "x": r1(x), "y": r1(y), "lat": round(e["lat"], 6), "lon": round(e["lon"], 6),
+                "osm_id": e["id"], "osm_name": e["tags"].get("name"),
+                "osm_railway": e["tags"].get("railway"),
+                "feed_x": feed[code][0], "feed_y": feed[code][1],
+                "moved_m": r1(math.dist(feed[code], (x, y))),
+                **({"same_station_as": c} if code != c else {}),
+            }
+    for code, v in corrected.items():
+        xy[code] = (v["x"], v["y"])
+        print(f"  corrected {code} {names[code]}: OSM node {v['osm_id']} {v['osm_name']!r}, "
+              f"moved {v['moved_m']} m" + (f", with {v['same_station_as']}"
+                                           if "same_station_as" in v else ""))
 
     snaps = {c: g.snap(*p) for c, p in xy.items()}
     far = sorted(((s[0][0] if s else math.inf, c) for c, s in snaps.items()
@@ -366,7 +392,7 @@ def main() -> int:
             f"vertices {s[4]} -> {s[5]}" if s else fallback.get(k, "not a link")))
 
     print("\nunplaced stations:")
-    placed = {}
+    placed = dict(corrected)
     for s in net["stations"]:
         if s["x"] is not None:
             continue
@@ -395,16 +421,21 @@ def main() -> int:
                     "disused/abandoned/construction/razed/dismantled marker",
             "snap_m": SNAP_M, "max_ratio": RATIO_MAX, "near_station_m": NEAR_M,
             "on_track_m": ON_TRACK_M, "simplify_m": SIMPLIFY_M,
+            "correct_m": CORRECT_M,
             "units": "ITM metres (EPSG:2157), rounded to 1; each line starts and ends at "
-                     "its stations' network.json positions",
+                     "its stations' positions: this file's stations entry where there is "
+                     "one, network.json's otherwise",
         },
         "links": tracks,
         "fallback": fallback,
         "stations": placed,
         "stations_note": "Positions from the OSM node tagged with the same Irish Rail code "
-                         "(railway:ref or railway:ref:Irish Rail), for codes network.json "
-                         "leaves unplaced; network.json itself is unchanged. CENTJ and CITYJ "
-                         "are junctions (railway=junction), not stations.",
+                         "(railway:ref or railway:ref:Irish Rail): for codes network.json "
+                         "leaves unplaced, and as corrections (with feed_x, feed_y, moved_m) "
+                         "where the feed's position is over correct_m from that node; "
+                         "same_station_as marks a code at the same feed position moved with "
+                         "it. network.json itself is unchanged. CENTJ and CITYJ are "
+                         "junctions (railway=junction), not stations.",
     }
     body = json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     OUT.write_bytes(body)
